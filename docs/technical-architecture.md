@@ -1,19 +1,19 @@
 # Technical Architecture
 
-Pressluft is a single-codebase WordPress orchestration control plane designed for deterministic site lifecycle management. It operates identically in Cloud and Self-Hosted modes. Deployment topology does not alter internal architecture.
+Pressluft is a single-codebase WordPress orchestration control plane designed for deterministic site lifecycle management. Deployment topology does not alter internal architecture.
 
 ## 1. Control Plane
 
-Implemented as a monolithic Go application running as a non-root system service.
+Implemented as a monolithic Go application with an embedded web UI, running as a non-root system service.
 
 Responsibilities:
 
 - Explicit site lifecycle state machine: ACTIVE, CLONING, DEPLOYING, RESTORING, FAILED
 - Persistent state storage (SQLite for MVP)
-- SQL-backed job queue
-- Node registry and capability tracking
-- SSH execution abstraction layer
-- Concurrency control via optimistic locking (row versioning)
+- DB-backed job queue (tables in the primary database)
+- Web UI/API for site creation and node registry
+- SSH execution layer that invokes external Ansible playbooks
+- Concurrency control via row-level versioning
 
 The database is the source of truth. All infrastructure mutations are modeled as transactional jobs. Only one mutation per site may execute at a time. State transitions occur inside database transactions to prevent race conditions.
 
@@ -35,10 +35,10 @@ Nodes are agentless and accessed exclusively over SSH. Even in single-server mod
 
 For Hetzner-based setups:
 
-1. VPS created via API
-2. SSH availability verified
-3. Idempotent bootstrap executed
-4. Node registered in control plane
+1. User provisions a fresh Ubuntu server
+2. `curl install.sh` installs Pressluft and prerequisites
+3. Idempotent bootstrap executed via Ansible over SSH
+4. Local node registered in control plane
 
 Bootstrap installs the web stack, configures firewall rules, creates system users, and enforces baseline security. All bootstrap steps are idempotent to tolerate retries.
 

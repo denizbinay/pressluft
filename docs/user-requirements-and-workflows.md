@@ -9,8 +9,9 @@ Pressluft is site-centric. Users manage WordPress projects and environments, not
 **User Goal:** Install Pressluft on a server and immediately start creating sites.
 
 **Flow:**
-- Install Pressluft on a single server.
-- Platform prepares and hardens the local WordPress runtime.
+- Provision a fresh Ubuntu server on Hetzner.
+- Run the provided `install.sh` via curl to install Pressluft.
+- The control plane bootstraps and hardens the local runtime and registers the first node.
 
 **Must-Have Outcomes:**
 - Hardened OS assumptions and secure defaults.
@@ -27,7 +28,7 @@ Optional: Advanced users may connect external infrastructure later. This is not 
 **User Goal:** Launch a new WordPress site instantly, with or without a custom domain.
 
 **Flow:**
-- Click “Create Site”.
+- Open the dashboard and click “Create Site”.
 - Receive a working preview URL immediately.
 
 **Must-Have Outcomes:**
@@ -71,7 +72,7 @@ Environments must be disposable, fast to create, and safe to remove.
 - Automatic detection of production changes since clone creation.
 - Clear warnings when drift exists.
 - Mandatory backup before pushback.
-- Atomic release switching with instant rollback.
+- Atomic promotion with instant rollback.
 
 Users must never fear breaking production.
 
