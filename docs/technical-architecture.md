@@ -12,7 +12,7 @@ Responsibilities:
 - Persistent state storage (SQLite for MVP)
 - DB-backed job queue (tables in the primary database)
 - Web UI/API for site creation and node registry
-- SSH execution layer that invokes external Ansible playbooks
+- Ansible execution layer: the job executor invokes `ansible-playbook` as a local subprocess for all node-targeted operations. Inventory is generated dynamically from the database. Each job type maps to one playbook. See `docs/ansible-execution.md` for the full contract.
 - Concurrency control via row-level versioning
 
 The database is the source of truth. All infrastructure mutations are modeled as transactional jobs. Only one mutation per site may execute at a time. State transitions occur inside database transactions to prevent race conditions.

@@ -15,6 +15,7 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - docs/api-contract.md
 - docs/ui-flows.md
 - docs/security-and-secrets.md
+- docs/ansible-execution.md
 
 ## Locked Decisions (MVP)
 
@@ -36,7 +37,7 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 ## Ownership Boundaries
 
 - Go core: control plane, state machine, jobs, API, UI integration.
-- Ansible playbooks: server stack and configuration, version pinning, idempotent provisioning.
+- Ansible playbooks: all node-targeted operations including provisioning, deployment, backups, restores, health checks, and drift checks. Invoked exclusively by the Go control plane as local subprocesses. See `docs/ansible-execution.md`.
 - Nuxt webapp: web UI implementation that consumes the API.
 
 ## Glossary

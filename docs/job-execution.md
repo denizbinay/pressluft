@@ -39,7 +39,8 @@ This document defines the MVP job execution model for the control plane.
 
 ## Error Handling
 
-- All SSH command failures are retryable by default.
+- All node-targeted jobs are executed via Ansible (see `docs/ansible-execution.md`).
+- Ansible exit codes are mapped to retryable and non-retryable errors as defined in the Ansible execution spec.
 - Errors must set `error_code` and `error_message`.
 - If max attempts exceeded, set `status = failed`.
 
