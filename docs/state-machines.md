@@ -87,3 +87,4 @@ Transitions:
 Rules:
 
 - Rollback is triggered automatically if the active release becomes unhealthy.
+- Health status is determined by the checks in docs/health-checks.md.

@@ -8,7 +8,7 @@ Implemented as a monolithic Go application with an embedded web UI, running as a
 
 Responsibilities:
 
-- Explicit site lifecycle state machine: ACTIVE, CLONING, DEPLOYING, RESTORING, FAILED
+- Explicit site lifecycle state machine: active, cloning, deploying, restoring, failed
 - Persistent state storage (SQLite for MVP)
 - DB-backed job queue (tables in the primary database)
 - Web UI/API for site creation and node registry
@@ -23,7 +23,7 @@ A Node is a first-class resource in the database representing any managed Linux 
 
 Required stack:
 
-- Ubuntu LTS
+- Ubuntu 24.04 LTS
 - Nginx
 - PHP-FPM
 - MariaDB
@@ -67,7 +67,7 @@ Deployments use atomic symlink switching:
 
 1. Create new release directory
 2. Install dependencies
-3. Run health checks
+3. Run health checks (see docs/health-checks.md)
 4. Switch current symlink
 5. Reload PHP-FPM
 
@@ -81,7 +81,7 @@ Before destructive operations:
 
 - Database exported using single-transaction mode
 - Files archived
-- Optional off-site storage via restic
+- Off-site storage via S3-compatible storage
 
 Promotion workflows include drift validation and mandatory backup enforcement.
 

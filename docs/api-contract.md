@@ -95,3 +95,4 @@ This document defines the MVP API surface. All mutating actions are async and re
 
 - `GET /api/metrics`
   - Response: `{ jobs_running, jobs_queued, nodes_active, sites_total }`
+  - Semantics: point-in-time counters derived from the primary database; no caching or Prometheus format in MVP.

@@ -55,7 +55,7 @@ Notes:
 3. Apply promotion with selective data sync:
    - Files: exclude protected paths.
    - Database: exclude protected tables.
-4. Run health checks.
+4. Run health checks (see docs/health-checks.md).
 5. If health checks fail, rollback automatically.
 
 ## Warnings and Blocks

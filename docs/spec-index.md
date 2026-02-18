@@ -9,6 +9,8 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - docs/job-execution.md
 - docs/promotion-and-drift.md
 - docs/backups-and-restore.md
+- docs/health-checks.md
+- docs/migration-spec.md
 - docs/provisioning-spec.md
 - docs/api-contract.md
 - docs/ui-flows.md
@@ -29,6 +31,7 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - UI/CLI: Web UI + API only.
 - Migrations: all-in-one import archive.
 - Rollback: automatic on health check failure.
+- Health checks: HTTP 200 + wp-cli status + DB connectivity.
 
 ## Ownership Boundaries
 

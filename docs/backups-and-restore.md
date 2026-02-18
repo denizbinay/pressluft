@@ -11,7 +11,7 @@ This document defines backup storage, retention, and restore behavior for MVP.
 ## Storage
 
 - Off-site storage is required.
-- S3-compatible storage is the MVP target.
+- S3-compatible storage is required for MVP.
 - Storage credentials are stored as secrets in the control plane.
 
 ## Retention
@@ -33,7 +33,7 @@ This document defines backup storage, retention, and restore behavior for MVP.
 1. Validate backup checksum before restore.
 2. Create a pre-restore full backup of the target environment.
 3. Restore files and database.
-4. Run health checks.
+4. Run health checks (see docs/health-checks.md).
 5. If health checks fail, rollback automatically.
 
 ## Restore Targets
