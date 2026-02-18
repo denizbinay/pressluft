@@ -16,7 +16,7 @@ This document defines the MVP database schema as the source of truth for Presslu
 - environment_type: `production | staging | clone`
 - environment_status: `active | cloning | deploying | restoring | failed`
 - node_status: `active | provisioning | unreachable | decommissioned`
-- release_source: `git | upload`
+- release_source_type: `git | upload`
 - release_health_status: `unknown | healthy | unhealthy`
 - backup_scope: `db | files | full`
 - backup_status: `pending | running | completed | failed | expired`
@@ -60,6 +60,7 @@ Rules:
 - current_release_id TEXT NULL REFERENCES releases(id)
 - drift_status TEXT NOT NULL
 - drift_checked_at TEXT NULL
+- last_drift_check_id TEXT NULL REFERENCES drift_checks(id)
 - created_at TEXT NOT NULL
 - updated_at TEXT NOT NULL
 - state_version INTEGER NOT NULL DEFAULT 1
@@ -101,6 +102,7 @@ Rules:
 
 Rules:
 - Releases are immutable once created.
+- `source_type` uses `release_source_type`.
 
 ### backups
 
@@ -158,6 +160,9 @@ Indexes:
 - (status, run_after)
 - (site_id, status)
 
+Rules:
+- Jobs that mutate infrastructure must set `node_id`.
+
 ### users
 
 - id TEXT PRIMARY KEY
@@ -180,3 +185,27 @@ Rules:
 - expires_at TEXT NOT NULL
 - created_at TEXT NOT NULL
 - revoked_at TEXT NULL
+
+### drift_checks
+
+- id TEXT PRIMARY KEY
+- environment_id TEXT NOT NULL REFERENCES environments(id)
+- promotion_preset TEXT NOT NULL
+- status TEXT NOT NULL
+- db_checksums_json TEXT NULL
+- file_checksums_json TEXT NULL
+- checked_at TEXT NOT NULL
+
+Rules:
+- Drift checks are immutable records.
+- `status` uses `drift_status`.
+
+### audit_logs
+
+- id TEXT PRIMARY KEY
+- user_id TEXT NOT NULL REFERENCES users(id)
+- action TEXT NOT NULL
+- resource_type TEXT NOT NULL
+- resource_id TEXT NOT NULL
+- result TEXT NOT NULL
+- created_at TEXT NOT NULL

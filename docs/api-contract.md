@@ -32,6 +32,11 @@ This document defines the MVP API surface. All mutating actions are async and re
   - Response: `{ job_id }`
 
 - `GET /api/sites/:id`
+- `GET /api/sites/:id/environments`
+
+- `POST /api/sites/:id/import`
+  - Body: `{ archive_url }`
+  - Response: `{ job_id }`
 
 ### Environments
 
@@ -40,8 +45,16 @@ This document defines the MVP API surface. All mutating actions are async and re
   - Response: `{ job_id }`
 
 - `GET /api/environments/:id`
+- `POST /api/environments/:id/drift-check`
+  - Response: `{ job_id }`
 - `POST /api/environments/:id/deploy`
   - Body: `{ source_type, source_ref }`
+  - source_type: `git | upload`
+  - Response: `{ job_id }`
+
+- `POST /api/environments/:id/updates`
+  - Body: `{ scope }`
+  - scope: `core | plugins | themes | all`
   - Response: `{ job_id }`
 
 - `POST /api/environments/:id/restore`
@@ -56,11 +69,14 @@ This document defines the MVP API surface. All mutating actions are async and re
 
 - `POST /api/environments/:id/backups`
   - Body: `{ backup_scope }`
+  - backup_scope: `db | files | full`
   - Response: `{ job_id }`
 
 - `GET /api/environments/:id/backups`
 
 ### Domains
+
+- `GET /api/environments/:id/domains`
 
 - `POST /api/environments/:id/domains`
   - Body: `{ hostname }`
@@ -71,5 +87,11 @@ This document defines the MVP API surface. All mutating actions are async and re
 
 ### Jobs
 
+- `GET /api/jobs`
 - `GET /api/jobs/:id`
   - Response: `{ id, status, error_code, error_message, started_at, finished_at }`
+
+### Metrics
+
+- `GET /api/metrics`
+  - Response: `{ jobs_running, jobs_queued, nodes_active, sites_total }`

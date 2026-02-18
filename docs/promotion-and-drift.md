@@ -23,6 +23,8 @@ Drift statuses:
 - `clean` when protected data matches expectations.
 - `drifted` when protected data differs.
 
+Drift checks are recorded in `drift_checks` and `environments.last_drift_check_id` is updated.
+
 ## Promotion Presets
 
 Presets define protected data during pushback.

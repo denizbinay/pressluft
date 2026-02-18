@@ -18,6 +18,7 @@ This document defines MVP security assumptions and secret handling.
 - SSH keys for node access are generated and stored by the control plane.
 - S3 storage credentials are stored encrypted at rest.
 - Database credentials for environments are stored as secrets and injected into `wp-config.php`.
+- Secrets are stored in an encrypted local store at `/var/lib/pressluft/secrets`.
 
 ## Audit Logging
 

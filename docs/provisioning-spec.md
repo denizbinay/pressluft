@@ -16,6 +16,11 @@ This document defines the MVP provisioning contract. Exact package versions are 
 - unzip
 - curl
 
+## TLS
+
+- ACME client required for LetsEncrypt HTTP-01.
+- Nginx must expose `/.well-known/acme-challenge/` for all domains.
+
 ## Firewall and Ports
 
 - Allow inbound: 22/tcp, 80/tcp, 443/tcp.
@@ -41,3 +46,8 @@ This document defines the MVP provisioning contract. Exact package versions are 
 
 - Provisioning is safe to run multiple times.
 - Playbooks must detect existing configuration and skip safely.
+
+## Observability
+
+- Logs stored in `/var/log/pressluft/`.
+- Control plane exposes basic metrics at `GET /api/metrics`.

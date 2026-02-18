@@ -7,6 +7,7 @@ This document defines the MVP job execution model for the control plane.
 - At-least-once execution. Jobs must be idempotent.
 - Only one job per site at a time.
 - Only one job per node at a time.
+- Jobs that touch a node must include `node_id`.
 
 ## Queueing
 
@@ -44,7 +45,7 @@ This document defines the MVP job execution model for the control plane.
 
 ## State Synchronization
 
-- Job start transitions the related site/environment to the corresponding active state.
+- Job start transitions the related site/environment to the corresponding in-progress state (`cloning`, `deploying`, or `restoring`).
 - Job completion transitions site/environment back to `active` or `failed`.
 - These transitions occur inside the same DB transaction as job state updates.
 

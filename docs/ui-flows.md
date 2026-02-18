@@ -14,6 +14,13 @@ This document defines the minimal MVP UI flows that consume the API.
 - Submits to `POST /api/sites`.
 - UI shows job progress and transitions to site view when complete.
 
+## Site Import
+
+- User selects site and clicks "Import".
+- Form: archive URL.
+- Submits to `POST /api/sites/:id/import`.
+- UI shows job progress.
+
 ## Environment Creation
 
 - User selects site and clicks "Create Environment".
@@ -31,7 +38,7 @@ This document defines the minimal MVP UI flows that consume the API.
 ## Promotion
 
 - User selects source environment and clicks "Promote".
-- UI runs drift check and displays status.
+- UI runs drift check and displays status via `POST /api/environments/:id/drift-check`.
 - If drifted, show blocking warning with explicit confirmation.
 - Requires fresh backup confirmation.
 - Submits to `POST /api/environments/:id/promote`.
@@ -55,7 +62,16 @@ This document defines the minimal MVP UI flows that consume the API.
 - Submits to `POST /api/environments/:id/domains`.
 - UI displays TLS status.
 
+- User removes a domain.
+- Submits to `DELETE /api/domains/:id`.
+
+## Updates
+
+- User selects environment and clicks "Apply Updates".
+- Selects scope (core/plugins/themes/all).
+- Submits to `POST /api/environments/:id/updates`.
+
 ## Jobs
 
 - Global job list shows running and recent jobs.
-- Job details show status, error messages, and timestamps.
+- Job details show status, error messages, and timestamps via `GET /api/jobs` and `GET /api/jobs/:id`.
