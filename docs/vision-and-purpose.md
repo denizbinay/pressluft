@@ -1,9 +1,9 @@
 # Vision and Purpose
 
-Pressluft exists to eliminate infrastructure friction from professional WordPress work. Agencies and freelancers should not spend cognitive energy on server tuning, fragile migrations, inconsistent staging environments, or late night recovery after failed updates. The problem is not raw performance. The problem is unreliable workflow.
+Pressluft exists to eliminate infrastructure friction from professional WordPress work. Agencies and freelancers should not spend cognitive energy on server tuning, fragile migrations, inconsistent staging environments, or late night recovery after failed updates. The core problem is not raw performance. The core problem is unreliable workflow and fear of breaking production.
 
-Pressluft defines and maintains a strict, secure, and reproducible WordPress stack designed for maintainability over magic tweaks. No snowflake servers. No weekly configuration experiments. Just a hardened, predictable runtime with clear upgrade paths and safe defaults. Around that stack we build what actually matters: one click staging, reliable cloning, safe database synchronization, Git based theme and plugin deployment, deterministic backups, and reversible production pushes. Infrastructure becomes boring. Delivery becomes fast.
+Pressluft defines and maintains a strict, secure, and reproducible WordPress runtime built for maintainability over magic tweaks. No snowflake servers. No weekly configuration experiments. Just a hardened, predictable stack with clear upgrade paths and safe defaults. Around this runtime, we focus on what actually matters: one-click site creation, instant staging and cloning, safe pushbacks with drift protection, deterministic backups, and fully reversible production changes.
 
-Our goal is to bring open source WordPress hosting to the same operational level as the dominant managed platforms, but on our own hardware and under our control, without sacrificing comfort, reliability, or developer experience. Pressluft is not another hosting provider. It is infrastructure automation with a contract. A system you can trust, inspect, run yourself, or use as a hosted service.
+Our goal is to bring open source WordPress infrastructure and workflow automation to the same operational standard as leading managed platforms — but on your own hardware, under your control, and without sacrificing simplicity or developer comfort. Pressluft is not another hosting provider. It is a WordPress state management system with a contract: predictable, isolated, and reversible at every step.
 
-You focus on your craft. Pressluft handles the rest.
+You focus on delivering value. Pressluft makes change safe.

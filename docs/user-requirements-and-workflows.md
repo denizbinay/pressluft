@@ -1,97 +1,119 @@
 # User Requirements and Workflows
 
-Pressluft is site-centric. Users manage WordPress projects, not servers. Infrastructure is a capacity layer that stays in the background. All actions are scoped to a single site and must be isolated, reversible, and safe even when multiple sites share one server.
+Pressluft is site-centric. Users manage WordPress projects and environments, not servers. Infrastructure is an implementation detail. All actions are scoped to a single site and must be isolated, reversible, and safe, even when multiple sites share the same machine.
 
 ---
 
-## 1. Infrastructure Setup
+## 1. Installation and Infrastructure
 
-**User Goal:** Connect cloud infrastructure and make it ready for sites.
+**User Goal:** Install Pressluft on a server and immediately start creating sites.
 
 **Flow:**
-- Connect provider API key.
-- Create first server.
-- Platform installs and hardens the stack.
+- Install Pressluft on a single server.
+- Platform prepares and hardens the local WordPress runtime.
 
 **Must-Have Outcomes:**
-- Hardened OS and secure defaults.
-- Preconfigured, maintainable WordPress stack.
-- Server ready to host multiple isolated sites.
-- No manual SSH provisioning or firewall setup.
+- Hardened OS assumptions and secure defaults.
+- Preconfigured, reproducible WordPress stack.
+- Server capable of hosting multiple isolated sites.
+- No manual server tuning required after installation.
+
+Optional: Advanced users may connect external infrastructure later. This is not required for the MVP.
 
 ---
 
 ## 2. Site Creation
 
-**User Goal:** Launch a new WordPress site instantly, with or without a real domain.
+**User Goal:** Launch a new WordPress site instantly, with or without a custom domain.
 
 **Flow:**
 - Click “Create Site”.
-- Assign to an existing server.
-- Receive an automatic preview URL.
+- Receive a working preview URL immediately.
 
 **Must-Have Outcomes:**
-- Temporary platform domain provided by default.
-- Automatic TLS on preview domains.
-- Isolated system user and PHP pool per site.
-- No DNS required during development.
+- Automatic preview domain (platform-provided or wildcard-based).
+- Automatic TLS when domain is configured.
+- Isolated system user and PHP process per site.
+- No DNS required for initial development.
+- Real domains can be attached at any time.
 
-Real domains can be attached later.
+Site creation must feel instant and frictionless.
 
 ---
 
-## 3. Staging, Cloning, and Review
+## 3. Environments, Cloning, and Review
 
-**User Goal:** Create safe working environments for development or client review.
+**User Goal:** Create safe working copies for development and client review.
 
 **Flow:**
-- Create staging or dev clone.
-- Work or review via unique URL.
-- Promote changes intentionally.
+- Create a clone or staging environment.
+- Work and share via a unique URL.
+- Promote changes back to production intentionally.
 
 **Must-Have Outcomes:**
-- One-click full clone (files + database).
-- Strict rule: Code flows up, content flows down.
-- Selective table sync to prevent overwriting orders or form data.
-- Automatic backup before overwrite.
-- Clear environment labeling to avoid mistakes.
-- Support for both Git-based and builder-only workflows.
+- One-click full clone (files and database).
+- Each environment has its own directory, database, and URL.
+- Clear visual separation between environments.
+- Optional expiration for temporary clones.
+- Automatic backup before any destructive action.
+
+Environments must be disposable, fast to create, and safe to remove.
 
 ---
 
-## 4. Deployment and Updates
+## 4. Safe Promotion and Drift Protection
 
-**User Goal:** Deploy changes without downtime or risk.
+**User Goal:** Push changes to production without overwriting critical live data.
 
 **Must-Have Outcomes:**
+- Strict rule: changes move up, live data remains protected.
+- Preset-based selective sync (e.g., protect content, protect commerce).
+- Automatic detection of production changes since clone creation.
+- Clear warnings when drift exists.
+- Mandatory backup before pushback.
 - Atomic release switching with instant rollback.
-- No maintenance mode or white screens.
-- Optional light visual regression before promotion.
-- Staged updates for core, themes, and plugins.
-- Bulk update capability for agencies.
+
+Users must never fear breaking production.
 
 ---
 
-## 5. Backups and Recovery
+## 5. Deployment and Updates
 
-**User Goal:** Restore confidently at any time.
+**User Goal:** Apply updates and changes safely.
 
 **Must-Have Outcomes:**
-- Automated daily off-site backups.
-- On-demand snapshots.
+- Updates applied in a non-production environment first.
+- Snapshot before update.
+- Instant rollback capability.
+- No maintenance mode or visible downtime during promotion.
+
+Git integration is optional but supported. Builder-only workflows must work equally well.
+
+---
+
+## 6. Backups and Recovery
+
+**User Goal:** Restore any site or environment confidently.
+
+**Must-Have Outcomes:**
+- Automated scheduled backups.
+- On-demand manual snapshots.
 - Site-level restore without affecting other sites.
 - Clear retention policy.
+- Restore to production or any environment.
 
 ---
 
-## 6. Migration and Rebalancing
+## 7. Migration
 
-**User Goal:** Move sites safely between servers or from external hosts.
+**User Goal:** Import existing WordPress sites safely.
 
 **Must-Have Outcomes:**
-- Server-to-server transfer.
-- Safe handling of serialized data.
-- Zero-downtime cutover.
-- Ability to move a single site without impacting others.
+- Import from external hosts.
+- Safe handling of serialized database data.
+- Automatic URL rewriting.
+- Minimal downtime during cutover.
 
-Pressluft removes infrastructure anxiety. WordPress work becomes predictable, isolated, and fully reversible.
+---
+
+Pressluft removes infrastructure anxiety. WordPress work becomes environment-driven, predictable, isolated, and fully reversible.
