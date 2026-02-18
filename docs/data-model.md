@@ -77,6 +77,7 @@ Rules:
 - id TEXT PRIMARY KEY
 - name TEXT NOT NULL
 - hostname TEXT NOT NULL
+- public_ip TEXT NULL
 - ssh_port INTEGER NOT NULL
 - ssh_user TEXT NOT NULL
 - status TEXT NOT NULL
@@ -88,6 +89,7 @@ Rules:
 
 Rules:
 - The host running the control plane is registered as a node with `is_local = 1`.
+- `public_ip` is the node's public IPv4 address. Used for DNS verification and sslip.io fallback preview URLs. Populated during node registration or provisioning. See `docs/domain-and-routing.md`.
 
 ### releases
 
@@ -209,3 +211,18 @@ Rules:
 - resource_id TEXT NOT NULL
 - result TEXT NOT NULL
 - created_at TEXT NOT NULL
+
+### settings
+
+- key TEXT PRIMARY KEY
+- value TEXT NOT NULL
+- updated_at TEXT NOT NULL
+
+Rules:
+- Key-value store for operator-level configuration.
+- Known keys for MVP:
+  - `control_plane_domain`: Domain for the Pressluft dashboard/API. Nullable (IP:port access when unset).
+  - `preview_domain`: Base domain for preview URLs (e.g., `wp.example.com`). Nullable (sslip.io fallback when unset).
+  - `dns01_provider`: DNS provider identifier for ACME DNS-01 wildcard cert (e.g., `cloudflare`, `hetzner`, `route53`). Required when `preview_domain` is set for HTTPS previews.
+  - `dns01_credentials_json`: Encrypted JSON containing provider-specific API credentials. Stored in the secrets store at `/var/lib/pressluft/secrets`, referenced by this key.
+- See `docs/domain-and-routing.md` for full usage.

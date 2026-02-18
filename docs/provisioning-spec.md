@@ -18,8 +18,12 @@ This document defines the MVP provisioning contract. Exact package versions are 
 
 ## TLS
 
-- ACME client required for LetsEncrypt HTTP-01.
-- Nginx must expose `/.well-known/acme-challenge/` for all domains.
+- ACME client (certbot) required for Let's Encrypt certificate management.
+- Nginx must expose `/.well-known/acme-challenge/` for all domains (HTTP-01 challenges).
+- Custom domains use HTTP-01 challenge (per-domain certificate).
+- Preview wildcard certificate uses DNS-01 challenge when operator configures `preview_domain` and `dns01_provider`. Requires the appropriate certbot DNS plugin (e.g., `certbot-dns-cloudflare`, `certbot-dns-hetzner`). See `docs/domain-and-routing.md`.
+- certbot systemd timer handles automatic renewal for all certificates (both HTTP-01 and DNS-01). A post-renewal hook reloads Nginx.
+- Provisioning installs certbot and the DNS plugin specified by `dns01_provider` (if configured).
 
 ## Firewall and Ports
 

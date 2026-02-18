@@ -16,6 +16,10 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - docs/ui-flows.md
 - docs/security-and-secrets.md
 - docs/ansible-execution.md
+- docs/domain-and-routing.md
+- docs/technical-architecture.md
+- docs/user-requirements-and-workflows.md
+- docs/vision-and-purpose.md
 
 ## Locked Decisions (MVP)
 
@@ -27,7 +31,7 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - Off-site backups required using S3-compatible storage.
 - Promotion presets: content-protect and commerce-protect.
 - Updates in scope: WordPress core, plugins, themes.
-- Domain/TLS: LetsEncrypt HTTP-01.
+- Domain/TLS: LetsEncrypt HTTP-01 for custom domains, DNS-01 for preview wildcard cert. See `docs/domain-and-routing.md`.
 - Observability: logs + basic metrics.
 - UI/CLI: Web UI + API only.
 - Migrations: all-in-one import archive.

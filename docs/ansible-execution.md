@@ -102,6 +102,10 @@ The extra-vars file is constructed by:
    - `release_path` (for deploy/rollback jobs)
    - `backup_storage_path` (for backup/restore jobs)
    - `domain_hostname` (for domain jobs)
+   - `preview_url` (for site_create, env_create, domain_remove jobs)
+   - `preview_domain` (for node_provision, when wildcard cert is needed)
+   - `node_public_ip` (for domain_add DNS verification, node_provision)
+   - `dns01_provider`, `dns01_credentials` (for node_provision, when wildcard cert is needed)
    - Other fields as required by the specific playbook.
 3. Writing the merged JSON object to a temporary file.
 
@@ -122,16 +126,16 @@ Each job type maps to exactly one playbook. Playbook files live in `ansible/play
 | Job Type | Playbook | Description |
 |----------|----------|-------------|
 | `node_provision` | `node-provision.yml` | Bootstrap server stack on a node |
-| `site_create` | `site-create.yml` | Create system user, DB, PHP-FPM pool, Nginx block, initial release |
+| `site_create` | `site-create.yml` | Create system user, DB, PHP-FPM pool, Nginx block for preview URL, initial release |
 | `site_import` | `site-import.yml` | Import archive, restore DB, copy files, URL rewrite |
-| `env_create` | `env-create.yml` | Clone environment (files, DB, config) |
+| `env_create` | `env-create.yml` | Clone environment (files, DB, config), create Nginx block for preview URL, WordPress URL rewrite to new preview URL |
 | `env_deploy` | `env-deploy.yml` | Create release, install deps, symlink switch, reload |
 | `env_update` | `env-update.yml` | Apply WordPress core/plugin/theme updates |
 | `env_restore` | `env-restore.yml` | Restore from backup archive |
 | `env_promote` | `env-promote.yml` | Selective sync with drift-protected tables/files |
 | `backup_create` | `backup-create.yml` | Export DB, archive files, upload to S3 |
-| `domain_add` | `domain-add.yml` | Configure Nginx server block, provision TLS certificate |
-| `domain_remove` | `domain-remove.yml` | Remove Nginx server block and TLS certificate |
+| `domain_add` | `domain-add.yml` | Verify DNS, configure Nginx server block, provision TLS certificate, WordPress URL rewrite (see `docs/domain-and-routing.md`) |
+| `domain_remove` | `domain-remove.yml` | Remove Nginx server block and TLS certificate, revert WordPress URL to preview URL (see `docs/domain-and-routing.md`) |
 | `drift_check` | `drift-check.yml` | Compute checksums for drift comparison |
 | `health_check` | `health-check.yml` | HTTP check, WP-CLI check, DB connectivity check |
 | `backup_cleanup` | `backup-cleanup.yml` | Remove expired backups from S3 storage |
