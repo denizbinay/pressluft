@@ -1,40 +1,88 @@
-# Technical Principles and Constraints
+# Technical Architecture
 
-This document defines the non-negotiable engineering invariants of Pressluft.  
-These rules exist to prevent architectural drift and protect determinism.
+Pressluft is a single-codebase WordPress orchestration control plane designed for deterministic site lifecycle management. It operates identically in Cloud and Self-Hosted modes. Deployment topology does not alter internal architecture.
 
-## System Invariants
+## 1. Control Plane
 
-**Determinism over cleverness**  
-All operations must produce predictable outcomes. Hidden side effects, implicit mutations, and non-transactional workflows are forbidden.
+Implemented as a monolithic Go application running as a non-root system service.
 
-**Single Source of Truth**  
-The control plane database defines reality. The filesystem and remote nodes are derived state. If divergence occurs, the database wins.
+Responsibilities:
 
-**State Machine Authority**  
-Every lifecycle action must pass through the explicit state machine. Direct execution paths that bypass modeled transitions are prohibited.
+- Explicit site lifecycle state machine: ACTIVE, CLONING, DEPLOYING, RESTORING, FAILED
+- Persistent state storage (SQLite for MVP)
+- SQL-backed job queue
+- Node registry and capability tracking
+- SSH execution abstraction layer
+- Concurrency control via optimistic locking (row versioning)
 
-**One Mutation per Site**  
-Concurrent destructive operations on the same site are not allowed. Concurrency control is mandatory and enforced at the persistence layer.
+The database is the source of truth. All infrastructure mutations are modeled as transactional jobs. Only one mutation per site may execute at a time. State transitions occur inside database transactions to prevent race conditions.
 
-**Idempotent Infrastructure**  
-Provisioning and configuration steps must be safely repeatable. Network interruption or partial failure must never corrupt a node.
+## 2. Node Model
 
-**Isolation by Construction**  
-Each site receives dedicated OS user, PHP-FPM pool, database, and web server configuration. Shared writable state across sites is forbidden.
+A Node is a first-class resource in the database representing any managed Linux host.
 
-**Immutable Releases**  
-Deployments must use atomic release directories with symlink switching. In-place overwrites are disallowed.
+Required stack:
 
-**Agentless Nodes**  
-Nodes are controlled exclusively via SSH. No resident agents, background daemons, or message brokers on managed hosts.
+- Ubuntu LTS
+- Nginx
+- PHP-FPM
+- MariaDB
+- WP-CLI
 
-## Explicit Constraints
+Nodes are agentless and accessed exclusively over SSH. Even in single-server mode, the host running Pressluft is registered as a Node and managed via SSH to localhost. This ensures identical execution paths for local and remote management and enables future multi-node expansion without redesign.
 
-- No Kubernetes dependency  
-- No Docker requirement for core operation  
-- No distributed system primitives for MVP  
-- No destructive promotion without verified backup  
-- No feature that compromises operational simplicity  
+## 3. Provisioning
 
-Pressluft prioritizes boring reliability, explicit modeling, and long-term evolvability over trend-driven complexity.
+For Hetzner-based setups:
+
+1. VPS created via API
+2. SSH availability verified
+3. Idempotent bootstrap executed
+4. Node registered in control plane
+
+Bootstrap installs the web stack, configures firewall rules, creates system users, and enforces baseline security. All bootstrap steps are idempotent to tolerate retries.
+
+## 4. Isolation Model
+
+Each site environment receives:
+
+- Dedicated Linux user (unique UID)
+- Dedicated PHP-FPM pool running as that user
+- Dedicated MariaDB database and restricted DB user
+- Dedicated Nginx server block
+
+Filesystem layout:
+
+/var/www/sites/<site_id>  
+  releases/<timestamp>/  
+  current -> releases/<timestamp>  
+  shared/uploads/  
+  shared/wp-config.php  
+
+Releases are immutable. Uploads are writable and non-executable. Configuration and uploads are symlinked into each release.
+
+## 5. Deployment Model
+
+Deployments use atomic symlink switching:
+
+1. Create new release directory
+2. Install dependencies
+3. Run health checks
+4. Switch current symlink
+5. Reload PHP-FPM
+
+Rollback reverts the symlink.
+
+Long-running operations execute via detached processes (systemd-run or equivalent) with status polling to tolerate SSH interruptions.
+
+## 6. Backups and Promotion
+
+Before destructive operations:
+
+- Database exported using single-transaction mode
+- Files archived
+- Optional off-site storage via restic
+
+Promotion workflows include drift validation and mandatory backup enforcement.
+
+This architecture prioritizes determinism, isolation, and operational simplicity while remaining multi-node capable.
