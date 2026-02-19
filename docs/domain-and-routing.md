@@ -182,6 +182,47 @@ Nginx matches incoming requests by the `Host` header against `server_name` direc
 
 A default server block returns HTTP 444 (connection closed) for requests that don't match any configured hostname. This prevents hostname spoofing and information leakage.
 
+### Security: WAF Rules
+
+Every environment server block includes the 7G Web Application Firewall rules:
+
+```nginx
+include /etc/nginx/conf.d/7g-firewall.conf;
+include /etc/nginx/conf.d/7g-exclusions.conf;
+```
+
+These `include` directives are placed before any `location` blocks within the server block. This is not optional — all environments receive WAF protection uniformly. See `docs/provisioning-spec.md` for WAF rule details and the exclusion mechanism.
+
+### FastCGI Page Caching
+
+When `fastcgi_cache_enabled = 1` for an environment (see `docs/data-model.md`), the Nginx server block includes FastCGI caching directives. When disabled, the cache directives are omitted entirely.
+
+Cache key:
+
+```
+$scheme$request_method$host$request_uri
+```
+
+Bypass rules (cache is skipped when any condition is true):
+
+| Condition | Variable | Rationale |
+|-----------|----------|-----------|
+| POST requests | `$request_method = POST` | Form submissions must not be cached |
+| Logged-in users | `$http_cookie ~* "wordpress_logged_in\|comment_author\|wp-postpass"` | Authenticated users see personalized content |
+| WooCommerce sessions | `$http_cookie ~* "woocommerce_items_in_cart\|woocommerce_cart_hash\|wp_woocommerce_session"` | Cart, checkout, and account pages are dynamic |
+| Admin and API paths | `$request_uri ~* "/wp-admin\|/wp-login\|/wp-cron\|/xmlrpc\|/wp-json"` | Admin, login, cron, XML-RPC, and REST API must not be cached |
+
+Response header:
+
+- `X-FastCGI-Cache` is added to all responses with value `HIT`, `MISS`, or `BYPASS`. This aids debugging and performance monitoring.
+
+Cache purge:
+
+- On `env_deploy`, `env_update`, `env_promote`, and `env_restore` operations, the Ansible playbook purges the FastCGI cache for the affected environment. This is implemented as an Ansible handler in the shared `nginx-cache-purge` role (see `docs/ansible-execution.md`).
+- The `cache_purge` job type provides on-demand purge via the API (see `docs/api-contract.md`).
+
+The `fastcgi_cache_path` directive is configured globally in the Nginx `http` block during node provisioning (see `docs/provisioning-spec.md`), not per server block.
+
 ### Server Block Lifecycle
 
 - Server blocks are managed exclusively by Ansible playbooks. No manual Nginx configuration.
@@ -218,6 +259,7 @@ When the canonical URL of an environment changes (domain added, domain removed, 
 1. Update `wp_options` rows where `option_name` is `siteurl` or `home`.
 2. Run a serialized-safe search-replace across all tables, replacing the old URL with the new URL.
 3. Flush WordPress object cache and rewrite rules (`wp cache flush`, `wp rewrite flush`).
+4. Purge the FastCGI page cache for the environment (clear cached responses that reference the old URL).
 
 This is the same URL rewrite logic specified in `docs/migration-spec.md`, reused by the `domain_add`, `domain_remove`, and `preview_url_regenerate` playbooks.
 

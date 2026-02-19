@@ -4,7 +4,7 @@ This document defines how the Go control plane invokes Ansible playbooks for all
 
 ## Principles
 
-- Ansible is the sole execution mechanism for node-targeted operations. No direct SSH commands bypass Ansible.
+- Ansible is the execution mechanism for all node-targeted **mutations**. Non-mutating **node queries** use direct SSH from the Go binary (see `docs/technical-architecture.md` Section 7).
 - The Go control plane invokes `ansible-playbook` as a local subprocess on the control plane host.
 - Each job type maps to exactly one playbook. Playbooks are not shared across job types.
 - The database is the single source of truth. Inventory and variables are derived from DB state at invocation time.
@@ -105,8 +105,10 @@ The extra-vars file is constructed by:
    - `preview_url` (for site_create, env_create, domain_remove jobs)
    - `preview_domain` (for node_provision, when wildcard cert is needed)
    - `node_public_ip` (for domain_add DNS verification, node_provision)
-   - `dns01_provider`, `dns01_credentials` (for node_provision, when wildcard cert is needed)
-   - Other fields as required by the specific playbook.
+    - `dns01_provider`, `dns01_credentials` (for node_provision, when wildcard cert is needed)
+    - `fastcgi_cache_enabled`, `redis_cache_enabled` (for site_create, env_create, env_cache_toggle, and any playbook that generates Nginx server blocks)
+    - `redis_prefix` (for site_create, env_create, env_cache_toggle — value: `pressluft_{environment_id}:`)
+    - Other fields as required by the specific playbook.
 3. Writing the merged JSON object to a temporary file.
 
 The playbook accesses these values as standard Ansible variables (e.g., `{{ site_slug }}`, `{{ environment_id }}`).
@@ -125,21 +127,23 @@ Each job type maps to exactly one playbook. Playbook files live in `ansible/play
 
 | Job Type | Playbook | Description |
 |----------|----------|-------------|
-| `node_provision` | `node-provision.yml` | Bootstrap server stack on a node |
-| `site_create` | `site-create.yml` | Create system user, DB, PHP-FPM pool, Nginx block for preview URL, initial release |
-| `site_import` | `site-import.yml` | Import archive, restore DB, copy files, URL rewrite |
-| `env_create` | `env-create.yml` | Clone environment (files, DB, config), create Nginx block for preview URL, WordPress URL rewrite to new preview URL |
-| `env_deploy` | `env-deploy.yml` | Create release, install deps, symlink switch, reload |
-| `env_update` | `env-update.yml` | Apply WordPress core/plugin/theme updates |
-| `env_restore` | `env-restore.yml` | Restore from backup archive |
-| `env_promote` | `env-promote.yml` | Selective sync with drift-protected tables/files |
-| `backup_create` | `backup-create.yml` | Export DB, archive files, upload to S3 |
-| `domain_add` | `domain-add.yml` | Verify DNS, configure Nginx server block, provision TLS certificate, WordPress URL rewrite (see `docs/domain-and-routing.md`) |
-| `domain_remove` | `domain-remove.yml` | Remove Nginx server block and TLS certificate, revert WordPress URL to preview URL (see `docs/domain-and-routing.md`) |
+| `node_provision` | `node-provision.yml` | Bootstrap server stack on a node (includes Redis, Fail2Ban, 7G WAF, PHP hardening, security headers — see `docs/provisioning-spec.md`) |
+| `site_create` | `site-create.yml` | Create system user, DB, PHP-FPM pool, Nginx block for preview URL, initial release, configure Redis Object Cache and `wp-config.php` Redis settings |
+| `site_import` | `site-import.yml` | Import archive, restore DB, copy files, URL rewrite, configure Redis Object Cache |
+| `env_create` | `env-create.yml` | Clone environment (files, DB, config), create Nginx block for preview URL, WordPress URL rewrite to new preview URL, configure Redis Object Cache |
+| `env_deploy` | `env-deploy.yml` | Create release, install deps, symlink switch, reload, purge FastCGI cache |
+| `env_update` | `env-update.yml` | Apply WordPress core/plugin/theme updates, purge FastCGI cache |
+| `env_restore` | `env-restore.yml` | Restore from backup archive, purge FastCGI cache |
+| `env_promote` | `env-promote.yml` | Selective sync with drift-protected tables/files, purge FastCGI cache on target |
+| `env_cache_toggle` | `env-cache-toggle.yml` | Enable or disable FastCGI page cache and/or Redis Object Cache for an environment. Regenerates Nginx server block, toggles Redis Object Cache drop-in via WP-CLI. |
+| `cache_purge` | `cache-purge.yml` | Purge FastCGI page cache and/or Redis Object Cache for an environment on demand |
+| `backup_create` | `backup-create.yml` | Export DB, archive files (excluding cache directories), upload to S3 |
+| `domain_add` | `domain-add.yml` | Verify DNS, configure Nginx server block (with WAF include and conditional cache directives), provision TLS certificate, WordPress URL rewrite, purge FastCGI cache (see `docs/domain-and-routing.md`) |
+| `domain_remove` | `domain-remove.yml` | Remove Nginx server block and TLS certificate, revert WordPress URL to preview URL, purge FastCGI cache (see `docs/domain-and-routing.md`) |
 | `drift_check` | `drift-check.yml` | Compute checksums for drift comparison |
 | `health_check` | `health-check.yml` | HTTP check, WP-CLI check, DB connectivity check |
 | `backup_cleanup` | `backup-cleanup.yml` | Remove expired backups from S3 storage |
-| `release_rollback` | `release-rollback.yml` | Revert current symlink to previous release, reload |
+| `release_rollback` | `release-rollback.yml` | Revert current symlink to previous release, reload, purge FastCGI cache |
 
 Playbooks may use shared roles from `ansible/roles/` for common tasks (e.g., Nginx reload, PHP-FPM pool management, symlink operations). Roles are internal implementation details of the playbooks and do not constitute a separate interface.
 
@@ -148,6 +152,17 @@ Playbooks may use shared roles from `ansible/roles/` for common tasks (e.g., Ngi
 Roles must follow the standard Ansible directory layout (`tasks/`, `handlers/`, `templates/`, `files/`, `vars/`, `defaults/`, `meta/`). Only include directories that the role actually uses.
 
 Roles that accept variables from playbooks must define `meta/argument_specs.yml` for input validation. This ensures that missing or malformed variables from the Go control plane are caught at role entry, not mid-execution.
+
+### Expected Shared Roles
+
+| Role | Used By | Purpose |
+|------|---------|---------|
+| `nginx-reload` | Any playbook that modifies Nginx config | Handler-based Nginx reload |
+| `nginx-cache-purge` | `env-deploy`, `env-update`, `env-promote`, `env-restore`, `cache-purge`, `domain-add`, `domain-remove`, `release-rollback` | Purge FastCGI cache files for a specific environment |
+| `nginx-waf` | `node-provision` | Deploy vendored 7G WAF rules to `/etc/nginx/conf.d/` |
+| `redis-object-cache` | `site-create`, `site-import`, `env-create`, `env-cache-toggle` | Install/remove Redis Object Cache drop-in via WP-CLI, configure `wp-config.php` Redis constants |
+| `php-fpm-pool` | `site-create`, `env-create` | Create/configure PHP-FPM pool with hardened settings (including `open_basedir`) |
+| `fail2ban` | `node-provision` | Deploy Fail2Ban jails for WordPress protection |
 
 ## Exit Code Contract
 

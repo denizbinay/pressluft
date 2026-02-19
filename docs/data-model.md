@@ -61,6 +61,8 @@ Rules:
 - drift_status TEXT NOT NULL
 - drift_checked_at TEXT NULL
 - last_drift_check_id TEXT NULL REFERENCES drift_checks(id)
+- fastcgi_cache_enabled INTEGER NOT NULL DEFAULT 1
+- redis_cache_enabled INTEGER NOT NULL DEFAULT 1
 - created_at TEXT NOT NULL
 - updated_at TEXT NOT NULL
 - state_version INTEGER NOT NULL DEFAULT 1
@@ -71,6 +73,8 @@ Indexes:
 Rules:
 - `source_environment_id` is set for clones/staging created from another environment.
 - `current_release_id` must reference a release for this environment when status is `active`.
+- `fastcgi_cache_enabled` controls whether the Nginx server block for this environment includes FastCGI page caching directives. Default: enabled (`1`). See `docs/domain-and-routing.md`.
+- `redis_cache_enabled` controls whether the WordPress Redis Object Cache drop-in is active for this environment. Default: enabled (`1`). Redis key isolation is prefix-based: each environment uses the prefix `pressluft_{environment_id}:` on the shared per-node Redis instance. See `docs/provisioning-spec.md`.
 
 ### nodes
 

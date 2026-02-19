@@ -65,6 +65,31 @@ This document defines the MVP API surface. All mutating actions are async and re
   - Body: `{ target_environment_id }`
   - Response: `{ job_id }`
 
+### Caching
+
+- `PATCH /api/environments/:id/cache`
+  - Body: `{ fastcgi_cache_enabled?, redis_cache_enabled? }`
+  - At least one field required. Values are booleans.
+  - Toggles FastCGI page cache and/or Redis Object Cache for the environment. Regenerates Nginx server block and toggles WordPress Redis drop-in as needed.
+  - Response: `{ job_id }`
+
+- `POST /api/environments/:id/cache/purge`
+  - Purges FastCGI page cache and Redis Object Cache for this environment.
+  - Response: `{ job_id }`
+
+### Magic Login
+
+- `POST /api/environments/:id/magic-login`
+  - Generates a one-time WordPress admin login URL for the environment. See `docs/security-and-secrets.md` for security model.
+  - This is a **synchronous** endpoint (node query). It does not return a `job_id`. The response contains the login URL directly.
+  - Response: `{ login_url, expires_at }`
+  - `login_url`: Fully-qualified URL that logs the user into WordPress admin when opened in a browser.
+  - `expires_at`: ISO-8601 timestamp, 60 seconds from creation.
+  - Errors:
+    - `environment_not_active` — environment is not in `active` state.
+    - `node_unreachable` — SSH connection to the node failed or timed out (10-second limit).
+    - `wp_cli_error` — WP-CLI command failed on the remote host.
+
 ### Backups
 
 - `POST /api/environments/:id/backups`

@@ -27,11 +27,15 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - Ubuntu 24.04 LTS only.
 - Job execution guarantee: at-least-once with idempotent jobs.
 - Concurrency: 1 job per site, 1 job per node.
+- Node queries (non-mutating): direct SSH from Go binary, bypass job queue. See `docs/technical-architecture.md`.
 - Backup retention: time-based only.
 - Off-site backups required using S3-compatible storage.
 - Promotion presets: content-protect and commerce-protect.
 - Updates in scope: WordPress core, plugins, themes.
 - Domain/TLS: LetsEncrypt HTTP-01 for custom domains, DNS-01 for preview wildcard cert. See `docs/domain-and-routing.md`.
+- Caching: Redis object cache + Nginx FastCGI page cache, per-environment toggles, enabled by default. See `docs/provisioning-spec.md` and `docs/domain-and-routing.md`.
+- Security hardening: Fail2Ban + 7G WAF + PHP hardening + security headers, always-on at node level. See `docs/provisioning-spec.md` and `docs/security-and-secrets.md`.
+- Magic login: one-time WordPress admin URL via node query. See `docs/security-and-secrets.md`.
 - Observability: logs + basic metrics.
 - UI/CLI: Web UI + API only.
 - Migrations: all-in-one import archive.
@@ -40,8 +44,8 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 
 ## Ownership Boundaries
 
-- Go core: control plane, state machine, jobs, API, UI integration.
-- Ansible playbooks: all node-targeted operations including provisioning, deployment, backups, restores, health checks, and drift checks. Invoked exclusively by the Go control plane as local subprocesses. See `docs/ansible-execution.md`.
+- Go core: control plane, state machine, jobs, API, UI integration, direct SSH for node queries (`internal/ssh`).
+- Ansible playbooks: all node-targeted **mutations** including provisioning, deployment, backups, restores, health checks, and drift checks. Invoked exclusively by the Go control plane as local subprocesses. See `docs/ansible-execution.md`.
 - Nuxt webapp: web UI implementation that consumes the API.
 
 ## Glossary

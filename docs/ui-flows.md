@@ -56,6 +56,24 @@ This document defines the minimal MVP UI flows that consume the API.
 - Confirms pre-restore backup requirement.
 - Submits to `POST /api/environments/:id/restore`.
 
+## Caching
+
+The environment detail view includes a Caching section with per-environment controls.
+
+- Two toggles are displayed: **FastCGI Page Cache** and **Redis Object Cache**. Each shows the current state (enabled/disabled) read from the environment record.
+- Toggling either submits to `PATCH /api/environments/:id/cache` with the changed value. UI shows job progress while the Nginx server block and/or Redis drop-in are reconfigured.
+- A **"Purge Cache"** button submits to `POST /api/environments/:id/cache/purge`. UI shows job progress.
+- Both caches are enabled by default for new environments.
+
+## Magic Login
+
+- The environment detail view includes an **"Open WordPress Admin"** button.
+- Clicking it submits to `POST /api/environments/:id/magic-login`.
+- On success (response contains `login_url`), the URL is opened in a new browser tab.
+- On failure, an inline error message is displayed (e.g., "Could not connect to server" for `node_unreachable`, or "Environment is not active" for `environment_not_active`).
+- The button is only enabled when the environment status is `active`.
+- No job progress indicator is shown — this is a synchronous operation that completes in approximately 1 second.
+
 ## Domains
 
 - User adds domain hostname.
