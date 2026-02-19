@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS drift_checks;
+DROP TABLE IF EXISTS auth_sessions;
+DROP TABLE IF EXISTS users;
+DROP INDEX IF EXISTS idx_jobs_site_id_status;
+DROP INDEX IF EXISTS idx_jobs_status_run_after;
+DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS domains;
+DROP TABLE IF EXISTS backups;
+DROP TABLE IF EXISTS releases;
+DROP TABLE IF EXISTS environments;
+DROP TABLE IF EXISTS nodes;
+DROP TABLE IF EXISTS sites;
+DROP TABLE IF EXISTS schema_migrations;

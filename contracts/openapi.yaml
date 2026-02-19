@@ -985,7 +985,7 @@ components:
           type: string
           enum: [queued, running, succeeded, failed, cancelled]
         site_id:
-          type: string
+          type: [string, 'null']
           format: uuid
         environment_id:
           type: [string, 'null']

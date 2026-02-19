@@ -18,7 +18,7 @@ This checklist must pass before creating `PLAN.md` and `PROGRESS.md`.
 - [x] Canonical job type registry exists and is referenced.
 - [x] Every canonical job type has an owning feature spec.
 - [x] Schema authority chain is documented and accepted.
-- [ ] Baseline executable schema exists under `migrations/` and matches `docs/data-model.md`.
+- [x] Baseline executable schema exists under `migrations/` and matches `docs/data-model.md`.
 - [x] Feature specs include acceptance criteria, verification, and rollback.
 - [x] Verification expectations are documented in `docs/testing.md`.
 
@@ -42,3 +42,4 @@ When all items are checked, planning handoff must include:
 | Settings API contract mismatch | `contracts/openapi.yaml` + `docs/features/feature-settings-domain-config.md` | No public `/settings` API in MVP contract; settings behavior remains a non-public control-plane configuration surface | resolved |
 | Environment isolation wording mismatch | `docs/technical-architecture.md` + `docs/user-requirements-and-workflows.md` | Isolation is per-environment runtime under site-keyed filesystem roots | resolved |
 | Circular metadata dependencies | Doc headers in core/contract docs | Cycles removed from `Depends On` metadata where ownership was ambiguous | resolved |
+| Job API payload/global job scope mismatch (`jobs.site_id` nullable vs API shape) | `contracts/openapi.yaml` + `docs/data-model.md` + `docs/api-contract.md` | `JobStatusResponse.site_id` allows null to represent global jobs such as `node_provision` | resolved |
