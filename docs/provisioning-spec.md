@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
-Depends On: docs/spec-index.md, docs/security-and-secrets.md, docs/domain-and-routing.md
+Last Reviewed: 2026-02-20
+Depends On: docs/spec-index.md
 Supersedes: none
 
 # Provisioning Spec

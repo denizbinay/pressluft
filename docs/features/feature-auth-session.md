@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/spec-index.md, docs/security-and-secrets.md, docs/api-contract.md, contracts/openapi.yaml
 Supersedes: none
 
@@ -43,9 +43,9 @@ Contract/spec files:
 
 ## Acceptance Criteria
 
-1. Valid credentials return `200` with `session_token`.
+1. Valid credentials return `200`, create an auth session, and set `session_token` as an HTTP cookie.
 2. Invalid credentials return `401` with stable error payload shape.
-3. Logout returns `200` and revokes the current session token.
+3. Logout returns `200`, revokes the current session token, and clears the auth cookie.
 4. Protected endpoints reject expired or revoked tokens with `401`.
 
 ## Verification

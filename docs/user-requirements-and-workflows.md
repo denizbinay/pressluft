@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/vision-and-purpose.md, docs/spec-index.md
 Supersedes: none
 
@@ -59,7 +59,7 @@ Site creation must feel instant and frictionless.
 
 **Must-Have Outcomes:**
 - One-click full clone (files and database).
-- Each environment has its own directory, database, and URL.
+- Each environment has isolated runtime paths (release/current + shared state) under a site-keyed filesystem root, plus its own database and URL.
 - Clear visual separation between environments.
 - Optional expiration for temporary clones.
 - Automatic backup before any destructive action.

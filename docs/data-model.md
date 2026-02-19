@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/spec-index.md, docs/state-machines.md
 Supersedes: none
 
@@ -79,8 +79,7 @@ Indexes:
 Rules:
 - `source_environment_id` is set for clones/staging created from another environment.
 - `current_release_id` must reference a release for this environment when status is `active`.
-- `fastcgi_cache_enabled` controls whether the Nginx server block for this environment includes FastCGI page caching directives. Default: enabled (`1`). See `docs/domain-and-routing.md`.
-- `redis_cache_enabled` controls whether the WordPress Redis Object Cache drop-in is active for this environment. Default: enabled (`1`). Redis key isolation is prefix-based: each environment uses the prefix `pressluft_{environment_id}:` on the shared per-node Redis instance. See `docs/provisioning-spec.md`.
+- `fastcgi_cache_enabled` and `redis_cache_enabled` are per-environment cache intent flags. Runtime implementation details are defined in `docs/domain-and-routing.md` and `docs/provisioning-spec.md`.
 
 ### nodes
 
@@ -99,7 +98,7 @@ Rules:
 
 Rules:
 - The host running the control plane is registered as a node with `is_local = 1`.
-- `public_ip` is the node's public IPv4 address. Used for DNS verification and sslip.io fallback preview URLs. Populated during node registration or provisioning. See `docs/domain-and-routing.md`.
+- `public_ip` stores the node's public IPv4 address for routing and verification workflows.
 
 ### releases
 
@@ -152,7 +151,7 @@ Rules:
 - id TEXT PRIMARY KEY
 - job_type TEXT NOT NULL
 - status TEXT NOT NULL
-- site_id TEXT NOT NULL REFERENCES sites(id)
+- site_id TEXT NULL REFERENCES sites(id)
 - environment_id TEXT NULL REFERENCES environments(id)
 - node_id TEXT NULL REFERENCES nodes(id)
 - payload_json TEXT NOT NULL
@@ -173,6 +172,8 @@ Indexes:
 - (site_id, status)
 
 Rules:
+- Site-scoped jobs must set `site_id`.
+- Global jobs may set `site_id = NULL` and must set `node_id`.
 - Jobs that mutate infrastructure must set `node_id`.
 
 ### users

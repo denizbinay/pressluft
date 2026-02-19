@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/spec-index.md, docs/provisioning-spec.md, docs/data-model.md
 Supersedes: none
 
@@ -18,7 +18,7 @@ This document specifies how Pressluft handles domains, preview URLs, TLS certifi
 
 ## Operator Configuration
 
-Operators configure domain and routing settings through the control plane settings UI. These values are stored in the `settings` table (see `docs/data-model.md`).
+Operators configure domain and routing settings through the control-plane configuration surface. These values are stored in the `settings` table (see `docs/data-model.md`). Public `/api/settings` endpoints are not part of the MVP OpenAPI contract.
 
 ### Required Settings
 
@@ -103,7 +103,7 @@ Custom domains are attached to individual environments via the `domains` table.
 4. The `domain_add` Ansible playbook:
    a. Resolves the hostname via DNS and verifies it points to the node's public IP. If it does not, the playbook fails with a structured error.
    b. Creates an Nginx server block for the hostname, proxying to the environment's PHP-FPM pool.
-   c. Provisions a TLS certificate via Let's Encrypt HTTP-01 (using certbot or equivalent ACME client).
+   c. Provisions a TLS certificate via Let's Encrypt HTTP-01 using certbot.
    d. Updates WordPress `siteurl` and `home` options to the new domain (serialized-safe search-replace across the database, same logic as `docs/migration-spec.md` URL rewrite).
    e. Reloads Nginx.
 5. On success, control plane updates `tls_status = active` and sets `primary_domain_id` on the environment (if this is the first domain or if it replaces the current primary).
@@ -144,10 +144,10 @@ Non-primary domains should redirect (HTTP 301) to the primary domain. This is ha
 
 Each custom domain receives its own TLS certificate from Let's Encrypt via the ACME HTTP-01 challenge.
 
-- The ACME client (certbot or acme.sh) runs on the node.
+- certbot runs on the node as the canonical ACME client for MVP.
 - Nginx serves `/.well-known/acme-challenge/` for all domains (see `docs/provisioning-spec.md`).
 - Certificates are stored on the node in the ACME client's default location.
-- Renewal is handled by the ACME client's built-in systemd timer (certbot) or cron job. This is configured during node provisioning and operates independently of the Pressluft job queue.
+- Renewal is handled by certbot's built-in systemd timer. This is configured during node provisioning and operates independently of the Pressluft job queue.
 
 ### Preview Wildcard: DNS-01
 

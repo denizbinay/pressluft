@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
-Depends On: docs/data-model.md, docs/schema-authority.md
+Last Reviewed: 2026-02-20
+Depends On: docs/data-model.md
 Supersedes: none
 
 # Migrations Guidelines

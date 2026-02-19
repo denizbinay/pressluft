@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: none
 Supersedes: none
 
@@ -82,6 +82,7 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 - Promotion presets: content-protect and commerce-protect.
 - Updates in scope: WordPress core, plugins, themes.
 - Domain/TLS: LetsEncrypt HTTP-01 for custom domains, DNS-01 for preview wildcard cert. See `docs/domain-and-routing.md`.
+- Auth transport: cookie session (`session_token`) for protected API access.
 - Caching: Redis object cache + Nginx FastCGI page cache, per-environment toggles, enabled by default. See `docs/provisioning-spec.md` and `docs/domain-and-routing.md`.
 - Security hardening: Fail2Ban + 7G WAF + PHP hardening + security headers, always-on at node level. See `docs/provisioning-spec.md` and `docs/security-and-secrets.md`.
 - Magic login: one-time WordPress admin URL via node query. See `docs/security-and-secrets.md`.

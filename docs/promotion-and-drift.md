@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/spec-index.md, docs/state-machines.md, docs/job-execution.md
 Supersedes: none
 
@@ -67,4 +67,5 @@ Notes:
 ## Warnings and Blocks
 
 - If drift status is `drifted`, UI must display a blocking warning.
-- Admin may override only after explicit confirmation.
+- If drift gate or backup gate is unmet, promotion must be blocked.
+- No override path exists in MVP.

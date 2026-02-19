@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: docs/spec-index.md, docs/promotion-and-drift.md, docs/state-machines.md, docs/api-contract.md, docs/ui-flows.md, contracts/openapi.yaml
 Supersedes: none
 
@@ -47,8 +47,9 @@ Contract/spec files:
 
 1. Drift-check endpoint returns `202` with `job_id` and persists drift record.
 2. Promote endpoint blocks when drift gate or backup gate requirements are unmet.
-3. Successful promotion respects preset-based protected resources.
-4. Promotion job failures leave clear non-success state and error fields.
+3. Promote endpoint exposes no admin override path when gates are unmet.
+4. Successful promotion respects preset-based protected resources.
+5. Promotion job failures leave clear non-success state and error fields.
 
 ## Verification
 

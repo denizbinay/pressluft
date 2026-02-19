@@ -32,6 +32,11 @@ paths:
       responses:
         '200':
           description: Login success
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie containing `session_token`
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -49,6 +54,11 @@ paths:
       responses:
         '200':
           description: Logout success
+          headers:
+            Set-Cookie:
+              description: Cookie clearing header for `session_token`
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -642,10 +652,10 @@ components:
 
     LoginResponse:
       type: object
-      required: [session_token]
+      required: [success]
       properties:
-        session_token:
-          type: string
+        success:
+          type: boolean
       additionalProperties: false
 
     LogoutResponse:

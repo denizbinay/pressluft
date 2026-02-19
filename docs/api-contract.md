@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-20
 Depends On: contracts/openapi.yaml, docs/contract-guardrails.md, docs/contract-traceability.md, docs/error-codes.md
 Supersedes: none
 
@@ -20,7 +20,8 @@ This document is explanatory and must stay aligned with OpenAPI.
 ## Auth
 
 - Single admin user.
-- Session-based auth using a secure session token.
+- Session-based auth using an HTTP cookie (`session_token`).
+- `POST /api/login` sets the session cookie; `POST /api/logout` revokes session state and clears the cookie.
 
 ## Conventions
 
@@ -50,10 +51,10 @@ This document is explanatory and must stay aligned with OpenAPI.
 
 - `POST /api/login`
   - Body: `{ email, password }`
-  - Response: `{ session_token }`
+  - Response: `{ success: true }` and `Set-Cookie: session_token=...`
 
 - `POST /api/logout`
-  - Response: `{ success: true }`
+  - Response: `{ success: true }` and `Set-Cookie` that clears `session_token`
 
 ### Sites
 
@@ -152,3 +153,8 @@ This document is explanatory and must stay aligned with OpenAPI.
 - `GET /api/metrics`
   - Response: `{ jobs_running, jobs_queued, nodes_active, sites_total }`
   - Semantics: point-in-time counters derived from the primary database; no caching or Prometheus format in MVP.
+
+## Deferred Public API Surfaces
+
+- The MVP public OpenAPI contract does not expose `/api/settings` endpoints.
+- Domain/TLS settings behavior is still specified in `docs/features/feature-settings-domain-config.md`, `docs/domain-and-routing.md`, and `docs/config-matrix.md` as a control-plane configuration surface.

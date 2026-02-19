@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
-Depends On: docs/spec-index.md, docs/domain-and-routing.md, docs/config-matrix.md, docs/security-and-secrets.md, docs/api-contract.md, contracts/openapi.yaml
+Last Reviewed: 2026-02-20
+Depends On: docs/spec-index.md, docs/domain-and-routing.md, docs/config-matrix.md, docs/security-and-secrets.md
 Supersedes: none
 
 # FEATURE: settings-domain-config
@@ -13,10 +13,11 @@ Operators need a deterministic way to manage platform-level domain and DNS-01 se
 ## Scope
 
 - In scope:
-  - Define API and UI behavior for managing `control_plane_domain`, `preview_domain`, `dns01_provider`, and `dns01_credentials_json`.
+  - Define canonical control-plane configuration behavior for managing `control_plane_domain`, `preview_domain`, `dns01_provider`, and `dns01_credentials_json`.
   - Enforce cross-field validation and secret-storage rules.
   - Ensure settings changes update downstream provisioning/runtime behavior predictably.
 - Out of scope:
+  - Public `/api/settings` endpoints in MVP OpenAPI.
   - DNS record automation at provider APIs.
   - Non-ACME TLS issuer configuration.
 
@@ -26,28 +27,24 @@ Operators need a deterministic way to manage platform-level domain and DNS-01 se
 - `internal/settings/**`
 - `internal/store/**`
 - `internal/secrets/**`
-- `contracts/openapi.yaml`
-- `docs/api-contract.md`
 - `docs/domain-and-routing.md`
 - `docs/config-matrix.md`
 - `docs/features/feature-settings-domain-config.md`
 
 ## Contract Impact
 
-- API: `update-required`
+- API: `none`
 - DB schema: `none`
 - Infra/playbooks: `none`
 
 Contract/spec files:
 
-- `contracts/openapi.yaml`
-- `docs/api-contract.md`
 - `docs/domain-and-routing.md`
 - `docs/config-matrix.md`
 
 ## Acceptance Criteria
 
-1. Settings API supports read/update flows for all required domain/TLS configuration keys.
+1. Settings surface supports deterministic read/update flows for all required domain/TLS configuration keys.
 2. Validation blocks invalid combinations (for example, `preview_domain` without DNS-01 provider credentials).
 3. DNS credentials are persisted only through encrypted secret storage paths.
 4. Settings updates produce deterministic effects on newly created environments and node provisioning inputs.
@@ -60,7 +57,7 @@ Contract/spec files:
   - `go test ./internal/... -v`
 - Required tests:
   - Settings validation tests for all required key combinations.
-  - API handler tests for read/update behavior and redaction of secret values.
+  - Settings handler/service tests for read/update behavior and redaction of secret values.
 
 ## Risks and Rollback
 
