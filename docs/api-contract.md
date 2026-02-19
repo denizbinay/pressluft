@@ -1,6 +1,21 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: contracts/openapi.yaml, docs/contract-guardrails.md, docs/contract-traceability.md, docs/error-codes.md
+Supersedes: none
+
 # API Contract
 
-This document defines the MVP API surface. All mutating actions are async and return a job.
+This document defines the MVP API surface.
+
+Most mutating actions are async and return a job. The documented synchronous exceptions are:
+
+- `POST /api/login`
+- `POST /api/logout`
+- `POST /api/environments/:id/magic-login` (node query)
+
+`contracts/openapi.yaml` is the canonical machine-readable API contract.
+This document is explanatory and must stay aligned with OpenAPI.
 
 ## Auth
 
@@ -12,6 +27,22 @@ This document defines the MVP API surface. All mutating actions are async and re
 - All responses are JSON.
 - Errors include `code` and `message`.
 - Mutations return `{ job_id }`.
+- Path IDs are UUID strings.
+
+## Contract Maintenance Rules
+
+- `contracts/openapi.yaml` is authoritative for endpoint paths, methods, payload shapes, status codes, and enums.
+- This file must explain behavior but must not diverge from OpenAPI.
+- Any API contract change PR must:
+  1. Update OpenAPI first.
+  2. Update this file in the same PR.
+  3. Keep enum values aligned with `docs/data-model.md` and `docs/state-machines.md`.
+  4. Include explicit error codes for non-generic failures (example: magic login).
+
+## Path Convention
+
+- OpenAPI paths are defined without `/api` because the server base URL is `/api`.
+- Explanatory docs may show full runtime paths with `/api/...` for clarity.
 
 ## Endpoints
 

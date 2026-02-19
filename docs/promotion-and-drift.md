@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/state-machines.md, docs/job-execution.md
+Supersedes: none
+
 # Promotion and Drift
 
 This document defines promotion rules, drift detection, and pushback safety for MVP.

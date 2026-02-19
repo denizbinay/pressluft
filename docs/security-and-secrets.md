@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/domain-and-routing.md, docs/technical-architecture.md
+Supersedes: none
+
 # Security and Secrets
 
 This document defines MVP security assumptions and secret handling.
@@ -10,7 +16,7 @@ This document defines MVP security assumptions and secret handling.
 
 ## Authorization
 
-- All API endpoints require admin session.
+- All API endpoints except `POST /api/login` require an active admin session.
 - No multi-user authorization in MVP.
 
 ## Secrets

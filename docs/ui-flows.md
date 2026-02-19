@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/api-contract.md
+Supersedes: none
+
 # UI Flows
 
 This document defines the minimal MVP UI flows that consume the API.

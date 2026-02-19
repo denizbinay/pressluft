@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/job-execution.md, docs/provisioning-spec.md
+Supersedes: none
+
 # Ansible Execution
 
 This document defines how the Go control plane invokes Ansible playbooks for all infrastructure operations.

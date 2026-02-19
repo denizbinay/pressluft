@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/security-and-secrets.md, docs/domain-and-routing.md
+Supersedes: none
+
 # Provisioning Spec
 
 This document defines the MVP provisioning contract. Exact package versions are pinned in Ansible; this spec defines minimum supported versions and required configuration.

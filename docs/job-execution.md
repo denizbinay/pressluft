@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/state-machines.md, docs/ansible-execution.md
+Supersedes: none
+
 # Job Execution
 
 This document defines the MVP job execution model for the control plane.

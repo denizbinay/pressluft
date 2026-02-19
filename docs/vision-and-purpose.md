@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md
+Supersedes: none
+
 # Vision and Purpose
 
 Pressluft exists to eliminate infrastructure friction from professional WordPress work. Agencies and freelancers should not spend cognitive energy on server tuning, fragile migrations, inconsistent staging environments, or late night recovery after failed updates. The core problem is not raw performance. The core problem is unreliable workflow and fear of breaking production.

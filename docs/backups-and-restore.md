@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/data-model.md, docs/job-execution.md
+Supersedes: none
+
 # Backups and Restore
 
 This document defines backup storage, retention, and restore behavior for MVP.

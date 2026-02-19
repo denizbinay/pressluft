@@ -1,25 +1,74 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: none
+Supersedes: none
+
 # Spec Index
 
 This index defines the minimal, explicit specification set for Pressluft MVP. The goal is to remove implementation ambiguity without overengineering.
 
+## Metadata Standard
+
+All new and updated specs should include this header block at top of file:
+
+```md
+Status: draft | active | deprecated
+Owner: <team or person>
+Last Reviewed: YYYY-MM-DD
+Depends On: <comma-separated paths or none>
+Supersedes: <comma-separated paths or none>
+```
+
+Progressive adoption rule: existing specs may add this metadata during normal edits; no bulk rewrite required.
+
 ## Documents
 
+### Core (Always Load)
+
 - docs/data-model.md
-- docs/state-machines.md
+- docs/technical-architecture.md
 - docs/job-execution.md
-- docs/promotion-and-drift.md
+- docs/state-machines.md
+- docs/security-and-secrets.md
+
+### Contracts
+
+- contracts/openapi.yaml
+- contracts/schemas/error.json
+- docs/api-contract.md
+- docs/contract-guardrails.md
+- docs/contract-traceability.md
+- docs/error-codes.md
+- docs/job-types.md
+- docs/schema-authority.md
+
+### Infrastructure and Operations
+
+- docs/ansible-execution.md
+- docs/provisioning-spec.md
+- docs/domain-and-routing.md
+- docs/migration-spec.md
 - docs/backups-and-restore.md
 - docs/health-checks.md
-- docs/migration-spec.md
-- docs/provisioning-spec.md
-- docs/api-contract.md
+- docs/promotion-and-drift.md
+- docs/migrations-guidelines.md
+- docs/config-matrix.md
+- docs/testing.md
+
+### Product and UX
+
 - docs/ui-flows.md
-- docs/security-and-secrets.md
-- docs/ansible-execution.md
-- docs/domain-and-routing.md
-- docs/technical-architecture.md
 - docs/user-requirements-and-workflows.md
 - docs/vision-and-purpose.md
+
+### Agent Workflow
+
+- docs/spec-lifecycle.md
+- docs/agent-session-playbook.md
+- docs/templates/feature-spec-template.md
+- docs/features/README.md
+- docs/pre-plan-readiness.md
 
 ## Locked Decisions (MVP)
 
@@ -47,6 +96,14 @@ This index defines the minimal, explicit specification set for Pressluft MVP. Th
 - Go core: control plane, state machine, jobs, API, UI integration, direct SSH for node queries (`internal/ssh`).
 - Ansible playbooks: all node-targeted **mutations** including provisioning, deployment, backups, restores, health checks, and drift checks. Invoked exclusively by the Go control plane as local subprocesses. See `docs/ansible-execution.md`.
 - Nuxt webapp: web UI implementation that consumes the API.
+
+## Session Rules
+
+- Every implementation task must reference one feature spec under `docs/features/`.
+- Every feature spec must declare in-scope paths, out-of-scope changes, acceptance criteria, and test requirements.
+- API behavior is canonical in `contracts/openapi.yaml`; `docs/api-contract.md` is explanatory.
+- Every OpenAPI endpoint must map to exactly one owning feature spec in `docs/contract-traceability.md`.
+- Keep per-session context minimal: core docs + one feature spec + relevant domain docs.
 
 ## Glossary
 

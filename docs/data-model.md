@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/state-machines.md
+Supersedes: none
+
 # Data Model
 
 This document defines the MVP database schema as the source of truth for Pressluft. It assumes SQLite for the control plane database.

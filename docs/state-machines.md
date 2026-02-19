@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/data-model.md
+Supersedes: none
+
 # State Machines
 
 This document defines allowed state transitions and rules for MVP resources.

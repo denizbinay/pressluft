@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/job-execution.md, docs/ansible-execution.md
+Supersedes: none
+
 # Technical Architecture
 
 Pressluft is a single-codebase WordPress orchestration control plane designed for deterministic site lifecycle management. Deployment topology does not alter internal architecture.

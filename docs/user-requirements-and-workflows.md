@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/vision-and-purpose.md, docs/spec-index.md
+Supersedes: none
+
 # User Requirements and Workflows
 
 Pressluft is site-centric. Users manage WordPress projects and environments, not servers. Infrastructure is an implementation detail. All actions are scoped to a single site and must be isolated, reversible, and safe, even when multiple sites share the same machine.

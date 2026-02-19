@@ -1,3 +1,9 @@
+Status: active
+Owner: platform
+Last Reviewed: 2026-02-19
+Depends On: docs/spec-index.md, docs/provisioning-spec.md, docs/data-model.md
+Supersedes: none
+
 # Domain and Routing
 
 This document specifies how Pressluft handles domains, preview URLs, TLS certificates, and HTTP routing for WordPress environments.
@@ -25,7 +31,7 @@ Operators configure domain and routing settings through the control plane settin
 | Setting | Description | Example |
 |---------|-------------|---------|
 | `preview_domain` | Base domain for auto-generated preview URLs. Requires wildcard DNS. | `wp.example.com` |
-| `dns01_provider` | DNS provider identifier for ACME DNS-01 challenges (for wildcard cert). Uses [lego](https://go-acme.github.io/lego/dns/) provider names. | `cloudflare`, `hetzner`, `route53` |
+| `dns01_provider` | DNS provider identifier for ACME DNS-01 challenges (for wildcard cert). Uses certbot DNS plugin identifiers as documented by Pressluft. | `cloudflare`, `hetzner`, `route53` |
 | `dns01_credentials_json` | Provider-specific API credentials for DNS-01. Stored encrypted in the secrets store. | `{"CF_DNS_API_TOKEN": "..."}` |
 
 When `preview_domain` is set, the operator must configure a wildcard DNS `A` record externally:
@@ -75,7 +81,7 @@ This provides a working URL with zero DNS configuration. The trade-off is:
 - Depends on a third-party DNS service. If sslip.io is unavailable, preview URLs using this fallback will not resolve.
 - Not suitable for production use. This is a development convenience only.
 
-When the operator later configures a `preview_domain`, existing environments retain their sslip.io preview URLs. New environments receive preview URLs under the configured domain. Operators may regenerate preview URLs for existing environments via the API (this triggers an Nginx server block update and WordPress URL rewrite).
+When the operator later configures a `preview_domain`, existing environments retain their sslip.io preview URLs. New environments receive preview URLs under the configured domain.
 
 ### Preview URL Lifecycle
 
@@ -261,7 +267,7 @@ When the canonical URL of an environment changes (domain added, domain removed, 
 3. Flush WordPress object cache and rewrite rules (`wp cache flush`, `wp rewrite flush`).
 4. Purge the FastCGI page cache for the environment (clear cached responses that reference the old URL).
 
-This is the same URL rewrite logic specified in `docs/migration-spec.md`, reused by the `domain_add`, `domain_remove`, and `preview_url_regenerate` playbooks.
+This is the same URL rewrite logic specified in `docs/migration-spec.md`, reused by the `domain_add` and `domain_remove` playbooks.
 
 The URL rewrite is part of the Ansible playbook execution, not a separate job. It runs within the same job as the domain operation.
 
@@ -287,7 +293,7 @@ Add `public_ip TEXT NULL` field. Populated during node registration or provision
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Preview URL identifier | First 8 chars of environment UUID | Globally unique, opaque, no slug collision risk |
-| Wildcard TLS method | DNS-01 via lego/certbot DNS plugins | Only method that supports wildcard certs with Let's Encrypt |
+| Wildcard TLS method | DNS-01 via certbot DNS plugins | Only method that supports wildcard certs with Let's Encrypt |
 | Custom domain TLS method | HTTP-01 | Simpler, no DNS provider API needed for end users |
 | sslip.io as fallback | Yes, HTTP-only | Zero-config development convenience |
 | Certificate renewal | ACME client built-in timer | Battle-tested, no custom job queue integration needed |

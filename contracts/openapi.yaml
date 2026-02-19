@@ -1,0 +1,1037 @@
+openapi: 3.1.0
+info:
+  title: Pressluft API
+  version: 0.2.0
+  description: Canonical machine-readable API contract for Pressluft MVP.
+servers:
+  - url: /api
+security:
+  - sessionAuth: []
+tags:
+  - name: Auth
+  - name: Sites
+  - name: Environments
+  - name: Caching
+  - name: Backups
+  - name: Domains
+  - name: Jobs
+  - name: Metrics
+paths:
+  /login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Logout
+      responses:
+        '200':
+          description: Logout success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /sites:
+    get:
+      tags: [Sites]
+      operationId: listSites
+      summary: List sites
+      responses:
+        '200':
+          description: Sites list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Site'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Sites]
+      operationId: createSite
+      summary: Create site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSiteRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /sites/{id}:
+    get:
+      tags: [Sites]
+      operationId: getSite
+      summary: Get site
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Site details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /sites/{id}/environments:
+    get:
+      tags: [Environments]
+      operationId: listSiteEnvironments
+      summary: List environments for site
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Environments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Environment'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    post:
+      tags: [Environments]
+      operationId: createEnvironment
+      summary: Create environment
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnvironmentRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /sites/{id}/import:
+    post:
+      tags: [Sites]
+      operationId: importSite
+      summary: Import site
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportSiteRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /environments/{id}:
+    get:
+      tags: [Environments]
+      operationId: getEnvironment
+      summary: Get environment
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Environment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /environments/{id}/drift-check:
+    post:
+      tags: [Environments]
+      operationId: runDriftCheck
+      summary: Run drift check
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/deploy:
+    post:
+      tags: [Environments]
+      operationId: deployEnvironment
+      summary: Deploy environment
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+            examples:
+              git:
+                value:
+                  source_type: git
+                  source_ref: git@github.com:acme/site.git#main
+              upload:
+                value:
+                  source_type: upload
+                  source_ref: s3://bucket/releases/site-20260219.tar.gz
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/updates:
+    post:
+      tags: [Environments]
+      operationId: applyEnvironmentUpdates
+      summary: Apply updates
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatesRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/restore:
+    post:
+      tags: [Environments]
+      operationId: restoreEnvironment
+      summary: Restore environment
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/promote:
+    post:
+      tags: [Environments]
+      operationId: promoteEnvironment
+      summary: Promote environment
+      description: Requires a successful drift-check gate and fresh backup confirmation.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteRequest'
+            examples:
+              default:
+                value:
+                  target_environment_id: 5b38a0dd-68b2-4e93-bbf5-79cedadfc6ee
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/cache:
+    patch:
+      tags: [Caching]
+      operationId: updateEnvironmentCache
+      summary: Toggle caching
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCacheRequest'
+            examples:
+              fastcgiOnly:
+                value:
+                  fastcgi_cache_enabled: false
+              redisOnly:
+                value:
+                  redis_cache_enabled: true
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/cache/purge:
+    post:
+      tags: [Caching]
+      operationId: purgeEnvironmentCache
+      summary: Purge environment caches
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/magic-login:
+    post:
+      tags: [Environments]
+      operationId: createMagicLogin
+      summary: Generate one-time WordPress admin URL
+      description: |
+        Synchronous node query that bypasses the job queue. Returns a one-time URL directly.
+        Token lifetime is 60 seconds.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Magic login URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MagicLoginResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Environment is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: environment_not_active
+                message: Environment is not in active state
+        '502':
+          description: Node query failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                nodeUnreachable:
+                  value:
+                    code: node_unreachable
+                    message: SSH connection to node failed or timed out
+                wpCliError:
+                  value:
+                    code: wp_cli_error
+                    message: WP-CLI command failed
+
+  /environments/{id}/backups:
+    get:
+      tags: [Backups]
+      operationId: listEnvironmentBackups
+      summary: List backups
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Backups list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Backup'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    post:
+      tags: [Backups]
+      operationId: createEnvironmentBackup
+      summary: Create backup
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBackupRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/domains:
+    get:
+      tags: [Domains]
+      operationId: listEnvironmentDomains
+      summary: List environment domains
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Domains list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Domain'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    post:
+      tags: [Domains]
+      operationId: addEnvironmentDomain
+      summary: Add custom domain
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDomainRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /domains/{id}:
+    delete:
+      tags: [Domains]
+      operationId: deleteDomain
+      summary: Remove custom domain
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /jobs:
+    get:
+      tags: [Jobs]
+      operationId: listJobs
+      summary: List jobs
+      responses:
+        '200':
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /jobs/{id}:
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      summary: Get job
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /metrics:
+    get:
+      tags: [Metrics]
+      operationId: getMetrics
+      summary: Point-in-time metrics
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+
+  parameters:
+    IdPathParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    AcceptedJob:
+      description: Job accepted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobResponse'
+    BadRequestError:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnauthorizedError:
+      description: Authentication required or session expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ConflictError:
+      description: Resource state conflict or concurrency guard blocked operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+      additionalProperties: false
+
+    LoginResponse:
+      type: object
+      required: [session_token]
+      properties:
+        session_token:
+          type: string
+      additionalProperties: false
+
+    LogoutResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+      additionalProperties: false
+
+    CreateSiteRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+      additionalProperties: false
+
+    Site:
+      type: object
+      required: [id, name, slug, status, created_at, updated_at, state_version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, cloning, deploying, restoring, failed]
+        primary_environment_id:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        state_version:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+
+    CreateEnvironmentRequest:
+      type: object
+      required: [name, slug, type, promotion_preset]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [production, staging, clone]
+        source_environment_id:
+          type: [string, 'null']
+          format: uuid
+        promotion_preset:
+          type: string
+          enum: [content-protect, commerce-protect]
+      additionalProperties: false
+
+    ImportSiteRequest:
+      type: object
+      required: [archive_url]
+      properties:
+        archive_url:
+          type: string
+          format: uri
+      additionalProperties: false
+
+    Environment:
+      type: object
+      required:
+        - id
+        - site_id
+        - name
+        - slug
+        - environment_type
+        - status
+        - node_id
+        - promotion_preset
+        - preview_url
+        - drift_status
+        - fastcgi_cache_enabled
+        - redis_cache_enabled
+        - created_at
+        - updated_at
+        - state_version
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        environment_type:
+          type: string
+          enum: [production, staging, clone]
+        status:
+          type: string
+          enum: [active, cloning, deploying, restoring, failed]
+        node_id:
+          type: string
+          format: uuid
+        source_environment_id:
+          type: [string, 'null']
+          format: uuid
+        promotion_preset:
+          type: string
+          enum: [content-protect, commerce-protect]
+        preview_url:
+          type: string
+          format: uri
+        primary_domain_id:
+          type: [string, 'null']
+          format: uuid
+        current_release_id:
+          type: [string, 'null']
+          format: uuid
+        drift_status:
+          type: string
+          enum: [unknown, clean, drifted]
+        drift_checked_at:
+          type: [string, 'null']
+          format: date-time
+        last_drift_check_id:
+          type: [string, 'null']
+          format: uuid
+        fastcgi_cache_enabled:
+          type: boolean
+        redis_cache_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        state_version:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+
+    DeployRequest:
+      type: object
+      required: [source_type, source_ref]
+      properties:
+        source_type:
+          type: string
+          enum: [git, upload]
+        source_ref:
+          type: string
+          minLength: 1
+      additionalProperties: false
+
+    UpdatesRequest:
+      type: object
+      required: [scope]
+      properties:
+        scope:
+          type: string
+          enum: [core, plugins, themes, all]
+      additionalProperties: false
+
+    RestoreRequest:
+      type: object
+      required: [backup_id]
+      properties:
+        backup_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+
+    PromoteRequest:
+      type: object
+      required: [target_environment_id]
+      properties:
+        target_environment_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+
+    PatchCacheRequest:
+      type: object
+      properties:
+        fastcgi_cache_enabled:
+          type: boolean
+        redis_cache_enabled:
+          type: boolean
+      minProperties: 1
+      additionalProperties: false
+
+    MagicLoginResponse:
+      type: object
+      required: [login_url, expires_at]
+      properties:
+        login_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    CreateBackupRequest:
+      type: object
+      required: [backup_scope]
+      properties:
+        backup_scope:
+          type: string
+          enum: [db, files, full]
+      additionalProperties: false
+
+    Backup:
+      type: object
+      required:
+        - id
+        - environment_id
+        - backup_scope
+        - status
+        - storage_type
+        - storage_path
+        - retention_until
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        backup_scope:
+          type: string
+          enum: [db, files, full]
+        status:
+          type: string
+          enum: [pending, running, completed, failed, expired]
+        storage_type:
+          type: string
+          enum: [s3]
+        storage_path:
+          type: string
+        retention_until:
+          type: string
+          format: date-time
+        checksum:
+          type: [string, 'null']
+        size_bytes:
+          type: [integer, 'null']
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+      additionalProperties: false
+
+    AddDomainRequest:
+      type: object
+      required: [hostname]
+      properties:
+        hostname:
+          type: string
+          minLength: 1
+      additionalProperties: false
+
+    Domain:
+      type: object
+      required: [id, environment_id, hostname, tls_status, tls_issuer, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        hostname:
+          type: string
+        tls_status:
+          type: string
+          enum: [pending, active, failed, disabled]
+        tls_issuer:
+          type: string
+          enum: [letsencrypt]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    JobResponse:
+      type: object
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+
+    JobStatusResponse:
+      type: object
+      required: [id, status, attempt_count, max_attempts, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        site_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: [string, 'null']
+          format: uuid
+        node_id:
+          type: [string, 'null']
+          format: uuid
+        attempt_count:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        run_after:
+          type: [string, 'null']
+          format: date-time
+        locked_at:
+          type: [string, 'null']
+          format: date-time
+        locked_by:
+          type: [string, 'null']
+        started_at:
+          type: [string, 'null']
+          format: date-time
+        finished_at:
+          type: [string, 'null']
+          format: date-time
+        error_code:
+          type: [string, 'null']
+        error_message:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    MetricsResponse:
+      type: object
+      required: [jobs_running, jobs_queued, nodes_active, sites_total]
+      properties:
+        jobs_running:
+          type: integer
+          minimum: 0
+        jobs_queued:
+          type: integer
+          minimum: 0
+        nodes_active:
+          type: integer
+          minimum: 0
+        sites_total:
+          type: integer
+          minimum: 0
+      additionalProperties: false
+
+    Error:
+      $ref: ./schemas/error.json
