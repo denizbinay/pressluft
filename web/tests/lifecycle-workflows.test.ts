@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { setResponseStatus } from "h3";
 import { mountSuspended, registerEndpoint } from "@nuxt/test-utils/runtime";
+import { defineComponent } from "vue";
 import type { Environment } from "~/lib/api/types";
 import EnvironmentDetailPage from "~/pages/app/environments/[id].vue";
 
@@ -40,6 +41,19 @@ const baseEnv = (id: string, siteId: string): Environment => ({
 });
 
 describe("lifecycle workflows", () => {
+  const AuthInit = defineComponent({
+    setup() {
+      useAuthSession();
+      return {};
+    },
+    template: "<div />",
+  });
+
+  beforeEach(async () => {
+    await mountSuspended(AuthInit, { route: false });
+    useAuthSession().status.value = "unknown";
+  });
+
   it("validates deploy form deterministically", async () => {
     const envId = "11111111-1111-1111-1111-111111111111";
     const siteId = "22222222-2222-2222-2222-222222222222";

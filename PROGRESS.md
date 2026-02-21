@@ -6,7 +6,7 @@ Last Updated: 2026-02-21
 
 ## Current Stage
 
-- Stage: Wave 8 complete; release-readiness smoke verified.
+- Stage: Wave 11 (local sandbox) complete; packaging baseline implemented.
 - Auth/session, audit logging, site/environment create foundations, backup create/list API/job wiring, health-check/rollback orchestration, deploy/update, restore, and promotion/drift guardrail mutation flows now exist alongside queue-backed node provisioning.
 - Complete Nuxt dashboard scope is now accepted as MVP and scheduled for Waves 6-8.
 
@@ -68,6 +68,7 @@ Last Updated: 2026-02-21
 - Wave 7 operations workflows implemented for backups, domains, caching, and magic-login with deterministic error handling and job polling (`web/pages/app/environments/[id].vue`, `web/tests/operations-workflows.test.ts`).
 - Wave 7 jobs/metrics visibility and administrative controls implemented with in-shell metrics, jobs list/detail, job cancel, and failed-state reset actions (`web/layouts/app.vue`, `web/pages/app/jobs/index.vue`, `web/pages/app/jobs/[id].vue`, `web/tests/jobs-metrics-controls.test.ts`).
 - Wave 8 embedded dashboard smoke verification now uses static Nuxt output (ensures `./web/.output/public/index.html` exists) and documents correct `pressluft` command/DB-migration ordering (`web/package.json`, `web/nuxt.config.ts`, `docs/testing.md`).
+- Wave 9-11 installation/packaging baseline added with curlable release-based installer, systemd units, `pressluft migrate`/`pressluft worker`/`pressluft version` commands, committed `ansible/ansible.cfg`, GitHub release workflow, and disposable local sandbox script (`install.sh`, `packaging/**`, `.github/workflows/release.yml`, `scripts/dev-sandbox.sh`, `cmd/pressluft/main.go`, `internal/migrations/**`).
 
 ## In Progress
 

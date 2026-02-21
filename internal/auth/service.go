@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -9,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,8 @@ import (
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrUnauthorized = errors.New("unauthorized")
+
+const passwordHashPBKDF2Prefix = "pbkdf2_sha256:"
 
 type Service struct {
 	db *sql.DB
@@ -126,6 +130,10 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (string, er
 }
 
 func passwordMatches(stored, plain string) bool {
+	if strings.HasPrefix(stored, passwordHashPBKDF2Prefix) {
+		ok, err := pbkdf2Matches(stored, plain)
+		return err == nil && ok
+	}
 	if strings.HasPrefix(stored, "sha256:") {
 		hash := sha256.Sum256([]byte(plain))
 		candidate := "sha256:" + hex.EncodeToString(hash[:])
@@ -133,6 +141,92 @@ func passwordMatches(stored, plain string) bool {
 	}
 
 	return subtle.ConstantTimeCompare([]byte(stored), []byte(plain)) == 1
+}
+
+// HashPassword returns a strong salted password hash suitable for storage.
+// Format: pbkdf2_sha256:<iterations>:<salt_hex>:<dk_hex>
+func HashPassword(plain string) (string, error) {
+	plain = strings.TrimSpace(plain)
+	if plain == "" {
+		return "", fmt.Errorf("hash password: empty password")
+	}
+
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("hash password: generate salt: %w", err)
+	}
+
+	iterations := 120_000
+	dk := pbkdf2Key([]byte(plain), salt, iterations, 32)
+	return fmt.Sprintf(
+		"%s%d:%s:%s",
+		passwordHashPBKDF2Prefix,
+		iterations,
+		hex.EncodeToString(salt),
+		hex.EncodeToString(dk),
+	), nil
+}
+
+func pbkdf2Matches(stored, plain string) (bool, error) {
+	parts := strings.Split(stored, ":")
+	if len(parts) != 4 {
+		return false, fmt.Errorf("invalid pbkdf2 hash format")
+	}
+	if parts[0]+":" != passwordHashPBKDF2Prefix {
+		return false, fmt.Errorf("invalid pbkdf2 prefix")
+	}
+	iter, err := strconv.Atoi(parts[1])
+	if err != nil || iter < 10_000 {
+		return false, fmt.Errorf("invalid pbkdf2 iterations")
+	}
+	salt, err := hex.DecodeString(parts[2])
+	if err != nil || len(salt) < 8 {
+		return false, fmt.Errorf("invalid pbkdf2 salt")
+	}
+	expected, err := hex.DecodeString(parts[3])
+	if err != nil || len(expected) < 16 {
+		return false, fmt.Errorf("invalid pbkdf2 derived key")
+	}
+
+	dk := pbkdf2Key([]byte(plain), salt, iter, len(expected))
+	return subtle.ConstantTimeCompare(dk, expected) == 1, nil
+}
+
+func pbkdf2Key(password, salt []byte, iterations, keyLen int) []byte {
+	hLen := sha256.Size
+	numBlocks := (keyLen + hLen - 1) / hLen
+	out := make([]byte, 0, numBlocks*hLen)
+
+	blockBuf := make([]byte, len(salt)+4)
+	copy(blockBuf, salt)
+
+	for block := 1; block <= numBlocks; block++ {
+		blockBuf[len(salt)+0] = byte(block >> 24)
+		blockBuf[len(salt)+1] = byte(block >> 16)
+		blockBuf[len(salt)+2] = byte(block >> 8)
+		blockBuf[len(salt)+3] = byte(block)
+
+		u := hmacSHA256(password, blockBuf)
+		t := make([]byte, len(u))
+		copy(t, u)
+
+		for i := 1; i < iterations; i++ {
+			u = hmacSHA256(password, u)
+			for j := 0; j < len(t); j++ {
+				t[j] ^= u[j]
+			}
+		}
+
+		out = append(out, t...)
+	}
+
+	return out[:keyLen]
+}
+
+func hmacSHA256(key, data []byte) []byte {
+	h := hmac.New(sha256.New, key)
+	_, _ = h.Write(data)
+	return h.Sum(nil)
 }
 
 func randomToken(length int) (string, error) {

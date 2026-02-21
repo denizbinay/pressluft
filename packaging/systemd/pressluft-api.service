@@ -1,0 +1,24 @@
+[Unit]
+Description=Pressluft control plane API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pressluft
+Group=pressluft
+WorkingDirectory=/opt/pressluft/current
+EnvironmentFile=/etc/pressluft/pressluft.env
+ExecStartPre=/opt/pressluft/current/pressluft migrate up
+ExecStart=/opt/pressluft/current/pressluft -listen ${PRESSLUFT_LISTEN_ADDR} -web-dist-dir ${PRESSLUFT_WEB_DIST_DIR} serve
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pressluft /var/log/pressluft
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

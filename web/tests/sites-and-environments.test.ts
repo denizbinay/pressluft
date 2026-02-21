@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { setResponseStatus } from "h3";
 import { mountSuspended, registerEndpoint } from "@nuxt/test-utils/runtime";
+import { defineComponent } from "vue";
 import type { Environment, JobStatusResponse, Site } from "~/lib/api/types";
 import SitesIndexPage from "~/pages/app/sites/index.vue";
 import SiteDetailPage from "~/pages/app/sites/[id].vue";
@@ -24,6 +25,19 @@ const job = (id: string, status: JobStatusResponse["status"], extra?: Partial<Jo
 };
 
 describe("sites and environments flows", () => {
+  const AuthInit = defineComponent({
+    setup() {
+      useAuthSession();
+      return {};
+    },
+    template: "<div />",
+  });
+
+  beforeEach(async () => {
+    await mountSuspended(AuthInit, { route: false });
+    useAuthSession().status.value = "unknown";
+  });
+
   it("creates a site and refreshes list after job completion", async () => {
     const siteId = "11111111-1111-1111-1111-111111111111";
     const jobId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";

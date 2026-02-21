@@ -33,7 +33,7 @@ Embedded dashboard smoke check (release readiness):
 - `cd web && pnpm build`
 - `go build -o ./bin/pressluft ./cmd/pressluft`
 - Prepare an empty DB with schema:
-  - `PRESSLUFT_DB_PATH=$(mktemp) go run ./migrations/migrate.go up`
+  - `PRESSLUFT_DB_PATH=$(mktemp) ./bin/pressluft migrate up`
 - Start server (example):
   - `PRESSLUFT_DB_PATH=$PRESSLUFT_DB_PATH PRESSLUFT_SECRETS_DIR=$(mktemp -d) ./bin/pressluft -listen :18080 serve`
 - Verify HTML routes return 200:
@@ -107,6 +107,10 @@ Project command presets under `.opencode/commands/` provide deterministic gate e
 - `/triage-failures`
 
 Smoke-test these commands after OpenCode config changes to confirm command discovery and output wiring remain functional.
+
+## Local Sandbox
+
+- Disposable local run (auto temp DB + secrets): `bash scripts/dev-sandbox.sh`
 
 ## CI Expectations
 

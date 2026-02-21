@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setResponseStatus } from "h3";
 import { mountSuspended, registerEndpoint } from "@nuxt/test-utils/runtime";
+import { defineComponent } from "vue";
 import LoginPage from "~/pages/login.vue";
 
 const flush = async (): Promise<void> => {
@@ -19,8 +20,19 @@ vi.mock("#app/composables/router", async (importOriginal) => {
   };
 });
 
-beforeEach(() => {
+const AuthInit = defineComponent({
+  setup() {
+    // Ensure Nuxt app context exists for useState.
+    useAuthSession();
+    return {};
+  },
+  template: "<div />",
+});
+
+beforeEach(async () => {
   navigateToMock.mockClear();
+  await mountSuspended(AuthInit, { route: false });
+  useAuthSession().status.value = "unknown";
 });
 
 describe("login page", () => {

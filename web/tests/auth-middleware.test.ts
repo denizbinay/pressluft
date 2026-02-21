@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setResponseStatus } from "h3";
 import { mountSuspended, registerEndpoint } from "@nuxt/test-utils/runtime";
 import { defineComponent } from "vue";
-import middleware from "~/middleware/auth.global.client";
+import middleware from "~/middleware/auth.global";
 
 const { navigateToMock } = vi.hoisted(() => ({
   navigateToMock: vi.fn(async () => undefined as any),

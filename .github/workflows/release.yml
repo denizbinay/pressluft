@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Build dashboard assets
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm build
+
+      - name: Build pressluft binaries
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p dist/linux_amd64 dist/linux_arm64
+
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.buildCommit=${COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/linux_amd64/pressluft ./cmd/pressluft
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.buildCommit=${COMMIT} -X main.buildDate=${BUILD_DATE}" -o dist/linux_arm64/pressluft ./cmd/pressluft
+
+      - name: Assemble release tarballs
+        run: |
+          for arch in linux_amd64 linux_arm64; do
+            mkdir -p "dist/${arch}/ansible" "dist/${arch}/migrations" "dist/${arch}/packaging" "dist/${arch}/web/.output"
+            cp -a ansible/. "dist/${arch}/ansible/"
+            cp -a migrations/. "dist/${arch}/migrations/"
+            cp -a packaging/. "dist/${arch}/packaging/"
+            cp -a web/.output/public "dist/${arch}/web/.output/public"
+          done
+
+          tar -czf pressluft_linux_amd64.tar.gz -C dist/linux_amd64 .
+          tar -czf pressluft_linux_arm64.tar.gz -C dist/linux_arm64 .
+
+          sha256sum pressluft_linux_amd64.tar.gz pressluft_linux_arm64.tar.gz > SHA256SUMS
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pressluft_linux_amd64.tar.gz
+            pressluft_linux_arm64.tar.gz
+            SHA256SUMS

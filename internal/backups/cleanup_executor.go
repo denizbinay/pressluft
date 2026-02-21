@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/ansible"
 	"pressluft/internal/store"
 )
 
@@ -27,7 +28,7 @@ type queuedBackupCleanup struct {
 	NodeID        string
 	BackupID      string
 	StoragePath   string
-	Inventory     string
+	Hostname      string
 	AttemptCount  int
 	MaxAttempts   int
 }
@@ -40,6 +41,15 @@ func ExecuteQueuedBackupCleanup(ctx context.Context, db *sql.DB, runner CommandR
 	if !ok {
 		return false, nil
 	}
+
+	inventoryPath, cleanup, err := ansible.WriteTempLocalInventory(job.Hostname)
+	if err != nil {
+		if markErr := markBackupCleanupFailed(ctx, db, job.JobID, backupCleanupInternalErrorCode, err.Error()); markErr != nil {
+			return true, markErr
+		}
+		return true, err
+	}
+	defer cleanup()
 
 	extraVars, err := json.Marshal(map[string]string{
 		"site_id":        job.SiteID,
@@ -55,7 +65,7 @@ func ExecuteQueuedBackupCleanup(ctx context.Context, db *sql.DB, runner CommandR
 		return true, fmt.Errorf("marshal backup_cleanup vars: %w", err)
 	}
 
-	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", job.Inventory, playbookPath, "--extra-vars", string(extraVars))
+	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", inventoryPath, playbookPath, "--extra-vars", string(extraVars))
 	if runErr != nil {
 		errorCode, retryable := classifyAnsibleError(runErr)
 		message := truncateErrorMessage(output, runErr)
@@ -117,7 +127,7 @@ func lockNextQueuedBackupCleanup(ctx context.Context, db *sql.DB) (queuedBackupC
 			return errors.New("backup_cleanup payload missing required fields")
 		}
 
-		selected.Inventory = fmt.Sprintf("%s ansible_connection=local", hostname)
+		selected.Hostname = hostname
 
 		now := time.Now().UTC().Format(time.RFC3339)
 		if _, err := tx.ExecContext(ctx, `

@@ -1,4 +1,6 @@
 export default defineNuxtRouteMiddleware(async (to) => {
+  if (import.meta.server) return;
+
   const auth = useAuthSession();
 
   // Force-check the session on navigation so expired cookies redirect deterministically.

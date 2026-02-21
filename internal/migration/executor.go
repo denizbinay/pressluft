@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/ansible"
 	"pressluft/internal/store"
 )
 
@@ -38,7 +39,7 @@ type queuedSiteImport struct {
 	ReleaseID     string
 	ArchiveURL    string
 	TargetURL     string
-	Inventory     string
+	Hostname      string
 	AttemptCount  int
 	MaxAttempts   int
 }
@@ -51,6 +52,15 @@ func ExecuteQueuedSiteImport(ctx context.Context, db *sql.DB, runner CommandRunn
 	if !ok {
 		return false, nil
 	}
+
+	inventoryPath, cleanup, err := ansible.WriteTempLocalInventory(job.Hostname)
+	if err != nil {
+		if markErr := markSiteImportFailed(ctx, db, job, "ANSIBLE_UNEXPECTED_ERROR", err.Error()); markErr != nil {
+			return true, markErr
+		}
+		return true, err
+	}
+	defer cleanup()
 
 	extraVars, err := json.Marshal(map[string]string{
 		"site_id":        job.SiteID,
@@ -67,7 +77,7 @@ func ExecuteQueuedSiteImport(ctx context.Context, db *sql.DB, runner CommandRunn
 		return true, fmt.Errorf("marshal site_import vars: %w", err)
 	}
 
-	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", job.Inventory, playbookPath, "--extra-vars", string(extraVars))
+	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", inventoryPath, playbookPath, "--extra-vars", string(extraVars))
 	if runErr != nil {
 		errorCode, retryable := classifyAnsibleError(runErr)
 		message := truncateErrorMessage(output, runErr)
@@ -126,7 +136,7 @@ func lockNextQueuedSiteImport(ctx context.Context, db *sql.DB) (queuedSiteImport
 		selected.ReleaseID = strings.TrimSpace(payload.ReleaseID)
 		selected.ArchiveURL = strings.TrimSpace(payload.ArchiveURL)
 		selected.TargetURL = strings.TrimSpace(payload.TargetURL)
-		selected.Inventory = fmt.Sprintf("%s ansible_connection=local", hostname)
+		selected.Hostname = hostname
 
 		now := time.Now().UTC().Format(time.RFC3339)
 		if _, err := tx.ExecContext(ctx, `

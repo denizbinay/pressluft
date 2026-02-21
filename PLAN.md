@@ -172,6 +172,39 @@ Merge points:
   - Depends on: W8-T2
   - Feature spec: `docs/features/feature-web-dashboard-hardening.md`
 
+### Wave 9 - Installation and Runtime Packaging
+
+- [x] W9-T1: Add systemd runtime layout for control plane and worker.
+  - Depends on: MP5
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+- [x] W9-T2: Add `pressluft migrate up` command and align runtime defaults to config matrix.
+  - Depends on: W9-T1
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+- [x] W9-T3: Add long-running `pressluft worker` loop (poll + shutdown).
+  - Depends on: W9-T2
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+- [x] W9-T4: Commit `ansible/ansible.cfg` and wire runtime usage via systemd environment.
+  - Depends on: W9-T1
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+- [x] W9-T5: Upgrade `install.sh` to curlable, artifact-based installer (idempotent, checksum verified).
+  - Depends on: W9-T1, W9-T2, W9-T4
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+
+### Wave 10 - Release Artifacts Pipeline
+
+- [x] W10-T1: Add GitHub Actions release workflow to build and upload artifacts.
+  - Depends on: W9-T1, W9-T2
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+- [x] W10-T2: Add `pressluft version` metadata command for release debugging.
+  - Depends on: W10-T1
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+
+### Wave 11 - Local Disposable Sandbox
+
+- [x] W11-T1: Add local sandbox scripts (ephemeral DB + secrets, cleanup on exit).
+  - Depends on: W9-T2
+  - Feature spec: `docs/features/feature-installation-packaging.md`
+
 ## Dependency and Contract Rules
 
 - `contracts/openapi.yaml` is canonical for API behavior.

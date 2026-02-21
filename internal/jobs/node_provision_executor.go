@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/ansible"
 	"pressluft/internal/store"
 )
 
@@ -39,7 +40,16 @@ func ExecuteQueuedNodeProvision(ctx context.Context, db *sql.DB, runner CommandR
 		return false, nil
 	}
 
-	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", job.Inventory, playbookPath)
+	inventoryPath, cleanup, err := ansible.WriteTempLocalInventory(job.Hostname)
+	if err != nil {
+		if err2 := completeNodeProvisionFailure(ctx, db, job.JobID, job.NodeID, nodeProvisionErrorCodeFailed, err.Error()); err2 != nil {
+			return true, err2
+		}
+		return true, err
+	}
+	defer cleanup()
+
+	output, runErr := runner.Run(ctx, "ansible-playbook", "-i", inventoryPath, playbookPath)
 	if runErr != nil {
 		errorCode := classifyNodeProvisionError(runErr)
 		truncated := truncateError(output, runErr)
@@ -57,9 +67,9 @@ func ExecuteQueuedNodeProvision(ctx context.Context, db *sql.DB, runner CommandR
 }
 
 type queuedNodeProvision struct {
-	JobID     string
-	NodeID    string
-	Inventory string
+	JobID    string
+	NodeID   string
+	Hostname string
 }
 
 func lockNextQueuedNodeProvision(ctx context.Context, db *sql.DB) (queuedNodeProvision, bool, error) {
@@ -100,7 +110,7 @@ func lockNextQueuedNodeProvision(ctx context.Context, db *sql.DB) (queuedNodePro
 			return fmt.Errorf("mark node provisioning: %w", err)
 		}
 
-		selected.Inventory = fmt.Sprintf("%s ansible_connection=local", hostname)
+		selected.Hostname = hostname
 		return nil
 	})
 	if err != nil {
