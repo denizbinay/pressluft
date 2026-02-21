@@ -1,0 +1,24 @@
+---
+- name: Create environment backup archive
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    required_vars:
+      - environment_id
+      - backup_id
+      - backup_scope
+      - storage_path
+  tasks:
+    - name: Validate required backup variables
+      ansible.builtin.assert:
+        that:
+          - vars[item] is defined
+          - (vars[item] | string | trim | length) > 0
+      loop: "{{ required_vars }}"
+
+    - name: Placeholder backup create task
+      ansible.builtin.debug:
+        msg: >-
+          backup_create requested for environment {{ environment_id }}
+          (backup {{ backup_id }}, scope {{ backup_scope }}, destination {{ storage_path }})

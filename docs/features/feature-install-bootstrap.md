@@ -24,9 +24,15 @@ Operators need a zero-manual setup path that installs Pressluft and registers th
 ## Allowed Change Paths
 
 - `install.sh`
+- `go.mod`
+- `go.sum`
+- `cmd/pressluft/**`
 - `internal/bootstrap/**`
 - `internal/nodes/**`
 - `internal/jobs/**`
+- `internal/store/**`
+- `migrations/migrate.go`
+- `.github/workflows/ci.yml`
 - `ansible/playbooks/node-provision.yml`
 - `docs/technical-architecture.md`
 - `docs/provisioning-spec.md`

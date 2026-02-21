@@ -1,0 +1,15 @@
+---
+- name: Health check verification
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Validate required runtime variables are present
+      ansible.builtin.assert:
+        that:
+          - environment_id is defined
+          - release_id is defined
+        fail_msg: "environment_id and release_id are required for health checks"
+
+    - name: Health check placeholder command
+      ansible.builtin.debug:
+        msg: "health_check baseline for environment {{ environment_id }} release {{ release_id }}"

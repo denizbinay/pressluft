@@ -25,3 +25,12 @@ This document defines the minimal health check contract for MVP.
 - Each check must complete within a configured timeout (default: 10 seconds).
 - Each check may be retried once before marking the release unhealthy.
 - If checks fail during deploy, restore, or promotion, rollback is triggered automatically.
+
+## Job Error Codes
+
+- `health_check` failures use stable structured job error codes:
+  - `HEALTH_CHECK_FAILED`
+  - `HEALTH_CHECK_TIMEOUT`
+- `release_rollback` failures use stable structured job error codes:
+  - `RELEASE_ROLLBACK_FAILED`
+  - `RELEASE_ROLLBACK_TIMEOUT`

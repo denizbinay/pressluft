@@ -28,10 +28,6 @@ jobs:
 
       - name: Validate backend gates
         run: |
-          if [ ! -f "cmd/pressluft/main.go" ]; then
-            echo "Skipping backend gates: cmd/pressluft/main.go not present yet."
-            exit 0
-          fi
           go build -o ./bin/pressluft ./cmd/pressluft
           go vet ./...
           go test ./internal/... -v

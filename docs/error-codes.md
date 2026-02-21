@@ -50,6 +50,7 @@ Use these for cross-endpoint validation/auth/resource failures where no domain-s
 | `ANSIBLE_SYNTAX_ERROR` | no | ansible exit code 5 | Invalid playbook/options/syntax. |
 | `ANSIBLE_UNEXPECTED_ERROR` | no | ansible exit code 250 | Unexpected Ansible runtime error. |
 | `ANSIBLE_UNKNOWN_EXIT` | no | ansible other non-zero | Unknown Ansible failure. |
+| `DOMAIN_DNS_MISMATCH` | no | domain_add preflight | Domain A/AAAA records do not resolve to the target node public IP. |
 
 ## Rules
 

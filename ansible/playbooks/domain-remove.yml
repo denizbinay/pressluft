@@ -1,0 +1,8 @@
+---
+- name: Remove custom domain and TLS artifacts
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder domain remove task
+      ansible.builtin.debug:
+        msg: "domain_remove playbook placeholder"

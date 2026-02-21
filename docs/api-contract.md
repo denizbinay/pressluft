@@ -74,10 +74,12 @@ This document is explanatory and must stay aligned with OpenAPI.
 
 - `POST /api/sites/{id}/environments`
   - Body: `{ name, slug, type, source_environment_id, promotion_preset }`
+  - `type`: `staging | clone`
   - Response: `{ job_id }`
 
 - `GET /api/environments/{id}`
 - `POST /api/environments/{id}/drift-check`
+  - Persists a drift-check record and updates environment drift metadata.
   - Response: `{ job_id }`
 - `POST /api/environments/{id}/deploy`
   - Body: `{ source_type, source_ref }`
@@ -91,10 +93,13 @@ This document is explanatory and must stay aligned with OpenAPI.
 
 - `POST /api/environments/{id}/restore`
   - Body: `{ backup_id }`
+  - `backup_id` must reference a completed backup owned by the same environment.
+  - A pre-restore full backup is reused when fresh or created before restore execution.
   - Response: `{ job_id }`
 
 - `POST /api/environments/{id}/promote`
   - Body: `{ target_environment_id }`
+  - Blocks with `409` unless drift status is `clean` and a fresh target full backup exists.
   - Response: `{ job_id }`
 
 ### Caching
@@ -102,11 +107,12 @@ This document is explanatory and must stay aligned with OpenAPI.
 - `PATCH /api/environments/{id}/cache`
   - Body: `{ fastcgi_cache_enabled?, redis_cache_enabled? }`
   - At least one field required. Values are booleans.
+  - Updates only the provided cache flags and enqueues an `env_cache_toggle` job.
   - Toggles FastCGI page cache and/or Redis Object Cache for the environment. Regenerates Nginx server block and toggles WordPress Redis drop-in as needed.
   - Response: `{ job_id }`
 
 - `POST /api/environments/{id}/cache/purge`
-  - Purges FastCGI page cache and Redis Object Cache for this environment.
+  - Purges FastCGI page cache and Redis Object Cache for this environment by enqueuing a `cache_purge` job.
   - Response: `{ job_id }`
 
 ### Magic Login
@@ -130,17 +136,24 @@ This document is explanatory and must stay aligned with OpenAPI.
   - Response: `{ job_id }`
 
 - `GET /api/environments/{id}/backups`
+  - Response: `Backup[]`
+  - Backup includes lifecycle status (`pending | running | completed | failed | expired`) and retention metadata (`retention_until`).
 
 ### Domains
 
 - `GET /api/environments/{id}/domains`
+  - Response: `Domain[]`
+  - Domain includes `tls_status` (`pending | active | failed | disabled`) and `tls_issuer` (`letsencrypt`).
 
 - `POST /api/environments/{id}/domains`
   - Body: `{ hostname }`
   - Response: `{ job_id }`
+  - Creates a domain record with `tls_status = pending` before enqueueing `domain_add`.
+  - If DNS does not resolve to the node public IP during execution, the job fails with `DOMAIN_DNS_MISMATCH`.
 
 - `DELETE /api/domains/{id}`
   - Response: `{ job_id }`
+  - Enqueues `domain_remove`; on successful completion the domain record is deleted.
 
 ### Jobs
 

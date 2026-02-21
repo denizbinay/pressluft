@@ -1,0 +1,8 @@
+---
+- name: Toggle environment caches
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder cache toggle task
+      ansible.builtin.debug:
+        msg: "env_cache_toggle playbook placeholder"

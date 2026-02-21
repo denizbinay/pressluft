@@ -212,6 +212,7 @@ paths:
       tags: [Environments]
       operationId: runDriftCheck
       summary: Run drift check
+      description: Creates a drift-check record and updates environment drift metadata.
       parameters:
         - $ref: '#/components/parameters/IdPathParam'
       responses:
@@ -288,6 +289,7 @@ paths:
       tags: [Environments]
       operationId: restoreEnvironment
       summary: Restore environment
+      description: Restores from an environment-owned completed backup and requires a pre-restore full backup snapshot.
       parameters:
         - $ref: '#/components/parameters/IdPathParam'
       requestBody:
@@ -313,7 +315,7 @@ paths:
       tags: [Environments]
       operationId: promoteEnvironment
       summary: Promote environment
-      description: Requires a successful drift-check gate and fresh backup confirmation.
+      description: Requires a clean drift gate and a fresh full backup on the target environment.
       parameters:
         - $ref: '#/components/parameters/IdPathParam'
       requestBody:
@@ -781,7 +783,7 @@ components:
           minLength: 1
         type:
           type: string
-          enum: [production, staging, clone]
+          enum: [staging, clone]
         source_environment_id:
           type: [string, 'null']
           format: uuid
@@ -904,6 +906,7 @@ components:
         backup_id:
           type: string
           format: uuid
+          description: Completed backup id owned by the same environment.
       additionalProperties: false
 
     PromoteRequest:

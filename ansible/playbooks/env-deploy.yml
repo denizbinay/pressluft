@@ -1,0 +1,8 @@
+---
+- name: Deploy environment release
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder deploy task
+      ansible.builtin.debug:
+        msg: "env_deploy playbook placeholder"

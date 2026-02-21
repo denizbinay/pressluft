@@ -1,0 +1,8 @@
+---
+- name: Apply environment updates
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder update task
+      ansible.builtin.debug:
+        msg: "env_update playbook placeholder"

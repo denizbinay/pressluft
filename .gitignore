@@ -1,1 +1,10 @@
 coordination/runs/
+
+# Local build artifacts
+bin/
+
+# Local dev databases
+pressluft.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal

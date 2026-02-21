@@ -50,3 +50,6 @@ This document defines backup storage, retention, and restore behavior for MVP.
 ## Cleanup
 
 - A scheduled cleanup job removes backups where `retention_until` is in the past.
+- Cleanup scheduler interval: every 6 hours.
+- Scheduler de-dup rule: per site, do not enqueue a new `backup_cleanup` while one is already `queued` or `running`.
+- On successful cleanup, backup state transitions to `expired`.

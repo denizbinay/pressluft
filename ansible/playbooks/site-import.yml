@@ -1,0 +1,8 @@
+---
+- name: Import site from archive
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder site import task
+      ansible.builtin.debug:
+        msg: "site_import playbook placeholder"

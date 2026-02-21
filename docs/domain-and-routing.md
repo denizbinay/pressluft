@@ -20,6 +20,12 @@ This document specifies how Pressluft handles domains, preview URLs, TLS certifi
 
 Operators configure domain and routing settings through an authenticated internal admin settings API (`/_admin/settings/*`). These values are stored in the `settings` table (see `docs/data-model.md`). Public `/api/settings` endpoints are not part of the MVP OpenAPI contract.
 
+Current internal endpoint surface:
+
+- `GET /_admin/settings/domain-config` returns current values for `control_plane_domain`, `preview_domain`, and `dns01_provider`, plus `dns01_credentials_configured`.
+- `PUT /_admin/settings/domain-config` atomically updates `control_plane_domain`, `preview_domain`, `dns01_provider`, and `dns01_credentials_json` with cross-field validation.
+- `dns01_credentials_json` is always redacted in API responses and is persisted only as an encrypted secret reference.
+
 ### Required Settings
 
 | Setting | Description | Example |

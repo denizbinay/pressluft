@@ -1,0 +1,14 @@
+---
+- name: Provision Pressluft node baseline
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Ensure baseline packages are present
+      ansible.builtin.apt:
+        name:
+          - curl
+          - git
+          - rsync
+        state: present
+        update_cache: true

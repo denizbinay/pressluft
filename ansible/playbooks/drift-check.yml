@@ -1,0 +1,8 @@
+---
+- name: Run environment drift check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder drift check task
+      ansible.builtin.debug:
+        msg: "drift_check playbook placeholder"

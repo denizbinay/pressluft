@@ -1,0 +1,23 @@
+---
+- name: Remove expired backup object from off-site storage
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    required_vars:
+      - backup_id
+      - storage_path
+      - environment_id
+  tasks:
+    - name: Validate required backup cleanup variables
+      ansible.builtin.assert:
+        that:
+          - vars[item] is defined
+          - (vars[item] | string | trim | length) > 0
+      loop: "{{ required_vars }}"
+
+    - name: Placeholder backup cleanup task
+      ansible.builtin.debug:
+        msg: >-
+          backup_cleanup requested for environment {{ environment_id }}
+          (backup {{ backup_id }}, object {{ storage_path }})

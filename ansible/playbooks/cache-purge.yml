@@ -1,0 +1,8 @@
+---
+- name: Purge environment caches
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder cache purge task
+      ansible.builtin.debug:
+        msg: "cache_purge playbook placeholder"

@@ -1,0 +1,16 @@
+---
+- name: Release rollback execution
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Validate rollback release identifiers are present
+      ansible.builtin.assert:
+        that:
+          - environment_id is defined
+          - failed_release_id is defined
+          - restored_release_id is defined
+        fail_msg: "environment_id, failed_release_id, and restored_release_id are required"
+
+    - name: Rollback placeholder command
+      ansible.builtin.debug:
+        msg: "rollback baseline for environment {{ environment_id }} from {{ failed_release_id }} to {{ restored_release_id }}"

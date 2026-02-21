@@ -1,0 +1,8 @@
+---
+- name: Promote environment
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder promote task
+      ansible.builtin.debug:
+        msg: "env_promote playbook placeholder"

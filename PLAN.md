@@ -45,85 +45,85 @@ Merge points:
 
 ### Wave 0 - Bootstrap and Gates
 
-- [ ] W0-T1: Establish runnable Go module layout (`cmd/pressluft`, `internal/**`).
+- [x] W0-T1: Establish runnable Go module layout (`cmd/pressluft`, `internal/**`).
   - Depends on: none
   - Feature spec: `docs/features/feature-install-bootstrap.md`
-- [ ] W0-T2: Ensure migration runner works on clean DB.
+- [x] W0-T2: Ensure migration runner works on clean DB.
   - Depends on: W0-T1
   - Feature spec: `docs/features/feature-install-bootstrap.md`
-- [ ] W0-T3: Make build/vet/test gates executable in CI.
+- [x] W0-T3: Make build/vet/test gates executable in CI.
   - Depends on: W0-T1
   - Feature spec: `docs/features/feature-install-bootstrap.md`
 
 ### Wave 1 - Core Runtime and Queue
 
-- [ ] W1-T1: Implement node provisioning job contract and execution path.
+- [x] W1-T1: Implement node provisioning job contract and execution path.
   - Depends on: W0-T1, W0-T2
   - Feature spec: `docs/features/feature-node-provision.md`
-- [ ] W1-T2: Implement auth session login/logout + cookie lifecycle.
+- [x] W1-T2: Implement auth session login/logout + cookie lifecycle.
   - Depends on: W0-T1
   - Feature spec: `docs/features/feature-auth-session.md`
-- [ ] W1-T3: Implement mutation queue locking invariants (site/node single-mutation).
+- [x] W1-T3: Implement mutation queue locking invariants (site/node single-mutation).
   - Depends on: W1-T1
   - Feature spec: `docs/features/feature-node-provision.md`
-- [ ] W1-T4: Implement baseline audit logging for all mutating API actions.
+- [x] W1-T4: Implement baseline audit logging for all mutating API actions.
   - Depends on: W1-T2
   - Feature spec: `docs/features/feature-audit-logging.md`
 
 ### Wave 2 - Site, Environment, and Backup Foundations
 
-- [ ] W2-T1: Implement site create API + `site_create` job.
+- [x] W2-T1: Implement site create API + `site_create` job.
   - Depends on: MP1
   - Feature spec: `docs/features/feature-site-create.md`
-- [ ] W2-T2: Implement environment create/clone API + `env_create` job.
+- [x] W2-T2: Implement environment create/clone API + `env_create` job.
   - Depends on: W2-T1
   - Feature spec: `docs/features/feature-environment-create-clone.md`
-- [ ] W2-T3: Implement backup create/list with retention surface.
+- [x] W2-T3: Implement backup create/list with retention surface.
   - Depends on: W2-T2
   - Feature spec: `docs/features/feature-backups.md`
-- [ ] W2-T4: Implement health checks and rollback (`health_check`, `release_rollback`).
+- [x] W2-T4: Implement health checks and rollback (`health_check`, `release_rollback`).
   - Depends on: W2-T2
   - Feature spec: `docs/features/feature-health-checks-and-rollback.md`
 
 ### Wave 3 - Deployment, Restore, and Promotion Safety
 
-- [ ] W3-T1: Implement deploy/update mutations (`env_deploy`, `env_update`).
+- [x] W3-T1: Implement deploy/update mutations (`env_deploy`, `env_update`).
   - Depends on: W2-T3, W2-T4
   - Feature spec: `docs/features/feature-environment-deploy-updates.md`
-- [ ] W3-T2: Implement environment restore (`env_restore`) with safety checks.
+- [x] W3-T2: Implement environment restore (`env_restore`) with safety checks.
   - Depends on: W3-T1, W2-T3
   - Feature spec: `docs/features/feature-environment-restore.md`
-- [ ] W3-T3: Implement drift check and promotion guardrails (`drift_check`, `env_promote`).
+- [x] W3-T3: Implement drift check and promotion guardrails (`drift_check`, `env_promote`).
   - Depends on: W3-T1, W2-T3
   - Feature spec: `docs/features/feature-promotion-drift.md`
 
 ### Wave 4 - Domain, Cache, Operator Workflows
 
-- [ ] W4-T1: Implement domain add/remove and TLS status surfaces.
+- [x] W4-T1: Implement domain add/remove and TLS status surfaces.
   - Depends on: MP2
   - Feature spec: `docs/features/feature-domains-and-tls.md`
-- [ ] W4-T2: Implement cache toggle/purge mutations.
+- [x] W4-T2: Implement cache toggle/purge mutations.
   - Depends on: MP2
   - Feature spec: `docs/features/feature-cache-controls.md`
-- [ ] W4-T3: Implement magic login synchronous node query.
+- [x] W4-T3: Implement magic login synchronous node query.
   - Depends on: W2-T2
   - Feature spec: `docs/features/feature-magic-login.md`
-- [ ] W4-T4: Implement site import flow (`site_import`).
+- [x] W4-T4: Implement site import flow (`site_import`).
   - Depends on: MP2
   - Feature spec: `docs/features/feature-site-import.md`
-- [ ] W4-T5: Implement settings domain config control surface.
+- [x] W4-T5: Implement settings domain config control surface.
   - Depends on: W4-T1
   - Feature spec: `docs/features/feature-settings-domain-config.md`
 
 ### Wave 5 - Observability and Control
 
-- [ ] W5-T1: Implement jobs and metrics read APIs.
+- [x] W5-T1: Implement jobs and metrics read APIs.
   - Depends on: W2-T1
   - Feature spec: `docs/features/feature-jobs-and-metrics.md`
-- [ ] W5-T3: Implement backup retention cleanup orchestration.
+- [x] W5-T3: Implement backup retention cleanup orchestration.
   - Depends on: W2-T3
   - Feature spec: `docs/features/feature-backup-retention-cleanup.md`
-- [ ] W5-T4: Implement administrative job control actions.
+- [x] W5-T4: Implement administrative job control actions.
   - Depends on: W5-T1
   - Feature spec: `docs/features/feature-job-control.md`
 

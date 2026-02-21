@@ -23,6 +23,11 @@ This document is the canonical configuration inventory for control plane and nod
 | `dns01_provider` | string or null | conditional | null | no | Required when `preview_domain` is set |
 | `dns01_credentials_json` | encrypted JSON reference | conditional | null | yes | Required when `preview_domain` is set |
 
+Internal admin API (`/_admin/settings/domain-config`) notes:
+
+- `GET` returns `dns01_credentials_configured` and always redacts `dns01_credentials_json`.
+- `PUT` requires a complete domain config payload and enforces `preview_domain` => `dns01_provider` + `dns01_credentials_json`.
+
 ## Runtime Environment Variables (Control Plane Process)
 
 | Name | Type | Required | Default | Secret | Notes |

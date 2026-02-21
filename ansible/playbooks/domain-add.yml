@@ -1,0 +1,8 @@
+---
+- name: Add custom domain and provision TLS
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder domain add task
+      ansible.builtin.debug:
+        msg: "domain_add playbook placeholder"

@@ -1,0 +1,8 @@
+---
+- name: Restore environment from backup
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Placeholder restore task
+      ansible.builtin.debug:
+        msg: "env_restore playbook placeholder"
