@@ -38,6 +38,7 @@ This directory contains implementation-bound feature specs.
 - `docs/features/feature-health-checks-and-rollback.md`
 - `docs/features/feature-audit-logging.md`
 - `docs/features/feature-job-control.md`
+- `docs/features/feature-parallel-lock-check-output.md`
 - `docs/features/feature-web-dashboard-bootstrap.md`
 - `docs/features/feature-web-auth-and-shell.md`
 - `docs/features/feature-web-embed-and-delivery.md`
