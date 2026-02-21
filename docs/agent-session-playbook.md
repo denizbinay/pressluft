@@ -27,6 +27,13 @@ Every implementation session must:
 4. Run `/backend-gates` and `/frontend-gates` as applicable.
 5. Produce handoff output for substantial sessions.
 
+## Unattended Flow (OpenCode)
+
+1. Start OpenCode from repository root (or open this repo in Desktop).
+2. Start unattended execution: `/run-plan`.
+3. If interrupted, start a new session and resume with `/resume-run`.
+4. On failure, run `/triage-failures`.
+
 ### Session Kickoff Template
 
 Every non-trivial implementation session should start with this packet:

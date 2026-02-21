@@ -77,12 +77,22 @@ Start at `docs/spec-index.md`. For implementation, load only needed docs:
 - Decision records: `docs/adr/README.md`
 - Session guide: `docs/agent-session-playbook.md`
 
-## 6. When to Ask First
+## 6. Runtime Interaction Policy
 
-- Adding new dependencies (Go or npm)
-- Changing DB schema or files in `migrations/`
-- Adding new API endpoints
-- Changing Ansible playbook structure
+The repository ships one canonical OpenCode runtime config: `opencode.json`.
+
+Default behavior is guarded autonomy:
+
+- unattended execution is allowed,
+- catastrophic local shell patterns are denied by config,
+- all hard spec constraints remain mandatory.
+
+Ask first before these categories when an operator is present:
+
+- Adding new dependencies (Go or npm).
+- Changing DB schema or files in `migrations/`.
+- Adding new API endpoints.
+- Changing Ansible playbook structure.
 
 ## 7. Never Do
 

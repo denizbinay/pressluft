@@ -52,3 +52,11 @@ Optional for large changes:
 ## Archive Rule
 
 After implementation completes, update canonical specs in the same PR and mark the change folder as archived in `changes/README.md`.
+
+## Unattended Commit Policy
+
+For unattended in-session runs (`/run-plan`):
+
+- Keep commits task-scoped (one plan task per commit) when auto-commit is enabled.
+- Commit messages should include task id and rationale.
+- Auto-push remains optional and should be explicitly enabled by operator policy.

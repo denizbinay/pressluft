@@ -82,6 +82,9 @@ Project command presets under `.opencode/commands/` provide deterministic gate e
 - `/backend-gates`
 - `/frontend-gates`
 - `/session-kickoff <docs/features/feature-*.md>`
+- `/run-plan`
+- `/resume-run`
+- `/triage-failures`
 
 Smoke-test these commands after OpenCode config changes to confirm command discovery and output wiring remain functional.
 

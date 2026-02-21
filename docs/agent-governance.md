@@ -18,7 +18,15 @@ This document defines mandatory behavioral boundaries for agentic execution.
 - Map verification output to explicit acceptance criteria.
 - Keep OpenAPI-first authority for all API behavior changes.
 
-## Ask First
+## Runtime Interaction Policy
+
+The repository ships one canonical OpenCode runtime config: `opencode.json`.
+
+- Default execution posture is guarded autonomy.
+- Catastrophic local shell patterns are denied by config.
+- Hard spec constraints remain mandatory in all sessions.
+
+## Ask First (Operator-Present Sessions)
 
 - Adding Go or npm dependencies.
 - Changing DB schema or files under `migrations/`.

@@ -54,6 +54,7 @@ required_paths = [
     "contracts/openapi.yaml",
     "docs/contract-traceability.md",
     "docs/adr/README.md",
+    "docs/unattended-orchestration.md",
     "docs/error-codes.md",
     "docs/job-types.md",
     "coordination/locks.md",
@@ -87,6 +88,9 @@ required_command_files = [
     ".opencode/commands/backend-gates.md",
     ".opencode/commands/frontend-gates.md",
     ".opencode/commands/session-kickoff.md",
+    ".opencode/commands/run-plan.md",
+    ".opencode/commands/resume-run.md",
+    ".opencode/commands/triage-failures.md",
 ]
 
 missing_command_files = [p for p in required_command_files if not os.path.exists(os.path.join(root, p))]
@@ -96,18 +100,10 @@ if missing_command_files:
         print(f"  - {path}")
     sys.exit(1)
 
-opencode_path = os.path.join(root, "opencode.json")
-with open(opencode_path, "r", encoding="utf-8") as f:
-    try:
-        opencode = json.load(f)
-    except json.JSONDecodeError as err:
-        print(f"Readiness check failed: invalid opencode.json ({err})")
-        sys.exit(1)
 
-instructions = opencode.get("instructions")
-if not isinstance(instructions, list) or not instructions:
-    print("Readiness check failed: opencode.json must define a non-empty instructions array")
-    sys.exit(1)
+config_files = [
+    "opencode.json",
+]
 
 required_instructions = [
     "AGENTS.md",
@@ -116,51 +112,65 @@ required_instructions = [
     "PROGRESS.md",
 ]
 
-missing_instructions = [p for p in required_instructions if p not in instructions]
-if missing_instructions:
-    print("Readiness check failed: opencode.json missing required instruction paths")
-    for path in missing_instructions:
-        print(f"  - {path}")
-    sys.exit(1)
+for config_name in config_files:
+    opencode_path = os.path.join(root, config_name)
+    with open(opencode_path, "r", encoding="utf-8") as f:
+        try:
+            opencode = json.load(f)
+        except json.JSONDecodeError as err:
+            print(f"Readiness check failed: invalid {config_name} ({err})")
+            sys.exit(1)
 
-missing_instruction_files = [p for p in instructions if not os.path.exists(os.path.join(root, p))]
-if missing_instruction_files:
-    print("Readiness check failed: opencode.json references missing instruction files")
-    for path in missing_instruction_files:
-        print(f"  - {path}")
-    sys.exit(1)
-
-permission = opencode.get("permission")
-if not isinstance(permission, dict):
-    print("Readiness check failed: opencode.json must define a permission object")
-    sys.exit(1)
-
-for key in ("edit", "bash", "webfetch"):
-    if key not in permission:
-        print(f"Readiness check failed: opencode.json permission missing '{key}'")
+    instructions = opencode.get("instructions")
+    if not isinstance(instructions, list) or not instructions:
+        print(f"Readiness check failed: {config_name} must define a non-empty instructions array")
         sys.exit(1)
 
-agents = opencode.get("agent")
-if not isinstance(agents, dict):
-    print("Readiness check failed: opencode.json must define an agent object")
-    sys.exit(1)
+    missing_instructions = [p for p in required_instructions if p not in instructions]
+    if missing_instructions:
+        print(f"Readiness check failed: {config_name} missing required instruction paths")
+        for path in missing_instructions:
+            print(f"  - {path}")
+        sys.exit(1)
 
-for name in ("build", "plan"):
-    agent = agents.get(name)
-    if not isinstance(agent, dict):
-        print(f"Readiness check failed: opencode.json agent missing '{name}' config")
+    missing_instruction_files = [p for p in instructions if not os.path.exists(os.path.join(root, p))]
+    if missing_instruction_files:
+        print(f"Readiness check failed: {config_name} references missing instruction files")
+        for path in missing_instruction_files:
+            print(f"  - {path}")
         sys.exit(1)
-    agent_perm = agent.get("permission")
-    if not isinstance(agent_perm, dict):
-        print(f"Readiness check failed: opencode.json agent '{name}' missing permission object")
+
+    permission = opencode.get("permission")
+    if not isinstance(permission, dict):
+        print(f"Readiness check failed: {config_name} must define a permission object")
         sys.exit(1)
-    task_perm = agent_perm.get("task")
-    if not isinstance(task_perm, dict):
-        print(f"Readiness check failed: opencode.json agent '{name}' missing permission.task object")
+
+    for key in ("edit", "bash", "webfetch"):
+        if key not in permission:
+            print(f"Readiness check failed: {config_name} permission missing '{key}'")
+            sys.exit(1)
+
+    agents = opencode.get("agent")
+    if not isinstance(agents, dict):
+        print(f"Readiness check failed: {config_name} must define an agent object")
         sys.exit(1)
-    if "*" not in task_perm:
-        print(f"Readiness check failed: opencode.json agent '{name}' permission.task must include '*' rule")
-        sys.exit(1)
+
+    for name in ("build", "plan"):
+        agent = agents.get(name)
+        if not isinstance(agent, dict):
+            print(f"Readiness check failed: {config_name} agent missing '{name}' config")
+            sys.exit(1)
+        agent_perm = agent.get("permission")
+        if not isinstance(agent_perm, dict):
+            print(f"Readiness check failed: {config_name} agent '{name}' missing permission object")
+            sys.exit(1)
+        task_perm = agent_perm.get("task")
+        if not isinstance(task_perm, dict):
+            print(f"Readiness check failed: {config_name} agent '{name}' missing permission.task object")
+            sys.exit(1)
+        if "*" not in task_perm:
+            print(f"Readiness check failed: {config_name} agent '{name}' permission.task must include '*' rule")
+            sys.exit(1)
 
 print("Readiness check passed")
 PY

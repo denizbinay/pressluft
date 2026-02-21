@@ -78,6 +78,7 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 - docs/spec-lifecycle.md
 - docs/changes-workflow.md
 - docs/agent-session-playbook.md
+- docs/unattended-orchestration.md
 - docs/templates/feature-spec-template.md
 - docs/templates/session-handoff-template.md
 - docs/features/README.md

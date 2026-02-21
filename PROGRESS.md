@@ -6,8 +6,8 @@ Last Updated: 2026-02-21
 
 ## Current Stage
 
-- Stage: process hardening baseline complete.
-- Reliability-first agent workflow and automation scaffolding established.
+- Stage: unattended orchestration baseline established.
+- Single guarded OpenCode runtime config is now canonical for all sessions.
 
 ## Completed
 
@@ -28,6 +28,8 @@ Last Updated: 2026-02-21
 - ADR system added: `docs/adr/README.md`, `docs/adr/template.md`, `docs/adr/0001-spec-routing-and-contract-authority.md`.
 - Parallel lock registry enforcement added: `coordination/locks.md`, `scripts/check-parallel-locks.sh`.
 - Feature spec template and active Wave 0/1 feature specs updated with WHEN/THEN scenarios.
+- Unattended orchestration docs and OpenCode command presets added (`docs/unattended-orchestration.md`, `.opencode/commands/*`).
+- Unattended OpenCode command presets added (`/run-plan`, `/resume-run`, `/triage-failures`).
 
 ## In Progress
 
@@ -35,9 +37,9 @@ Last Updated: 2026-02-21
 
 ## Next Up
 
-1. Execute Wave 0 task W0-T1 to establish runnable Go module structure (`cmd/pressluft`, `internal/**`).
-2. Execute W0-T2 and W0-T3 to make backend gates fully runnable in CI.
-3. Start Wave 1 with node provision and auth-session foundations.
+1. Smoke-test unattended commands (`/run-plan`, `/resume-run`, `/triage-failures`).
+2. Execute unattended run for Wave 0 (`/run-plan`).
+3. Continue Wave 1 after Wave 0 gate stabilization.
 
 ## Open Risks
 

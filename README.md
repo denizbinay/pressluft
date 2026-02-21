@@ -20,3 +20,10 @@ Useful command presets:
 - `/session-kickoff docs/features/feature-install-bootstrap.md`
 - `/backend-gates`
 - `/frontend-gates`
+
+## OpenCode Unattended Quick Start
+
+1. Start OpenCode from repository root (or open this repo in Desktop).
+2. Start unattended execution: `/run-plan`.
+3. Resume in a new session: `/resume-run`.
+4. Triage failures: `/triage-failures`.
