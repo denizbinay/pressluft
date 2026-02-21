@@ -56,6 +56,7 @@ Escalate immediately when blocked by:
 
 - One agent may own one file at a time.
 - Ownership must be explicit before edits (lock record or task assignment).
+- Active ownership records are tracked in `coordination/locks.md`.
 - Stale ownership older than 2 hours may be reclaimed with a log entry.
 - Merge points must be declared before parallel branches converge.
 

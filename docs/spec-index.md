@@ -24,6 +24,12 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 
 ## Documents
 
+### Root Routers
+
+- SPEC.md
+- ARCHITECTURE.md
+- CONTRACTS.md
+
 ### Core (Always Load)
 
 - docs/data-model.md
@@ -74,6 +80,10 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 - docs/features/README.md
 - docs/pre-plan-readiness.md
 
+### Decision Records
+
+- docs/adr/README.md
+
 ## Locked Decisions (MVP)
 
 - Single admin user (no multi-user roles).
@@ -106,6 +116,7 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 
 - Every implementation task must reference one feature spec under `docs/features/`.
 - Every feature spec must declare in-scope paths, out-of-scope changes, acceptance criteria, and test requirements.
+- Session startup should load `PLAN.md` and `PROGRESS.md` before implementation.
 - API behavior is canonical in `contracts/openapi.yaml`; `docs/api-contract.md` is explanatory.
 - Every OpenAPI endpoint must map to exactly one owning feature spec in `docs/contract-traceability.md`.
 - Keep per-session context minimal: core docs + one feature spec + relevant domain docs.

@@ -16,7 +16,7 @@ This document defines how to run multiple agents safely on the same repository.
 
 ## File Ownership
 
-- Before edits, claim file ownership in coordination notes.
+- Before edits, claim file ownership in `coordination/locks.md`.
 - Do not edit files already owned by another active agent.
 - If a shared file is required, schedule a merge point and handoff.
 
@@ -25,6 +25,8 @@ This document defines how to run multiple agents safely on the same repository.
 - Lock identifier format: `<wave>/<task>/<agent-id>`.
 - Lock record must include: owner, claimed paths, start time, intended duration.
 - Lock timeout is 2 hours; expired locks are reclaimable.
+- Lock records must use UTC ISO-8601 timestamps (`YYYY-MM-DDTHH:MM:SSZ`).
+- Validate lock records with `bash scripts/check-parallel-locks.sh`.
 
 ## Stale Lock Recovery
 
@@ -32,6 +34,19 @@ This document defines how to run multiple agents safely on the same repository.
 2. Record reclaim decision and reason.
 3. Reassign the task with updated ownership.
 4. Re-run relevant verification for reclaimed paths.
+
+## Lock Registry Format
+
+- File: `coordination/locks.md`
+- Active locks belong under `## Active Locks`.
+- Each active lock row must include:
+  - `lock_id`
+  - `owner`
+  - `paths`
+  - `claimed_at_utc`
+  - `expected_minutes`
+  - `status`
+  - `note`
 
 ## Merge Points
 

@@ -12,6 +12,7 @@ Last Updated: 2026-02-21
 
 ## Wave Map
 
+- Wave G: governance and spec-routing hardening baseline.
 - Wave 0: repository bootstrap and verification baseline.
 - Wave 1: core runtime and mutation queue foundations.
 - Wave 2: site/environment lifecycle mutations.
@@ -26,6 +27,21 @@ Merge points:
 - MP3: end of Wave 5 before MVP release hardening.
 
 ## Atomic Task Backlog
+
+### Wave G - Governance and Routing Hardening (Completed)
+
+- [x] WG-T1: Add top-level routing specs for discoverability (`SPEC.md`, `ARCHITECTURE.md`, `CONTRACTS.md`).
+  - Depends on: none
+  - Governing docs: `docs/spec-index.md`, `AGENTS.md`
+- [x] WG-T2: Introduce ADR system with template and first accepted record.
+  - Depends on: WG-T1
+  - Governing docs: `docs/spec-lifecycle.md`, `docs/changes-workflow.md`
+- [x] WG-T3: Enforce parallel lock registry and stale-lock lint in readiness checks.
+  - Depends on: WG-T1
+  - Governing docs: `docs/parallel-execution.md`, `docs/agent-governance.md`, `docs/testing.md`
+- [x] WG-T4: Tighten session start contract and scenario-level spec structure.
+  - Depends on: WG-T1
+  - Governing docs: `CLAUDE.md`, `docs/templates/feature-spec-template.md`
 
 ### Wave 0 - Bootstrap and Gates
 

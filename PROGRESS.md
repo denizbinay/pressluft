@@ -19,6 +19,10 @@ Last Updated: 2026-02-21
 - CI workflow added: `.github/workflows/ci.yml`.
 - OpenCode agent role pack added under `.opencode/agents/`.
 - Claude compatibility shim added: `CLAUDE.md`.
+- Root spec router docs added: `SPEC.md`, `ARCHITECTURE.md`, `CONTRACTS.md`.
+- ADR system added: `docs/adr/README.md`, `docs/adr/template.md`, `docs/adr/0001-spec-routing-and-contract-authority.md`.
+- Parallel lock registry enforcement added: `coordination/locks.md`, `scripts/check-parallel-locks.sh`.
+- Feature spec template and active Wave 0/1 feature specs updated with WHEN/THEN scenarios.
 
 ## In Progress
 
@@ -33,4 +37,4 @@ Last Updated: 2026-02-21
 ## Open Risks
 
 - Backend gate commands are currently conditional in CI until `cmd/pressluft/main.go` exists.
-- Parallel execution policy is documented but requires active lock-tracking discipline during implementation.
+- Parallel execution now has lock linting, but still depends on active discipline for ownership transfer during live parallel sessions.

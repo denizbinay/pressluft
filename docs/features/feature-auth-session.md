@@ -48,6 +48,12 @@ Contract/spec files:
 3. Logout returns `200`, revokes the current session token, and clears the auth cookie.
 4. Protected endpoints reject expired or revoked tokens with `401`.
 
+## Scenarios (WHEN/THEN)
+
+1. WHEN valid credentials are submitted to `POST /api/login` THEN the API returns `200` and sets `session_token` cookie.
+2. WHEN invalid credentials are submitted to `POST /api/login` THEN the API returns `401` with the canonical error shape.
+3. WHEN a revoked or expired session token is used on a protected endpoint THEN access is denied with `401`.
+
 ## Verification
 
 - Required commands:

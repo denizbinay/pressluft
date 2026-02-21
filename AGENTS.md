@@ -68,11 +68,13 @@ Go uses stdlib-first approach. Frontend uses `<script setup lang="ts">` only.
 
 Start at `docs/spec-index.md`. For implementation, load only needed docs:
 
+- Root routers: `SPEC.md`, `ARCHITECTURE.md`, `CONTRACTS.md`
 - Core: `docs/technical-architecture.md`, `docs/data-model.md`, `docs/job-execution.md`
 - Contracts: `contracts/openapi.yaml`, `docs/api-contract.md`, `docs/contract-guardrails.md`, `docs/contract-traceability.md`, `docs/error-codes.md`, `docs/job-types.md`
 - Infra: `docs/ansible-execution.md`, `docs/provisioning-spec.md`
 - Security: `docs/security-and-secrets.md`
 - Schema authority: `docs/schema-authority.md`, `docs/migrations-guidelines.md`
+- Decision records: `docs/adr/README.md`
 - Session guide: `docs/agent-session-playbook.md`
 
 ## 6. When to Ask First

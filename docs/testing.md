@@ -70,6 +70,7 @@ The following scripts automate readiness and drift checks:
 - `bash scripts/check-readiness.sh`
 - `bash scripts/check-contract-traceability.sh`
 - `bash scripts/check-job-error-registry.sh`
+- `bash scripts/check-parallel-locks.sh`
 
 ## CI Expectations
 

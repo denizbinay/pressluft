@@ -46,10 +46,15 @@ if not up or not down:
     sys.exit(1)
 
 required_paths = [
+    "SPEC.md",
+    "ARCHITECTURE.md",
+    "CONTRACTS.md",
     "contracts/openapi.yaml",
     "docs/contract-traceability.md",
+    "docs/adr/README.md",
     "docs/error-codes.md",
     "docs/job-types.md",
+    "coordination/locks.md",
     "PLAN.md",
     "PROGRESS.md",
 ]
@@ -66,5 +71,6 @@ PY
 
 "$ROOT_DIR/scripts/check-contract-traceability.sh"
 "$ROOT_DIR/scripts/check-job-error-registry.sh"
+"$ROOT_DIR/scripts/check-parallel-locks.sh"
 
 echo "All readiness checks passed"

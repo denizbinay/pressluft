@@ -49,6 +49,12 @@ Contract/spec files:
 3. Node status and job status transition transactionally for success and failure.
 4. Provisioning failure surfaces structured error code and truncated output.
 
+## Scenarios (WHEN/THEN)
+
+1. WHEN `node_provision` is requested THEN the control plane enqueues a job and executes the mapped Ansible playbook.
+2. WHEN provisioning is retried for an already provisioned node THEN the run is idempotent and does not break node state.
+3. WHEN Ansible fails or times out THEN job and node status transitions remain transactional and error codes are stable.
+
 ## Verification
 
 - Required commands:

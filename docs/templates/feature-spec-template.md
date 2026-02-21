@@ -48,6 +48,12 @@ If update is required, list exact contract/spec files.
 2. <behavioral criterion>
 3. <behavioral criterion>
 
+## Scenarios (WHEN/THEN)
+
+1. WHEN <trigger/event> THEN <observable behavior/result>.
+2. WHEN <edge case> THEN <expected safe behavior/error>.
+3. WHEN rollback is required THEN <state and contract return to known-safe baseline>.
+
 ## Verification
 
 - Required commands:
