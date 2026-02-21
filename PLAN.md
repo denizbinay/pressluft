@@ -41,7 +41,7 @@ Merge points:
   - Governing docs: `docs/parallel-execution.md`, `docs/agent-governance.md`, `docs/testing.md`
 - [x] WG-T4: Tighten session start contract and scenario-level spec structure.
   - Depends on: WG-T1
-  - Governing docs: `CLAUDE.md`, `docs/templates/feature-spec-template.md`
+  - Governing docs: `AGENTS.md`, `docs/templates/feature-spec-template.md`
 
 ### Wave 0 - Bootstrap and Gates
 

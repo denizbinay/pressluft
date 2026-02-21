@@ -72,6 +72,19 @@ The following scripts automate readiness and drift checks:
 - `bash scripts/check-job-error-registry.sh`
 - `bash scripts/check-parallel-locks.sh`
 
+`scripts/check-readiness.sh` also validates OpenCode runtime bootstrap (`opencode.json`) and required local agent role files under `.opencode/agents/`.
+
+## OpenCode Command Presets
+
+Project command presets under `.opencode/commands/` provide deterministic gate execution in-session:
+
+- `/readiness`
+- `/backend-gates`
+- `/frontend-gates`
+- `/session-kickoff <docs/features/feature-*.md>`
+
+Smoke-test these commands after OpenCode config changes to confirm command discovery and output wiring remain functional.
+
 ## CI Expectations
 
 - CI must run scripted checks on each PR/push.

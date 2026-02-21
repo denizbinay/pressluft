@@ -70,6 +70,9 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 
 ### Agent Workflow
 
+- opencode.json
+- .opencode/agents/*.md
+- .opencode/commands/*.md
 - docs/agent-governance.md
 - docs/parallel-execution.md
 - docs/spec-lifecycle.md
@@ -116,6 +119,7 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 
 - Every implementation task must reference one feature spec under `docs/features/`.
 - Every feature spec must declare in-scope paths, out-of-scope changes, acceptance criteria, and test requirements.
+- OpenCode runtime bootstrap must come from `opencode.json` `instructions` and not implied references.
 - Session startup should load `PLAN.md` and `PROGRESS.md` before implementation.
 - API behavior is canonical in `contracts/openapi.yaml`; `docs/api-contract.md` is explanatory.
 - Every OpenAPI endpoint must map to exactly one owning feature spec in `docs/contract-traceability.md`.

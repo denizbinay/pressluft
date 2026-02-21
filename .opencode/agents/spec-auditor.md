@@ -1,3 +1,11 @@
+---
+description: Audits spec and contract drift before merge
+mode: subagent
+tools:
+  write: false
+  edit: false
+---
+
 # Spec Auditor Agent
 
 ## Role

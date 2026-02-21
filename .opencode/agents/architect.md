@@ -1,3 +1,12 @@
+---
+description: Creates scoped implementation plans from specs
+mode: subagent
+tools:
+  write: false
+  edit: false
+  bash: false
+---
+
 # Architect Agent
 
 ## Role

@@ -1,3 +1,11 @@
+---
+description: Reviews implementation for spec and quality compliance
+mode: subagent
+tools:
+  write: false
+  edit: false
+---
+
 # Reviewer Agent
 
 ## Role

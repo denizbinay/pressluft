@@ -17,6 +17,15 @@ Every implementation session must:
 3. Follow Spec -> Plan -> Act -> Verify.
 4. Report verification mapped to acceptance criteria.
 5. Produce a structured handoff for substantial sessions using `docs/templates/session-handoff-template.md`.
+6. Start from OpenCode instruction bootstrap in `opencode.json`.
+
+## Operator Flow (OpenCode)
+
+1. Run `/readiness`.
+2. Run `/session-kickoff <docs/features/feature-*.md>` for scoped kickoff packet.
+3. Implement with Build or delegated subagents.
+4. Run `/backend-gates` and `/frontend-gates` as applicable.
+5. Produce handoff output for substantial sessions.
 
 ### Session Kickoff Template
 
@@ -27,6 +36,10 @@ Every non-trivial implementation session should start with this packet:
 - Explicitly forbidden paths: everything else unless scope is re-approved
 - Acceptance criteria to prove: `<numbered items from feature spec>`
 - Verification commands to run: `<commands from docs/testing.md and feature spec>`
+
+OpenCode startup baseline is loaded from `opencode.json` instructions. Additional docs are loaded only as needed for the selected feature scope.
+
+Recommended command preset for kickoff packet generation: `/session-kickoff <docs/features/feature-*.md>`.
 
 ## Minimal Context by Task Type
 

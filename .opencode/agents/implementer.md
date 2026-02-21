@@ -1,3 +1,8 @@
+---
+description: Implements approved scoped feature tasks
+mode: subagent
+---
+
 # Implementer Agent
 
 ## Role

@@ -18,7 +18,12 @@ Last Updated: 2026-02-21
 - Spec/contract readiness scripts added under `scripts/`.
 - CI workflow added: `.github/workflows/ci.yml`.
 - OpenCode agent role pack added under `.opencode/agents/`.
-- Claude compatibility shim added: `CLAUDE.md`.
+- OpenCode runtime bootstrap added: `opencode.json`.
+- OpenCode command preset pack added under `.opencode/commands/`.
+- OpenCode agent role files normalized with runnable frontmatter.
+- OpenCode runtime permissions and task-delegation boundaries added to `opencode.json`.
+- OpenCode quick-start runbook added to `README.md`.
+- Claude compatibility shim retained as non-canonical: `CLAUDE.md`.
 - Root spec router docs added: `SPEC.md`, `ARCHITECTURE.md`, `CONTRACTS.md`.
 - ADR system added: `docs/adr/README.md`, `docs/adr/template.md`, `docs/adr/0001-spec-routing-and-contract-authority.md`.
 - Parallel lock registry enforcement added: `coordination/locks.md`, `scripts/check-parallel-locks.sh`.

@@ -12,6 +12,7 @@ This document defines mandatory behavioral boundaries for agentic execution.
 
 - Follow `Spec -> Plan -> Act -> Verify` for every non-trivial task.
 - Start from `docs/spec-index.md` and load only the minimal relevant context.
+- Treat `opencode.json` as the authoritative OpenCode runtime bootstrap for instruction loading.
 - Execute only within allowed paths declared by the governing feature spec.
 - Keep `PLAN.md` and `PROGRESS.md` current during substantial sessions.
 - Map verification output to explicit acceptance criteria.
@@ -68,3 +69,9 @@ Substantial sessions must output:
 - Planned touched paths.
 - What changed and why.
 - Verification commands and pass/fail summary.
+
+## Runtime Expectations
+
+- `.opencode/agents/` definitions are canonical role prompts for OpenCode sessions.
+- `opencode.json` permissions are mandatory guardrails; task delegation must be constrained via `permission.task`.
+- OpenCode compatibility shims (for other harnesses) are optional and must not be required by active workflows.
