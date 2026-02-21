@@ -62,6 +62,31 @@ Rule: no task acceptance criterion may require a capability that is first delive
 | W5-T3 backup-retention-cleanup | backup record production | W2-T3 | PASS |
 | W5-T4 job-control | observable job/resource states for control operations | W5-T1 | PASS |
 
+## Wave 6
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W6-T1 web-dashboard-bootstrap | stable authenticated API contract + OpenAPI authority | MP3 (end of Wave 5) | PASS |
+| W6-T2 web-auth-and-shell | typed web API client and Nuxt app baseline | W6-T1 | PASS |
+| W6-T3 web-embed-and-delivery | built dashboard artifact + authenticated shell routes | W6-T1, W6-T2 | PASS |
+
+## Wave 7
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W7-T1 web-sites-and-environments | embedded dashboard foundation + auth/session shell | MP4 (end of Wave 6) | PASS |
+| W7-T2 web-lifecycle-workflows | sites/environment navigation and detail context | W7-T1 | PASS |
+| W7-T3 web-operations-workflows | sites/environment navigation and detail context | W7-T1 | PASS |
+| W7-T4 web-jobs-metrics-controls | lifecycle and operations workflow surfaces | W7-T2, W7-T3 | PASS |
+
+## Wave 8
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W8-T1 web-dashboard-hardening gates | workflow-complete dashboard surfaces | MP5 (end of Wave 7) | PASS |
+| W8-T2 web-dashboard-hardening UX/accessibility | deterministic frontend gates and CI enforcement | W8-T1 | PASS |
+| W8-T3 MVP release readiness pass | hardened dashboard + embedded delivery + CI gates | W8-T2 | PASS |
+
 ## Known Explicit Non-Dependencies
 
 - Clone expiration metadata is removed from MVP ACs and therefore does not require schema additions in this plan.

@@ -43,12 +43,13 @@ if header != expected_header or not separator.startswith("|---"):
     print("Parallel lock check failed: Active Locks header does not match expected format")
     sys.exit(1)
 
-rows = table_lines[2:]
+raw_rows = table_lines[2:]
 iso_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 now = dt.datetime.now(dt.UTC)
 stale_rows = []
+parsed_statuses = []
 
-for row in rows:
+for row in raw_rows:
     if set(row) == {"|", "-"}:
         continue
     parts = [p.strip() for p in row.strip("|").split("|")]
@@ -75,11 +76,15 @@ for row in rows:
     if status == "active" and age_minutes > 120:
         stale_rows.append((lock_id, owner, int(age_minutes), note))
 
+    parsed_statuses.append(status)
+
 if stale_rows:
     print("Parallel lock check failed: stale active locks detected (>120 minutes)")
     for lock_id, owner, age_minutes, note in stale_rows:
         print(f"  - {lock_id} owned by {owner}, age={age_minutes}m, note={note}")
     sys.exit(1)
 
-print(f"Parallel lock check passed ({len(rows)} active lock rows)")
+total_rows = len(parsed_statuses)
+active_rows = sum(1 for s in parsed_statuses if s == "active")
+print(f"Parallel lock check passed (rows={total_rows}, active={active_rows})")
 PY

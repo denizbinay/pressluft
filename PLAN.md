@@ -19,12 +19,17 @@ Last Updated: 2026-02-21
 - Wave 3: deploy/update/restore/promotion safety.
 - Wave 4: domains/cache/operator workflows.
 - Wave 5: observability/control surfaces.
+- Wave 6: dashboard foundation and Go embed delivery.
+- Wave 7: dashboard workflow completion for all MVP UI flows.
+- Wave 8: dashboard hardening, CI frontend gates, and MVP release readiness.
 
 Merge points:
 
 - MP1: end of Wave 1 before lifecycle work.
 - MP2: end of Wave 3 before domain/cache.
 - MP3: end of Wave 5 before MVP release hardening.
+- MP4: end of Wave 6 before workflow-complete dashboard surfaces.
+- MP5: end of Wave 7 before dashboard hardening/release readiness.
 
 ## Atomic Task Backlog
 
@@ -126,6 +131,46 @@ Merge points:
 - [x] W5-T4: Implement administrative job control actions.
   - Depends on: W5-T1
   - Feature spec: `docs/features/feature-job-control.md`
+
+### Wave 6 - Dashboard Foundation and Embed
+
+- [x] W6-T1: Bootstrap Nuxt dashboard workspace and typed API client foundation.
+  - Depends on: MP3
+  - Feature spec: `docs/features/feature-web-dashboard-bootstrap.md`
+- [x] W6-T2: Implement web auth/session flow and protected app shell.
+  - Depends on: W6-T1
+  - Feature spec: `docs/features/feature-web-auth-and-shell.md`
+- [x] W6-T3: Serve built dashboard through the Go control plane with SPA fallback.
+  - Depends on: W6-T1, W6-T2
+  - Feature spec: `docs/features/feature-web-embed-and-delivery.md`
+
+
+### Wave 7 - Dashboard Workflow Completion
+
+- [x] W7-T1: Implement sites and environments dashboard flows.
+  - Depends on: MP4
+  - Feature spec: `docs/features/feature-web-sites-and-environments.md`
+- [x] W7-T2: Implement deploy/update/restore/promote workflow UI with job progress wiring.
+  - Depends on: W7-T1
+  - Feature spec: `docs/features/feature-web-lifecycle-workflows.md`
+- [x] W7-T3: Implement backups, domains, caching, and magic-login workflow UI.
+  - Depends on: W7-T1
+  - Feature spec: `docs/features/feature-web-operations-workflows.md`
+- [x] W7-T4: Implement jobs/metrics visibility and administrative control UI.
+  - Depends on: W7-T2, W7-T3
+  - Feature spec: `docs/features/feature-web-jobs-metrics-controls.md`
+
+### Wave 8 - Dashboard Hardening and MVP Release Readiness
+
+- [x] W8-T1: Add frontend CI gates and deterministic command presets for dashboard verification.
+  - Depends on: MP5
+  - Feature spec: `docs/features/feature-web-dashboard-hardening.md`
+- [x] W8-T2: Complete dashboard UX hardening for async states, error handling, and accessibility baselines.
+  - Depends on: W8-T1
+  - Feature spec: `docs/features/feature-web-dashboard-hardening.md`
+- [x] W8-T3: Execute MVP release readiness pass with embedded dashboard smoke verification.
+  - Depends on: W8-T2
+  - Feature spec: `docs/features/feature-web-dashboard-hardening.md`
 
 ## Dependency and Contract Rules
 

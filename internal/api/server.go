@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
+	"path"
 	"strings"
 
 	"pressluft/internal/audit"
@@ -39,9 +41,18 @@ type Server struct {
 	migrateSvc  *migration.Service
 	audit       *audit.Service
 	mux         *http.ServeMux
+	dashboardFS fs.FS
 }
 
-func NewServer(authService *auth.Service, siteService *sites.Service, envService *environments.Service, promotionService *promotion.Service, magicLoginService *ssh.Service, settingsService *settings.Service, jobsService *jobs.Service, metricsService *metrics.Service, backupService *backups.Service, domainService *domains.Service, migrationService *migration.Service, auditService *audit.Service) *Server {
+type ServerOption func(*Server)
+
+func WithDashboardFS(dashboardFS fs.FS) ServerOption {
+	return func(s *Server) {
+		s.dashboardFS = dashboardFS
+	}
+}
+
+func NewServer(authService *auth.Service, siteService *sites.Service, envService *environments.Service, promotionService *promotion.Service, magicLoginService *ssh.Service, settingsService *settings.Service, jobsService *jobs.Service, metricsService *metrics.Service, backupService *backups.Service, domainService *domains.Service, migrationService *migration.Service, auditService *audit.Service, opts ...ServerOption) *Server {
 	s := &Server{
 		authService: authService,
 		siteService: siteService,
@@ -56,6 +67,9 @@ func NewServer(authService *auth.Service, siteService *sites.Service, envService
 		migrateSvc:  migrationService,
 		audit:       auditService,
 		mux:         http.NewServeMux(),
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 	s.registerRoutes()
 	return s
@@ -76,6 +90,47 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/jobs/", s.withAuth(s.handleJobByID))
 	s.mux.HandleFunc("/api/metrics", s.withAuth(s.handleMetrics))
 	s.mux.HandleFunc("/_admin/settings/domain-config", s.withAuth(s.handleDomainConfigSettings))
+	if s.dashboardFS != nil {
+		s.mux.HandleFunc("/", s.handleDashboard)
+	}
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w)
+		return
+	}
+
+	fileServer := http.FileServer(http.FS(s.dashboardFS))
+	servePath := func(routePath string) {
+		req := r.Clone(r.Context())
+		urlCopy := *r.URL
+		urlCopy.Path = routePath
+		req.URL = &urlCopy
+		fileServer.ServeHTTP(w, req)
+	}
+
+	cleanPath := path.Clean("/" + strings.TrimSpace(r.URL.Path))
+	if cleanPath == "/" {
+		servePath("/")
+		return
+	}
+
+	assetPath := strings.TrimPrefix(cleanPath, "/")
+	if dashboardAssetExists(s.dashboardFS, assetPath) {
+		servePath(cleanPath)
+		return
+	}
+
+	servePath("/")
+}
+
+func dashboardAssetExists(dashboardFS fs.FS, name string) bool {
+	info, err := fs.Stat(dashboardFS, name)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {

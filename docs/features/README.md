@@ -38,6 +38,14 @@ This directory contains implementation-bound feature specs.
 - `docs/features/feature-health-checks-and-rollback.md`
 - `docs/features/feature-audit-logging.md`
 - `docs/features/feature-job-control.md`
+- `docs/features/feature-web-dashboard-bootstrap.md`
+- `docs/features/feature-web-auth-and-shell.md`
+- `docs/features/feature-web-embed-and-delivery.md`
+- `docs/features/feature-web-sites-and-environments.md`
+- `docs/features/feature-web-lifecycle-workflows.md`
+- `docs/features/feature-web-operations-workflows.md`
+- `docs/features/feature-web-jobs-metrics-controls.md`
+- `docs/features/feature-web-dashboard-hardening.md`
 
 ## How to Create
 

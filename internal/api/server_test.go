@@ -6,11 +6,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"pressluft/internal/audit"
 	"pressluft/internal/auth"
@@ -142,6 +144,69 @@ func TestProtectedEndpointRejectsRevokedSession(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+}
+
+func TestDashboardFallbackServesIndexForClientRoutes(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTestServerWithDashboardFS(t, fstest.MapFS{
+		"index.html":       {Data: []byte("<html>dashboard</html>")},
+		"_nuxt/app.js":     {Data: []byte("console.log('asset')")},
+		"_nuxt/styles.css": {Data: []byte("body{margin:0}")},
+		"favicon.ico":      {Data: []byte("icon")},
+	})
+
+	clientRoute := httptest.NewRecorder()
+	clientRouteReq := httptest.NewRequest(http.MethodGet, "/app/sites/site-1", nil)
+	server.Handler().ServeHTTP(clientRoute, clientRouteReq)
+
+	if clientRoute.Code != http.StatusOK {
+		t.Fatalf("unexpected client route status: %d", clientRoute.Code)
+	}
+	if !strings.Contains(clientRoute.Body.String(), "dashboard") {
+		t.Fatalf("expected SPA fallback body")
+	}
+
+	assetRec := httptest.NewRecorder()
+	assetReq := httptest.NewRequest(http.MethodGet, "/_nuxt/app.js", nil)
+	server.Handler().ServeHTTP(assetRec, assetReq)
+
+	if assetRec.Code != http.StatusOK {
+		t.Fatalf("unexpected asset status: %d", assetRec.Code)
+	}
+	if !strings.Contains(assetRec.Body.String(), "asset") {
+		t.Fatalf("expected static asset body")
+	}
+}
+
+func TestDashboardFallbackDoesNotOverrideAPIOrAdminRoutes(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTestServerWithDashboardFS(t, fstest.MapFS{
+		"index.html": {Data: []byte("<html>dashboard</html>")},
+	})
+
+	apiRec := httptest.NewRecorder()
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/login", nil)
+	server.Handler().ServeHTTP(apiRec, apiReq)
+
+	if apiRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("unexpected api route status: %d", apiRec.Code)
+	}
+	if !strings.Contains(apiRec.Body.String(), "method_not_allowed") {
+		t.Fatalf("expected API json error response")
+	}
+
+	adminRec := httptest.NewRecorder()
+	adminReq := httptest.NewRequest(http.MethodGet, "/_admin/settings/domain-config", nil)
+	server.Handler().ServeHTTP(adminRec, adminReq)
+
+	if adminRec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected admin route status: %d", adminRec.Code)
+	}
+	if !strings.Contains(adminRec.Body.String(), "auth_unauthorized") {
+		t.Fatalf("expected admin auth error response")
 	}
 }
 
@@ -1461,7 +1526,12 @@ func newTestServer(t *testing.T) (*Server, *sql.DB) {
 	return newTestServerWithSSHRunner(t, apiStubSSHRunner{output: "https://example.test/wp-admin/?token=abc"})
 }
 
-func newTestServerWithSSHRunner(t *testing.T, runner ssh.Runner) (*Server, *sql.DB) {
+func newTestServerWithDashboardFS(t *testing.T, dashboardFS fs.FS) (*Server, *sql.DB) {
+	t.Helper()
+	return newTestServerWithSSHRunner(t, apiStubSSHRunner{output: "https://example.test/wp-admin/?token=abc"}, WithDashboardFS(dashboardFS))
+}
+
+func newTestServerWithSSHRunner(t *testing.T, runner ssh.Runner, opts ...ServerOption) (*Server, *sql.DB) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "api-test.db")
@@ -1621,7 +1691,7 @@ func newTestServerWithSSHRunner(t *testing.T, runner ssh.Runner) (*Server, *sql.
 	secretStore := secrets.NewStore(filepath.Join(t.TempDir(), "secrets"))
 	settingsService := settings.NewService(db, secretStore)
 
-	return NewServer(auth.NewService(db), sites.NewService(db), environments.NewService(db), promotion.NewService(db), ssh.NewService(db, runner), settingsService, jobs.NewService(db), metrics.NewService(db), backups.NewService(db), domains.NewService(db), migration.NewService(db), audit.NewService(db)), db
+	return NewServer(auth.NewService(db), sites.NewService(db), environments.NewService(db), promotion.NewService(db), ssh.NewService(db, runner), settingsService, jobs.NewService(db), metrics.NewService(db), backups.NewService(db), domains.NewService(db), migration.NewService(db), audit.NewService(db), opts...), db
 }
 
 type apiStubSSHRunner struct {

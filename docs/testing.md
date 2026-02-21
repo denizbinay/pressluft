@@ -21,6 +21,26 @@ Run from repository root:
 - `cd web && pnpm lint`
 - `cd web && pnpm build`
 
+Dashboard embed expectation:
+
+- `pressluft serve` reads built assets from `./web/.output/public` by default.
+- Embedded dashboard serving requires `./web/.output/public/index.html` to exist.
+- Override asset location with `PRESSLUFT_WEB_DIST_DIR` or `-web-dist-dir` when needed.
+- Build frontend assets before smoke-testing embedded UI routes.
+
+Embedded dashboard smoke check (release readiness):
+
+- `cd web && pnpm build`
+- `go build -o ./bin/pressluft ./cmd/pressluft`
+- Prepare an empty DB with schema:
+  - `PRESSLUFT_DB_PATH=$(mktemp) go run ./migrations/migrate.go up`
+- Start server (example):
+  - `PRESSLUFT_DB_PATH=$PRESSLUFT_DB_PATH PRESSLUFT_SECRETS_DIR=$(mktemp -d) ./bin/pressluft -listen :18080 serve`
+- Verify HTML routes return 200:
+  - `curl -fsS http://127.0.0.1:18080/ >/dev/null`
+  - `curl -fsS http://127.0.0.1:18080/login >/dev/null`
+  - `curl -fsS http://127.0.0.1:18080/app >/dev/null`
+
 ## Change-Type Requirements
 
 ### Backend behavior change

@@ -6,8 +6,9 @@ Last Updated: 2026-02-21
 
 ## Current Stage
 
-- Stage: Wave 5 complete; merge point MP3 ready.
+- Stage: Wave 8 complete; release-readiness smoke verified.
 - Auth/session, audit logging, site/environment create foundations, backup create/list API/job wiring, health-check/rollback orchestration, deploy/update, restore, and promotion/drift guardrail mutation flows now exist alongside queue-backed node provisioning.
+- Complete Nuxt dashboard scope is now accepted as MVP and scheduled for Waves 6-8.
 
 ## Completed
 
@@ -59,6 +60,14 @@ Last Updated: 2026-02-21
 - Jobs and metrics read APIs implemented for `GET /api/jobs`, `GET /api/jobs/{id}`, and `GET /api/metrics` with stable job payloads, full job detail fields (attempt/error metadata), point-in-time DB counters, unauthorized guard coverage, and service + handler tests (`internal/jobs/service.go`, `internal/jobs/service_test.go`, `internal/metrics/service.go`, `internal/metrics/service_test.go`, `internal/api/server.go`, `internal/api/server_test.go`, `cmd/pressluft/main.go`).
 - Backup retention cleanup orchestration implemented with expired-backup scheduler enqueueing (`retention_until < now`) and site-level de-dup, `backup_cleanup` job executor retry/backoff + structured Ansible error codes, backup state transition to `expired` on cleanup success, dedicated tests for enqueue/executor behavior, backup-cleanup playbook baseline, and cleanup behavior docs alignment (`internal/backups/cleanup_scheduler.go`, `internal/backups/cleanup_executor.go`, `internal/backups/cleanup_test.go`, `ansible/playbooks/backup-cleanup.yml`, `docs/backups-and-restore.md`, `PLAN.md`).
 - Administrative job control actions implemented for `POST /api/jobs/{id}/cancel`, `POST /api/sites/{id}/reset`, and `POST /api/environments/{id}/reset` with deterministic state guards (`job_not_cancellable`, `resource_not_failed`, `reset_validation_failed`), transactional service logic, API/audit wiring, and service + handler tests (`internal/jobs/service.go`, `internal/jobs/service_test.go`, `internal/sites/service.go`, `internal/sites/service_test.go`, `internal/environments/service.go`, `internal/environments/service_test.go`, `internal/api/server.go`, `internal/api/server_test.go`).
+- Wave 6 dashboard bootstrap completed with a new Nuxt 3 + TypeScript workspace, strict runtime config baseline, typed API client foundation for core authenticated operations, and runnable frontend gates (`web/package.json`, `web/nuxt.config.ts`, `web/lib/api/client.ts`, `web/lib/api/types.ts`, `web/composables/useApiClient.ts`, `web/pages/index.vue`).
+- Wave 6 web auth and protected shell completed with login/logout UX, deterministic 401 redirect handling, and base protected routes (`web/pages/login.vue`, `web/pages/app/index.vue`, `web/middleware/auth.global.client.ts`, `web/composables/useAuthSession.ts`).
+- Wave 6 embedded dashboard delivery completed by serving built assets from the Go control-plane with SPA fallback precedence and handler tests, plus CI/frontend gate wiring (`cmd/pressluft/main.go`, `internal/api/server.go`, `internal/api/server_test.go`, `.github/workflows/ci.yml`).
+- Wave 7 sites and environments dashboard flows implemented with site/environment create and deterministic post-job refresh behavior (`web/pages/app/sites/index.vue`, `web/pages/app/sites/[id].vue`, `web/pages/app/environments/[id].vue`, `web/tests/sites-and-environments.test.ts`).
+- Wave 7 lifecycle workflows implemented for deploy/updates/restore/drift-check/promote with job polling and conflict/validation handling (`web/pages/app/environments/[id].vue`, `web/tests/lifecycle-workflows.test.ts`).
+- Wave 7 operations workflows implemented for backups, domains, caching, and magic-login with deterministic error handling and job polling (`web/pages/app/environments/[id].vue`, `web/tests/operations-workflows.test.ts`).
+- Wave 7 jobs/metrics visibility and administrative controls implemented with in-shell metrics, jobs list/detail, job cancel, and failed-state reset actions (`web/layouts/app.vue`, `web/pages/app/jobs/index.vue`, `web/pages/app/jobs/[id].vue`, `web/tests/jobs-metrics-controls.test.ts`).
+- Wave 8 embedded dashboard smoke verification now uses static Nuxt output (ensures `./web/.output/public/index.html` exists) and documents correct `pressluft` command/DB-migration ordering (`web/package.json`, `web/nuxt.config.ts`, `docs/testing.md`).
 
 ## In Progress
 
@@ -70,5 +79,4 @@ Last Updated: 2026-02-21
 
 ## Open Risks
 
-- Wave 1+ contract/API surfaces are still unimplemented and may require coordinated OpenAPI + traceability updates.
 - Parallel execution now has lock linting, but still depends on active discipline for ownership transfer during live parallel sessions.

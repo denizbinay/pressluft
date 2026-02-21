@@ -53,7 +53,7 @@ Validation gates:
 
 ## 4. Stack and Versions
 
-- Go 1.22
+- Go 1.23
 - Router: `github.com/go-chi/chi/v5`
 - SQLite via `modernc.org/sqlite` (no CGo)
 - Nuxt 3 + Vue 3 + TypeScript

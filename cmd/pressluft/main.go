@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"pressluft/internal/api"
@@ -38,10 +40,12 @@ func run() error {
 	var nodeProvisionPlaybook string
 	var siteImportPlaybook string
 	var listenAddr string
+	var webDistDir string
 	flag.StringVar(&dbPath, "db", defaultDBPath(), "sqlite database path")
 	flag.StringVar(&nodeProvisionPlaybook, "node-provision-playbook", "ansible/playbooks/node-provision.yml", "path to node_provision ansible playbook")
 	flag.StringVar(&siteImportPlaybook, "site-import-playbook", "ansible/playbooks/site-import.yml", "path to site_import ansible playbook")
 	flag.StringVar(&listenAddr, "listen", ":8080", "http listen address")
+	flag.StringVar(&webDistDir, "web-dist-dir", defaultWebDistDir(), "path to built dashboard assets")
 	flag.Parse()
 
 	command := "bootstrap"
@@ -97,7 +101,15 @@ func run() error {
 		domainService := domains.NewService(db)
 		migrationService := migration.NewService(db)
 		auditService := audit.NewService(db)
-		apiServer := api.NewServer(authService, siteService, environmentService, promotionService, magicLoginService, settingsService, jobsService, metricsService, backupService, domainService, migrationService, auditService)
+		serverOptions := []api.ServerOption{}
+		if hasDashboardDist(webDistDir) {
+			serverOptions = append(serverOptions, api.WithDashboardFS(os.DirFS(webDistDir)))
+			fmt.Printf("pressluft dashboard assets loaded from %s\n", webDistDir)
+		} else {
+			fmt.Printf("pressluft dashboard assets not found at %s, serving API routes only\n", webDistDir)
+		}
+
+		apiServer := api.NewServer(authService, siteService, environmentService, promotionService, magicLoginService, settingsService, jobsService, metricsService, backupService, domainService, migrationService, auditService, serverOptions...)
 		fmt.Printf("pressluft api listening on %s\n", listenAddr)
 		return http.ListenAndServe(listenAddr, apiServer.Handler())
 	default:
@@ -117,4 +129,22 @@ func defaultSecretsDir() string {
 		return path
 	}
 	return "/var/lib/pressluft/secrets"
+}
+
+func defaultWebDistDir() string {
+	if path := os.Getenv("PRESSLUFT_WEB_DIST_DIR"); path != "" {
+		return path
+	}
+	return "./web/.output/public"
+}
+
+func hasDashboardDist(root string) bool {
+	if strings.TrimSpace(root) == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(root, "index.html"))
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
