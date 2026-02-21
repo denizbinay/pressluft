@@ -38,6 +38,9 @@ Path note: matrix endpoints use full runtime paths with `/api` prefix. OpenAPI p
 | `DELETE /api/domains/{id}` | `docs/features/feature-domains-and-tls.md` | async | `domain_remove` | domain/tls status |
 | `GET /api/jobs` | `docs/features/feature-jobs-and-metrics.md` | sync | none | job read model |
 | `GET /api/jobs/{id}` | `docs/features/feature-jobs-and-metrics.md` | sync | none | job read model |
+| `POST /api/jobs/{id}/cancel` | `docs/features/feature-job-control.md` | sync | none | job state |
+| `POST /api/sites/{id}/reset` | `docs/features/feature-job-control.md` | sync | none | site state |
+| `POST /api/environments/{id}/reset` | `docs/features/feature-job-control.md` | sync | none | environment state |
 | `GET /api/metrics` | `docs/features/feature-jobs-and-metrics.md` | sync | none | metrics read model |
 
 ## Invariants

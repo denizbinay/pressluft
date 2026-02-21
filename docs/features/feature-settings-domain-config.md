@@ -14,6 +14,7 @@ Operators need a deterministic way to manage platform-level domain and DNS-01 se
 
 - In scope:
   - Define canonical control-plane configuration behavior for managing `control_plane_domain`, `preview_domain`, `dns01_provider`, and `dns01_credentials_json`.
+  - Define an authenticated internal admin settings API under `/_admin/settings/*` for deterministic read/update flows.
   - Enforce cross-field validation and secret-storage rules.
   - Ensure settings changes update downstream provisioning/runtime behavior predictably.
 - Out of scope:
@@ -33,7 +34,7 @@ Operators need a deterministic way to manage platform-level domain and DNS-01 se
 
 ## Contract Impact
 
-- API: `none`
+- API: `internal-only update-required`
 - DB schema: `none`
 - Infra/playbooks: `none`
 
@@ -41,6 +42,10 @@ Contract/spec files:
 
 - `docs/domain-and-routing.md`
 - `docs/config-matrix.md`
+
+Internal contract note:
+
+- Settings flows are served by internal admin endpoints (`/_admin/settings/*`) and are intentionally excluded from public OpenAPI.
 
 ## Acceptance Criteria
 

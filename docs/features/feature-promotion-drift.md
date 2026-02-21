@@ -13,7 +13,7 @@ Operators must promote changes safely while protecting live production data from
 ## Scope
 
 - In scope:
-  - Implement `POST /api/environments/:id/drift-check` and `POST /api/environments/:id/promote`.
+  - Implement `POST /api/environments/{id}/drift-check` and `POST /api/environments/{id}/promote`.
   - Enforce drift check and fresh backup gate before promotion.
   - Enqueue `drift_check` and `env_promote` jobs.
 - Out of scope:

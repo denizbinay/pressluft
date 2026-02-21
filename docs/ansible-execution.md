@@ -202,8 +202,8 @@ For exit codes 1, 2, and 4: if `attempt_count >= max_attempts`, the job is marke
 | `ANSIBLE_SYNTAX_ERROR` | Exit code 5 |
 | `ANSIBLE_UNEXPECTED_ERROR` | Exit code 250 |
 | `ANSIBLE_UNKNOWN_EXIT` | Any other non-zero exit code |
-| `ANSIBLE_TIMEOUT` | Subprocess killed due to job timeout |
-| `JOB_TIMEOUT` | Job exceeded total timeout (set by `docs/job-execution.md`) |
+| `ANSIBLE_TIMEOUT` | Ansible subprocess killed due to timeout |
+| `JOB_TIMEOUT` | Reserved for non-Ansible handlers exceeding job timeout (see `docs/job-execution.md`) |
 
 ## Output Handling
 

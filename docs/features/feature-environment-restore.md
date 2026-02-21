@@ -13,7 +13,7 @@ Operators need deterministic restore from known backups without cross-site blast
 ## Scope
 
 - In scope:
-  - Implement `POST /api/environments/:id/restore`.
+  - Implement `POST /api/environments/{id}/restore`.
   - Enqueue `env_restore` job and enforce restore state transitions.
   - Require backup reference validation.
   - Require a pre-restore full backup of the target environment.

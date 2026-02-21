@@ -13,7 +13,7 @@ Operators need reliable custom domain lifecycle with DNS validation and TLS auto
 ## Scope
 
 - In scope:
-  - Implement `GET /api/environments/:id/domains`, `POST /api/environments/:id/domains`, and `DELETE /api/domains/:id`.
+  - Implement `GET /api/environments/{id}/domains`, `POST /api/environments/{id}/domains`, and `DELETE /api/domains/{id}`.
   - Enqueue `domain_add` and `domain_remove` jobs.
   - Enforce DNS-to-node validation and TLS status updates.
 - Out of scope:

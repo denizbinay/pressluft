@@ -20,6 +20,8 @@ This checklist must pass before creating `PLAN.md` and `PROGRESS.md`.
 - [x] Schema authority chain is documented and accepted.
 - [x] Baseline executable schema exists under `migrations/` and matches `docs/data-model.md`.
 - [x] Feature specs include acceptance criteria, verification, and rollback.
+- [x] Wave/task dependencies are backward-only (no feature acceptance depends on later-wave capabilities).
+- [x] `docs/plan-dependency-matrix.md` is updated to reflect current `PLAN.md` dependencies.
 - [x] Top-level spec routers (`SPEC.md`, `ARCHITECTURE.md`, `CONTRACTS.md`) exist and point to canonical docs.
 - [x] OpenCode runtime bootstrap exists (`opencode.json`) and references valid instruction files.
 - [x] OpenCode local agent and command packs exist under `.opencode/agents/` and `.opencode/commands/`.

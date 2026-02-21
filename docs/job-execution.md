@@ -34,7 +34,10 @@ This document defines the MVP job execution model for the control plane.
 ## Timeouts
 
 - Default job timeout: 30 minutes.
-- If a job exceeds timeout, it is marked failed with `error_code = JOB_TIMEOUT`.
+- Timeout classification:
+  - For Ansible-backed jobs, if the `ansible-playbook` subprocess is terminated by timeout, set `error_code = ANSIBLE_TIMEOUT`.
+  - `error_code = JOB_TIMEOUT` is reserved for non-Ansible job handlers that exceed the total job timeout.
+  - If both conditions could apply, subprocess timeout classification (`ANSIBLE_TIMEOUT`) takes precedence.
 
 ## Retries
 
@@ -61,6 +64,16 @@ This document defines the MVP job execution model for the control plane.
 - Only admin can cancel.
 - Cancellation sets `status = cancelled` and does not attempt rollback.
 - If cancellation happens while running, the job handler must perform safe stop where possible.
+
+## Recurring Job Scheduling
+
+- The queue worker only executes jobs already present in `jobs`.
+- A scheduler loop in the control plane is responsible for enqueueing recurring jobs.
+- MVP recurring schedule:
+  - `backup_cleanup` is enqueued every 6 hours.
+- De-dup rule:
+  - Do not enqueue a new recurring job when another queued or running job of the same type exists for the same scope.
+- Scheduler enqueue operations must run in DB transactions and respect standard site/node concurrency semantics when the job executes.
 
 ## Worker Identity
 

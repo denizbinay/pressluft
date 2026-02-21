@@ -574,6 +574,69 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundError'
 
+  /jobs/{id}/cancel:
+    post:
+      tags: [Jobs]
+      operationId: cancelJob
+      summary: Cancel queued or running job
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Job cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobControlResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /sites/{id}/reset:
+    post:
+      tags: [Sites]
+      operationId: resetSiteFailedState
+      summary: Reset failed site state to active after validation
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Site state reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceResetResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /environments/{id}/reset:
+    post:
+      tags: [Environments]
+      operationId: resetEnvironmentFailedState
+      summary: Reset failed environment state to active after validation
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Environment state reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceResetResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
   /metrics:
     get:
       tags: [Metrics]
@@ -1023,6 +1086,28 @@ components:
         updated_at:
           type: string
           format: date-time
+      additionalProperties: false
+
+    JobControlResponse:
+      type: object
+      required: [success, status]
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+      additionalProperties: false
+
+    ResourceResetResponse:
+      type: object
+      required: [success, status]
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [active, cloning, deploying, restoring, failed]
       additionalProperties: false
 
     MetricsResponse:

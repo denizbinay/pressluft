@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
 Last Reviewed: 2026-02-19
-Depends On: docs/spec-index.md, docs/state-machines.md, docs/job-execution.md, docs/api-contract.md, docs/ui-flows.md, contracts/openapi.yaml
+Depends On: docs/spec-index.md, docs/state-machines.md, docs/job-execution.md, docs/backups-and-restore.md, docs/health-checks.md, docs/api-contract.md, docs/ui-flows.md, contracts/openapi.yaml
 Supersedes: none
 
 # FEATURE: environment-deploy-updates
@@ -13,7 +13,7 @@ Operators need deterministic deploy and update workflows with health-gated rollo
 ## Scope
 
 - In scope:
-  - Implement `POST /api/environments/:id/deploy` and `POST /api/environments/:id/updates`.
+  - Implement `POST /api/environments/{id}/deploy` and `POST /api/environments/{id}/updates`.
   - Enqueue `env_deploy` and `env_update` jobs.
   - Enforce state transitions and health-check integration.
   - Require a pre-update backup snapshot before `env_update` execution.

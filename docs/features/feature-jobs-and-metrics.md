@@ -13,7 +13,7 @@ Operators need visibility into background work and platform health to trust auto
 ## Scope
 
 - In scope:
-  - Implement `GET /api/jobs`, `GET /api/jobs/:id`, and `GET /api/metrics`.
+  - Implement `GET /api/jobs`, `GET /api/jobs/{id}`, and `GET /api/metrics`.
   - Return canonical job status and error fields.
   - Return point-in-time metrics counters defined by contract.
 - Out of scope:

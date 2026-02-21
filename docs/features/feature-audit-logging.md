@@ -13,7 +13,7 @@ Operators need reliable, queryable audit records for all mutating control-plane 
 ## Scope
 
 - In scope:
-  - Define and enforce audit logging contract for all mutating API actions.
+  - Define and enforce baseline audit logging contract for all mutating API actions before lifecycle mutation features.
   - Persist `audit_logs` rows with stable action/resource/result semantics.
   - Cover both synchronous mutations and async job-triggering mutations.
 - Out of scope:

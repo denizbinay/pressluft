@@ -46,9 +46,10 @@ Contract/spec files:
 ## Acceptance Criteria
 
 1. Expired backups are detected using `retention_until < now` and queued for cleanup.
-2. `backup_cleanup` executes through job queue + Ansible only.
-3. Successful cleanup removes remote objects and transitions backup state to `expired` where applicable.
-4. Cleanup failures persist structured `jobs.error_code` and support retry policy.
+2. A scheduler loop enqueues `backup_cleanup` every 6 hours with de-dup protection.
+3. `backup_cleanup` executes through job queue + Ansible only.
+4. Successful cleanup removes remote objects and transitions backup state to `expired` where applicable.
+5. Cleanup failures persist structured `jobs.error_code` and support retry policy.
 
 ## Verification
 

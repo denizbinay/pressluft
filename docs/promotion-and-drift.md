@@ -68,4 +68,4 @@ Notes:
 
 - If drift status is `drifted`, UI must display a blocking warning.
 - If drift gate or backup gate is unmet, promotion must be blocked.
-- No override path exists in MVP.
+- No override path exists in MVP. UI may request acknowledgement, but acknowledgement must not bypass blocked gates.

@@ -29,9 +29,14 @@ Use these for cross-endpoint validation/auth/resource failures where no domain-s
 
 | Endpoint | Code | HTTP Status | Meaning |
 |---|---|---|---|
-| `POST /api/environments/:id/magic-login` | `environment_not_active` | 409 | Environment is not in `active` state. |
-| `POST /api/environments/:id/magic-login` | `node_unreachable` | 502 | SSH connection failed or timed out. |
-| `POST /api/environments/:id/magic-login` | `wp_cli_error` | 502 | WP-CLI command failed on target environment. |
+| `POST /api/environments/{id}/magic-login` | `environment_not_active` | 409 | Environment is not in `active` state. |
+| `POST /api/environments/{id}/magic-login` | `node_unreachable` | 502 | SSH connection failed or timed out. |
+| `POST /api/environments/{id}/magic-login` | `wp_cli_error` | 502 | WP-CLI command failed on target environment. |
+| `POST /api/jobs/{id}/cancel` | `job_not_cancellable` | 409 | Job cannot be cancelled from its current state. |
+| `POST /api/sites/{id}/reset` | `resource_not_failed` | 409 | Reset requires resource to be in `failed` state. |
+| `POST /api/environments/{id}/reset` | `resource_not_failed` | 409 | Reset requires resource to be in `failed` state. |
+| `POST /api/sites/{id}/reset` | `reset_validation_failed` | 409 | Safety validation for reset action failed. |
+| `POST /api/environments/{id}/reset` | `reset_validation_failed` | 409 | Safety validation for reset action failed. |
 
 ## Job Error Codes (`jobs.error_code`)
 

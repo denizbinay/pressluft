@@ -13,12 +13,12 @@ Operators need fast, isolated staging/clone environments with clear provenance a
 ## Scope
 
 - In scope:
-  - Implement `POST /api/sites/:id/environments` and `GET /api/sites/:id/environments`.
-  - Implement `GET /api/environments/:id`.
+  - Implement `POST /api/sites/{id}/environments` and `GET /api/sites/{id}/environments`.
+  - Implement `GET /api/environments/{id}`.
   - Enqueue `env_create` for non-production environment creation.
-  - Support optional clone expiration metadata for temporary environments.
 - Out of scope:
   - Cross-site clone operations.
+  - Clone expiration metadata and auto-expiry cleanup.
 
 ## Allowed Change Paths
 
@@ -48,7 +48,7 @@ Contract/spec files:
 2. Only valid `type` and `promotion_preset` values are accepted.
 3. Environment state transitions follow state-machine rules for cloning flow.
 4. List and get endpoints return consistent environment representations.
-5. Clone create accepts optional expiration input and persists it for cleanup eligibility.
+5. Clone create does not introduce expiration metadata in MVP.
 
 ## Verification
 

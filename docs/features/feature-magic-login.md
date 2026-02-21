@@ -13,7 +13,7 @@ Pressluft operators need immediate WordPress admin access per environment withou
 ## Scope
 
 - In scope:
-  - Implement `POST /api/environments/:id/magic-login` as a synchronous node query.
+  - Implement `POST /api/environments/{id}/magic-login` as a synchronous node query.
   - Validate environment exists and is in `active` status before execution.
   - Run single SSH command with a 10-second hard timeout.
   - Return `{ login_url, expires_at }` on success.
@@ -51,7 +51,7 @@ Contract/spec files:
 
 ## Acceptance Criteria
 
-1. `POST /api/environments/:id/magic-login` returns `200` with `login_url` and `expires_at` when environment status is `active` and node query succeeds.
+1. `POST /api/environments/{id}/magic-login` returns `200` with `login_url` and `expires_at` when environment status is `active` and node query succeeds.
 2. Endpoint returns `409` with `code = environment_not_active` when environment status is not `active`.
 3. Endpoint returns `502` with `code = node_unreachable` on SSH timeout/connection failure, and `502` with `code = wp_cli_error` when WP-CLI command fails.
 4. Endpoint does not enqueue a job and does not return `job_id`.

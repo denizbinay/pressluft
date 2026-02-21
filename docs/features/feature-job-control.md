@@ -13,8 +13,8 @@ Operators need explicit control over stuck or failed operations through cancel a
 ## Scope
 
 - In scope:
-  - Define and implement admin job cancellation behavior.
-  - Define and implement explicit reset action for site/environment `failed -> active` transitions after validation.
+  - Define and implement `POST /api/jobs/{id}/cancel` admin cancellation behavior.
+  - Define and implement `POST /api/sites/{id}/reset` and `POST /api/environments/{id}/reset` for explicit `failed -> active` transitions after validation.
   - Ensure job and resource state transitions are transactionally safe.
 - Out of scope:
   - Automatic policy-based cancellation.
@@ -46,9 +46,9 @@ Contract/spec files:
 
 ## Acceptance Criteria
 
-1. Admin can cancel a queued or running job with deterministic status/result semantics.
+1. `POST /api/jobs/{id}/cancel` allows admin cancellation for queued/running jobs with deterministic status/result semantics.
 2. Cancellation enforces safe-stop behavior for running operations where supported.
-3. Explicit reset action is required for `failed -> active` transitions on site/environment resources.
+3. `POST /api/sites/{id}/reset` and `POST /api/environments/{id}/reset` are the only allowed paths for `failed -> active` transitions.
 4. Unauthorized or invalid reset/cancel requests return stable structured errors.
 
 ## Verification

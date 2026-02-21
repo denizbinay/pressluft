@@ -13,7 +13,7 @@ Operators need explicit control over FastCGI and Redis caches per environment.
 ## Scope
 
 - In scope:
-  - Implement `PATCH /api/environments/:id/cache` and `POST /api/environments/:id/cache/purge`.
+  - Implement `PATCH /api/environments/{id}/cache` and `POST /api/environments/{id}/cache/purge`.
   - Enqueue `env_cache_toggle` and `cache_purge` jobs.
   - Enforce validation that at least one cache toggle field is provided.
 - Out of scope:

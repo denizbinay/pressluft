@@ -13,7 +13,7 @@ Operators need reliable backup creation and visibility before risky operations.
 ## Scope
 
 - In scope:
-  - Implement `POST /api/environments/:id/backups` and `GET /api/environments/:id/backups`.
+  - Implement `POST /api/environments/{id}/backups` and `GET /api/environments/{id}/backups`.
   - Enqueue `backup_create` jobs and reflect backup lifecycle states.
 - Out of scope:
   - Cross-project backup federation.

@@ -42,4 +42,4 @@ This document defines the canonical `jobs.job_type` registry for Pressluft MVP.
 
 | Operation | Endpoint | Execution Model |
 |---|---|---|
-| magic login | `POST /api/environments/:id/magic-login` | direct SSH node query |
+| magic login | `POST /api/environments/{id}/magic-login` | direct SSH node query |

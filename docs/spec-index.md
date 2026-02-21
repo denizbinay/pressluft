@@ -82,6 +82,7 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 - docs/templates/session-handoff-template.md
 - docs/features/README.md
 - docs/pre-plan-readiness.md
+- docs/plan-dependency-matrix.md
 
 ### Decision Records
 

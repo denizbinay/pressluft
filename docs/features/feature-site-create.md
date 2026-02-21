@@ -13,7 +13,7 @@ Operators need one-click site creation that yields an isolated, reachable initia
 ## Scope
 
 - In scope:
-  - Implement `POST /api/sites`, `GET /api/sites`, and `GET /api/sites/:id`.
+  - Implement `POST /api/sites`, `GET /api/sites`, and `GET /api/sites/{id}`.
   - Enqueue `site_create` jobs for create operations.
   - Create initial production environment with deterministic preview URL.
 - Out of scope:
@@ -46,7 +46,7 @@ Contract/spec files:
 
 1. `POST /api/sites` returns `202` with `job_id` and enqueues `site_create`.
 2. Site and initial environment records are persisted with valid status transitions.
-3. `GET /api/sites` and `GET /api/sites/:id` return consistent JSON shapes per contract.
+3. `GET /api/sites` and `GET /api/sites/{id}` return consistent JSON shapes per contract.
 4. Concurrency guard blocks conflicting mutation jobs for the same site.
 
 ## Verification

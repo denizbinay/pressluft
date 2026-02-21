@@ -15,8 +15,8 @@ Last Updated: 2026-02-21
 - Wave G: governance and spec-routing hardening baseline.
 - Wave 0: repository bootstrap and verification baseline.
 - Wave 1: core runtime and mutation queue foundations.
-- Wave 2: site/environment lifecycle mutations.
-- Wave 3: backup/restore/promotion safety.
+- Wave 2: site/environment creation with backup and health foundations.
+- Wave 3: deploy/update/restore/promotion safety.
 - Wave 4: domains/cache/operator workflows.
 - Wave 5: observability/control surfaces.
 
@@ -66,8 +66,11 @@ Merge points:
 - [ ] W1-T3: Implement mutation queue locking invariants (site/node single-mutation).
   - Depends on: W1-T1
   - Feature spec: `docs/features/feature-node-provision.md`
+- [ ] W1-T4: Implement baseline audit logging for all mutating API actions.
+  - Depends on: W1-T2
+  - Feature spec: `docs/features/feature-audit-logging.md`
 
-### Wave 2 - Site and Environment Lifecycle
+### Wave 2 - Site, Environment, and Backup Foundations
 
 - [ ] W2-T1: Implement site create API + `site_create` job.
   - Depends on: MP1
@@ -75,23 +78,23 @@ Merge points:
 - [ ] W2-T2: Implement environment create/clone API + `env_create` job.
   - Depends on: W2-T1
   - Feature spec: `docs/features/feature-environment-create-clone.md`
-- [ ] W2-T3: Implement deploy/update mutations (`env_deploy`, `env_update`).
+- [ ] W2-T3: Implement backup create/list with retention surface.
   - Depends on: W2-T2
-  - Feature spec: `docs/features/feature-environment-deploy-updates.md`
+  - Feature spec: `docs/features/feature-backups.md`
 - [ ] W2-T4: Implement health checks and rollback (`health_check`, `release_rollback`).
-  - Depends on: W2-T3
+  - Depends on: W2-T2
   - Feature spec: `docs/features/feature-health-checks-and-rollback.md`
 
-### Wave 3 - Backup, Restore, Promotion
+### Wave 3 - Deployment, Restore, and Promotion Safety
 
-- [ ] W3-T1: Implement backup create/list with retention surface.
-  - Depends on: W2-T4
-  - Feature spec: `docs/features/feature-backups.md`
+- [ ] W3-T1: Implement deploy/update mutations (`env_deploy`, `env_update`).
+  - Depends on: W2-T3, W2-T4
+  - Feature spec: `docs/features/feature-environment-deploy-updates.md`
 - [ ] W3-T2: Implement environment restore (`env_restore`) with safety checks.
-  - Depends on: W3-T1
+  - Depends on: W3-T1, W2-T3
   - Feature spec: `docs/features/feature-environment-restore.md`
 - [ ] W3-T3: Implement drift check and promotion guardrails (`drift_check`, `env_promote`).
-  - Depends on: W3-T1
+  - Depends on: W3-T1, W2-T3
   - Feature spec: `docs/features/feature-promotion-drift.md`
 
 ### Wave 4 - Domain, Cache, Operator Workflows
@@ -106,7 +109,7 @@ Merge points:
   - Depends on: W2-T2
   - Feature spec: `docs/features/feature-magic-login.md`
 - [ ] W4-T4: Implement site import flow (`site_import`).
-  - Depends on: W2-T1
+  - Depends on: MP2
   - Feature spec: `docs/features/feature-site-import.md`
 - [ ] W4-T5: Implement settings domain config control surface.
   - Depends on: W4-T1
@@ -117,11 +120,8 @@ Merge points:
 - [ ] W5-T1: Implement jobs and metrics read APIs.
   - Depends on: W2-T1
   - Feature spec: `docs/features/feature-jobs-and-metrics.md`
-- [ ] W5-T2: Implement audit logging surfaces.
-  - Depends on: W5-T1
-  - Feature spec: `docs/features/feature-audit-logging.md`
 - [ ] W5-T3: Implement backup retention cleanup orchestration.
-  - Depends on: W3-T1
+  - Depends on: W2-T3
   - Feature spec: `docs/features/feature-backup-retention-cleanup.md`
 - [ ] W5-T4: Implement administrative job control actions.
   - Depends on: W5-T1
@@ -155,3 +155,4 @@ Merge points:
 - No schema change ships without a migration.
 - No API behavior change ships without OpenAPI update in the same change.
 - Major changes must use `changes/<slug>/` workflow (`docs/changes-workflow.md`).
+- No-forward-dependency proof is maintained in `docs/plan-dependency-matrix.md`.

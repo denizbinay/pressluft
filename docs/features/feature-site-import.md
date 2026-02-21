@@ -13,7 +13,7 @@ Existing WordPress projects need a deterministic import path into Pressluft-mana
 ## Scope
 
 - In scope:
-  - Implement `POST /api/sites/:id/import` async behavior.
+  - Implement `POST /api/sites/{id}/import` async behavior.
   - Enqueue `site_import` job with `archive_url` payload.
   - Enforce serialized-safe URL rewrite workflow.
 - Out of scope:

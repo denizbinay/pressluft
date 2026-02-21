@@ -18,7 +18,7 @@ This document specifies how Pressluft handles domains, preview URLs, TLS certifi
 
 ## Operator Configuration
 
-Operators configure domain and routing settings through the control-plane configuration surface. These values are stored in the `settings` table (see `docs/data-model.md`). Public `/api/settings` endpoints are not part of the MVP OpenAPI contract.
+Operators configure domain and routing settings through an authenticated internal admin settings API (`/_admin/settings/*`). These values are stored in the `settings` table (see `docs/data-model.md`). Public `/api/settings` endpoints are not part of the MVP OpenAPI contract.
 
 ### Required Settings
 
@@ -97,7 +97,7 @@ Custom domains are attached to individual environments via the `domains` table.
 
 ### Adding a Domain
 
-1. User submits `POST /api/environments/:id/domains` with `{ hostname }`.
+1. User submits `POST /api/environments/{id}/domains` with `{ hostname }`.
 2. Control plane creates a `domains` record with `tls_status = pending`.
 3. Control plane enqueues a `domain_add` job.
 4. The `domain_add` Ansible playbook:
@@ -123,7 +123,7 @@ This prevents wasting ACME challenge attempts and provides actionable feedback t
 
 ### Removing a Domain
 
-1. User submits `DELETE /api/domains/:id`.
+1. User submits `DELETE /api/domains/{id}`.
 2. Control plane enqueues a `domain_remove` job.
 3. The `domain_remove` Ansible playbook:
    a. Removes the Nginx server block for the hostname.
