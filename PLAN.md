@@ -54,18 +54,18 @@ Merge points:
 
 ### Wave 1 - Runnable Shell and Developer Bootstrap
 
-- [ ] W1-T1: Create runnable Go app entrypoint and HTTP server (`pressluft dev`).
+- [x] W1-T1: Create runnable Go app entrypoint and HTTP server (`pressluft dev`).
   - Depends on: none
-  - Feature spec: `docs/features/feature-install-bootstrap.md`
-- [ ] W1-T2: Serve dashboard placeholder page at `/` with wave status text.
+  - Feature spec: `docs/features/feature-wave1-runtime-shell.md`
+- [x] W1-T2: Serve dashboard placeholder page at `/` with wave status text.
   - Depends on: W1-T1
-  - Feature spec: `docs/features/feature-install-bootstrap.md`
-- [ ] W1-T3: Add local install/dev setup instructions (from zero to running).
+  - Feature spec: `docs/features/feature-wave1-runtime-shell.md`
+- [x] W1-T3: Add local install/dev setup instructions (from zero to running).
   - Depends on: W1-T1
-  - Feature spec: `docs/features/feature-install-bootstrap.md`
-- [ ] W1-T4: Ensure startup/request logs are visible and deterministic.
+  - Feature spec: `docs/features/feature-wave1-runtime-shell.md`
+- [x] W1-T4: Ensure startup/request logs are visible and deterministic.
   - Depends on: W1-T1
-  - Feature spec: `docs/features/feature-install-bootstrap.md`
+  - Feature spec: `docs/features/feature-wave1-runtime-shell.md`
 
 Wave 1 manual test contract:
 

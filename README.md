@@ -4,6 +4,31 @@ and Hetzner-first installation via a single script.
 
 Maintainability, security, and boring reliability come before raw speed.
 
+## Local Developer Setup
+
+Prerequisites:
+
+- Go 1.22+
+
+Run from repository root:
+
+1. Build the CLI:
+
+   `go build -o ./bin/pressluft ./cmd/pressluft`
+
+2. Start the local server:
+
+   `./bin/pressluft dev --port 8080`
+
+3. Open `http://localhost:8080/` and verify the placeholder response:
+
+   `Wave 1 complete - features will be added incrementally`
+
+4. Validate backend gates:
+
+   - `go vet ./...`
+   - `go test ./internal/... -v`
+
 ## OpenCode Quick Start
 
 This repository is OpenCode-first.
