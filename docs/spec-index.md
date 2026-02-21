@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-20
+Last Reviewed: 2026-02-21
 Depends On: none
 Supersedes: none
 
@@ -64,9 +64,13 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 
 ### Agent Workflow
 
+- docs/agent-governance.md
+- docs/parallel-execution.md
 - docs/spec-lifecycle.md
+- docs/changes-workflow.md
 - docs/agent-session-playbook.md
 - docs/templates/feature-spec-template.md
+- docs/templates/session-handoff-template.md
 - docs/features/README.md
 - docs/pre-plan-readiness.md
 
@@ -105,6 +109,8 @@ Progressive adoption rule: existing specs may add this metadata during normal ed
 - API behavior is canonical in `contracts/openapi.yaml`; `docs/api-contract.md` is explanatory.
 - Every OpenAPI endpoint must map to exactly one owning feature spec in `docs/contract-traceability.md`.
 - Keep per-session context minimal: core docs + one feature spec + relevant domain docs.
+- Substantial sessions must produce a structured handoff using `docs/templates/session-handoff-template.md`.
+- Major changes must use `changes/<slug>/` as defined in `docs/changes-workflow.md`.
 
 ## Glossary
 

@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-20
-Depends On: docs/spec-index.md
+Last Reviewed: 2026-02-21
+Depends On: docs/spec-index.md, docs/changes-workflow.md
 Supersedes: none
 
 # Spec Lifecycle
@@ -27,6 +27,15 @@ This document defines how specs are proposed, updated, and retired.
 3. Update `docs/spec-index.md` if document scope or category changes.
 4. Update related contract files when behavior changes (`contracts/openapi.yaml`, schemas).
 5. Add or update feature specs in `docs/features/` for implementation tasks.
+
+### Major Change Workflow
+
+For major changes (schema, endpoint surface, infra model, or broad refactor), use `changes/<slug>/`:
+
+1. Create `proposal.md`, `design.md`, and `tasks.md`.
+2. Link governing specs and expected contract impact.
+3. Complete implementation and verification.
+4. Archive by merging approved deltas into canonical specs.
 
 ## Normalization Charter
 
@@ -83,3 +92,4 @@ Current status: metadata headers are now present across all `docs/*.md` files. C
 - Scope and non-scope are explicit.
 - Acceptance criteria are testable.
 - Contract impact declared (API/DB/infra/no-impact).
+- Major-change packet present when required by `docs/changes-workflow.md`.

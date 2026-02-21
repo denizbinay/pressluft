@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
-Depends On: docs/spec-index.md, AGENTS.md
+Last Reviewed: 2026-02-21
+Depends On: docs/spec-index.md, AGENTS.md, docs/templates/session-handoff-template.md, docs/agent-governance.md
 Supersedes: none
 
 # Agent Session Playbook
@@ -16,6 +16,7 @@ Every implementation session must:
 2. List allowed file paths for this session.
 3. Follow Spec -> Plan -> Act -> Verify.
 4. Report verification mapped to acceptance criteria.
+5. Produce a structured handoff for substantial sessions using `docs/templates/session-handoff-template.md`.
 
 ### Session Kickoff Template
 
@@ -64,3 +65,12 @@ Every non-trivial implementation session should start with this packet:
 - Keep each session to one feature spec.
 - Avoid broad multi-layer refactors in one session.
 - If scope grows, split into additional feature specs and sessions.
+
+## Session Closeout
+
+For substantial sessions:
+
+- Update `PLAN.md` task checkboxes for completed work.
+- Update `PROGRESS.md` stage/open risks.
+- Add a handoff entry using `docs/templates/session-handoff-template.md`.
+- Record blockers and decisions explicitly to prevent rework in the next session.

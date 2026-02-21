@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
-Depends On: docs/spec-index.md, docs/job-execution.md, docs/api-contract.md
+Last Reviewed: 2026-02-21
+Depends On: docs/spec-index.md, docs/job-execution.md, docs/api-contract.md, docs/pre-plan-readiness.md
 Supersedes: none
 
 # Testing
@@ -62,3 +62,17 @@ Before implementation planning starts, run lightweight checks:
   - `contracts/openapi.yaml`
   - `docs/data-model.md`
   - `docs/state-machines.md`
+
+## Scripted Checks
+
+The following scripts automate readiness and drift checks:
+
+- `bash scripts/check-readiness.sh`
+- `bash scripts/check-contract-traceability.sh`
+- `bash scripts/check-job-error-registry.sh`
+
+## CI Expectations
+
+- CI must run scripted checks on each PR/push.
+- CI must run backend gates when Go bootstrap files exist.
+- CI status is blocking for merge once backend gates become runnable.

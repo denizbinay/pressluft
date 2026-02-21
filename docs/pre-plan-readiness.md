@@ -1,7 +1,7 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-20
-Depends On: docs/spec-index.md, docs/contract-guardrails.md, docs/contract-traceability.md, docs/schema-authority.md, docs/features/README.md, docs/error-codes.md, docs/job-types.md
+Last Reviewed: 2026-02-21
+Depends On: docs/spec-index.md, docs/contract-guardrails.md, docs/contract-traceability.md, docs/schema-authority.md, docs/features/README.md, docs/error-codes.md, docs/job-types.md, docs/testing.md
 Supersedes: none
 
 # Pre-Plan Readiness
@@ -29,6 +29,12 @@ When all items are checked, planning handoff must include:
 1. Prioritized implementation order by feature spec.
 2. Dependency mapping for schema/contracts/tests.
 3. Iteration structure for `PLAN.md` and `PROGRESS.md`.
+
+## Automation
+
+Run readiness checks with:
+
+- `bash scripts/check-readiness.sh`
 
 ## Normalization Tracking
 

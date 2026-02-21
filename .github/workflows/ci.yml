@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  spec-and-contract-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run readiness checks
+        run: bash scripts/check-readiness.sh
+
+  backend-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Validate backend gates
+        run: |
+          if [ ! -f "cmd/pressluft/main.go" ]; then
+            echo "Skipping backend gates: cmd/pressluft/main.go not present yet."
+            exit 0
+          fi
+          go build -o ./bin/pressluft ./cmd/pressluft
+          go vet ./...
+          go test ./internal/... -v
