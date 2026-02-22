@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestPlaceholderMessage(t *testing.T) {
+func TestDashboardShellServedAtRoot(t *testing.T) {
 	var logs bytes.Buffer
 	logger := log.New(&logs, "", 0)
 	server := New(":0", logger)
@@ -22,8 +22,13 @@ func TestPlaceholderMessage(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 
-	if got := rr.Body.String(); got != placeholderMessage+"\n" {
-		t.Fatalf("body = %q, want %q", got, placeholderMessage+"\n")
+	body := rr.Body.String()
+	if !strings.Contains(body, "Pressluft Operator Console") {
+		t.Fatalf("dashboard HTML missing heading")
+	}
+
+	if !strings.Contains(body, "id=\"login-form\"") {
+		t.Fatalf("dashboard HTML missing login form")
 	}
 }
 

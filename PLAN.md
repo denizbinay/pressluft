@@ -75,13 +75,13 @@ Wave 1 manual test contract:
 
 ### Wave 2 - Auth and Operator Visibility First
 
-- [ ] W2-T1: Implement login/logout cookie session lifecycle.
+- [x] W2-T1: Implement login/logout cookie session lifecycle.
   - Depends on: W1-T1
   - Feature spec: `docs/features/feature-auth-session.md`
-- [ ] W2-T2: Implement jobs/metrics read APIs for dashboard visibility.
+- [x] W2-T2: Implement jobs/metrics read APIs for dashboard visibility.
   - Depends on: W2-T1
   - Feature spec: `docs/features/feature-jobs-and-metrics.md`
-- [ ] W2-T3: Update dashboard with auth screen and jobs/metrics panels.
+- [x] W2-T3: Update dashboard with auth screen and jobs/metrics panels.
   - Depends on: W2-T1, W2-T2
   - Feature specs:
     - `docs/features/feature-auth-session.md`

@@ -12,22 +12,32 @@ Prerequisites:
 
 Run from repository root:
 
-1. Build the CLI:
+1. Start local development server (recommended):
 
-   `go build -o ./bin/pressluft ./cmd/pressluft`
+   `make dev`
 
-2. Start the local server:
+   Optional port override:
 
-   `./bin/pressluft dev --port 8080`
+   `make dev PORT=8080`
 
-3. Open `http://localhost:8080/` and verify the placeholder response:
+2. Build and test using repo-local commands:
 
-   `Wave 1 complete - features will be added incrementally`
+   - `make build`
+   - `make vet`
+   - `make test`
+
+3. Open `http://localhost:18080/` and verify the dashboard loads.
+
+Raw Go command equivalents remain available:
+
+- `go run ./cmd/pressluft dev --port 18080`
+- `go build -o ./bin/pressluft ./cmd/pressluft`
+- `go vet ./...`
+- `go test ./internal/... -v`
 
 4. Validate backend gates:
 
-   - `go vet ./...`
-   - `go test ./internal/... -v`
+   - `make backend-gates`
 
 ## OpenCode Quick Start
 

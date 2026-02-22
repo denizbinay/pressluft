@@ -13,6 +13,13 @@ This document defines required verification gates for changes.
 - Before commit: `go build -o ./bin/pressluft ./cmd/pressluft` and `go vet ./...` must pass.
 - Before PR: `go test ./internal/... -v` must pass.
 
+Repo-local convenience wrappers from repository root:
+
+- `make build` (equivalent to `go build -o ./bin/pressluft ./cmd/pressluft`)
+- `make vet` (equivalent to `go vet ./...`)
+- `make test` (equivalent to `go test ./internal/... -v`)
+- `make backend-gates` (runs build + vet + test)
+
 ## Frontend Gates
 
 Run from repository root:

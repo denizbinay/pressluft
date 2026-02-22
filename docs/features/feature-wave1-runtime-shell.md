@@ -24,9 +24,11 @@ Wave 1 requires a runnable application shell with a visible dashboard placeholde
 ## Allowed Change Paths
 
 - `go.mod`
+- `Makefile`
 - `cmd/pressluft/**`
 - `internal/devserver/**`
 - `README.md`
+- `docs/testing.md`
 - `PLAN.md`
 - `PROGRESS.md`
 - `docs/features/feature-wave1-runtime-shell.md`
@@ -42,7 +44,7 @@ Wave 1 requires a runnable application shell with a visible dashboard placeholde
 1. `go run ./cmd/pressluft dev` starts an HTTP server without additional setup.
 2. `GET /` returns the text `Wave 1 complete - features will be added incrementally`.
 3. Server logs include deterministic startup and request records with stable field names.
-4. Local setup instructions in `README.md` are sufficient to build and run Wave 1 from repository root.
+4. Local setup instructions in `README.md` are sufficient to build and run from repository root using repo-local commands.
 
 ## Scenarios (WHEN/THEN)
 
@@ -53,6 +55,10 @@ Wave 1 requires a runnable application shell with a visible dashboard placeholde
 ## Verification
 
 - Required commands:
+  - `make build`
+  - `make vet`
+  - `make test`
+  - `make dev PORT=18080` and `curl http://localhost:18080/`
   - `go build -o ./bin/pressluft ./cmd/pressluft`
   - `go vet ./...`
   - `go test ./internal/... -v`

@@ -25,6 +25,7 @@ Operators need stable, secure control-plane authentication with predictable sess
 - `internal/api/**`
 - `internal/auth/**`
 - `internal/store/**`
+- `internal/devserver/**`
 - `contracts/openapi.yaml`
 - `docs/api-contract.md`
 - `docs/security-and-secrets.md`

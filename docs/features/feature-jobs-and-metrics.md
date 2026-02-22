@@ -26,6 +26,7 @@ Operators need visibility into background work and platform health to trust auto
 - `internal/jobs/**`
 - `internal/metrics/**`
 - `internal/store/**`
+- `internal/devserver/**`
 - `contracts/openapi.yaml`
 - `docs/api-contract.md`
 - `docs/features/feature-jobs-and-metrics.md`

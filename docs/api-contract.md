@@ -146,7 +146,7 @@ This document is explanatory and must stay aligned with OpenAPI.
 
 - `GET /api/jobs`
 - `GET /api/jobs/{id}`
-  - Response: `{ id, status, site_id, node_id, error_code, error_message, started_at, finished_at }`
+  - Response includes full job state: `{ id, job_type, status, site_id, environment_id, node_id, attempt_count, max_attempts, run_after, locked_at, locked_by, started_at, finished_at, error_code, error_message, created_at, updated_at }`
   - `site_id` is nullable for global jobs (for example, `node_provision`).
 
 ### Job Control

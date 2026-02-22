@@ -6,8 +6,8 @@ Last Updated: 2026-02-22
 
 ## Current Stage
 
-- Stage: Wave 1 runtime shell completed; ready to begin Wave 2 auth and visibility tasks.
-- Blocker: none for Wave 1.
+- Stage: Wave 2 complete (W2-T1, W2-T2, W2-T3); ready to begin Wave 3 mutation engine work (W3-T1).
+- Blocker: none.
 
 ## Completed
 
@@ -30,16 +30,18 @@ Last Updated: 2026-02-22
 - Feature spec template and active Wave 0/1 feature specs updated with WHEN/THEN scenarios.
 - Unattended orchestration docs and OpenCode command presets added (`docs/unattended-orchestration.md`, `.opencode/commands/*`).
 - Unattended OpenCode command presets added (`/run-plan`, `/resume-run`, `/triage-failures`).
+- W2-T1 completed: login/logout cookie session lifecycle with session creation, expiry/revocation checks, and auth API tests.
+- Repo-local developer command workflow added with `Makefile` (`make dev`, `make build`, `make vet`, `make test`, `make backend-gates`) and documented in `README.md`.
 
 ## In Progress
 
-- Planning W2-T1 (`docs/features/feature-auth-session.md`) implementation scope.
+- Planning W3-T1 transactional mutation queue worker scope.
 
 ## Next Up
 
-1. Execute W2-T1 login/logout cookie session lifecycle from `docs/features/feature-auth-session.md`.
-2. Implement W2-T2 jobs/metrics read APIs and wire into dashboard view model.
-3. Implement W2-T3 dashboard auth screen and jobs/metrics panels with acceptance verification.
+1. Implement W3-T1 transactional mutation queue worker with concurrency invariants.
+2. Implement W3-T2 node provision mutation path via Ansible execution contract.
+3. Implement W3-T3 baseline audit logging for mutating actions.
 
 ## Open Risks
 
@@ -54,6 +56,10 @@ Last Updated: 2026-02-22
 - `go vet ./...`: pass.
 - `go test ./internal/... -v`: pass.
 - `go run ./cmd/pressluft dev --port 18080` + `curl http://127.0.0.1:18080/`: pass (HTTP 200 + expected Wave 1 placeholder text and request log line).
+- `go test ./internal/... -v`: pass (includes auth login/logout, jobs/metrics API coverage, and metrics aggregation tests).
+- `go run ./cmd/pressluft dev --port 18080` + login/metrics/jobs curl smoke: pass (`/` 200, `/api/jobs` 200 with session cookie, `/api/metrics` returned non-negative counters).
+- `make build`, `make vet`, `make test`: pass.
+- `make dev PORT=18080` + `curl http://127.0.0.1:18080/`: pass (HTTP 200 dashboard response + request log line).
 
 ## Session Handoff (2026-02-22)
 
@@ -61,35 +67,35 @@ Last Updated: 2026-02-22
 
 - Session date/time: 2026-02-22 UTC.
 - Branch/worktree: current branch in `/home/deniz/projects/pressluft`.
-- Governing feature spec: `docs/features/feature-wave1-runtime-shell.md`.
-- Tasks completed: W1-T1, W1-T2, W1-T3, W1-T4.
-- Tasks in progress: W2-T1 planning.
+- Governing feature specs: `docs/features/feature-auth-session.md`, `docs/features/feature-jobs-and-metrics.md`, `docs/features/feature-wave1-runtime-shell.md`.
+- Tasks completed: W2-T1, W2-T2, W2-T3; repo-local developer command workflow (`make dev`, `make build`, `make vet`, `make test`, `make backend-gates`).
+- Tasks in progress: W3-T1 planning.
 - Tasks blocked: none.
-- Verification summary (pass/fail): pass for readiness, build, vet, tests, and browser smoke path.
+- Verification summary (pass/fail): pass for readiness, backend gates, auth/jobs/metrics tests, and browser/API smoke paths.
 
 ### 2) Narrative Context
 
-- Why this session focused on the selected scope: unattended execution was blocked because Wave 1 paths had no owning feature spec.
-- Key implementation intent: create a minimal runnable shell that is browser-visible and deterministic for logs/testing.
-- Important non-obvious tradeoffs: kept response as plain text and avoided early auth/data scaffolding to preserve Wave 1 minimality.
+- Why this session focused on the selected scope: complete Wave 2 operator-visible baseline and remove friction in local startup commands for follow-on implementation sessions.
+- Key implementation intent: ship working auth + jobs/metrics visibility APIs and dashboard, then standardize repo-local developer commands for clone-and-run workflows.
+- Important non-obvious tradeoffs: keep in-memory placeholder job/metrics data for Wave 2 visibility while preserving spec alignment for upcoming Wave 3 queue/mutation work.
 
 ### 3) Decisions Made
 
-- Decision: introduced a dedicated Wave 1 feature spec and repointed Wave 1 tasks to it.
-  - Rationale: resolve allowed-path ownership mismatch without broadening install bootstrap scope.
-  - Spec/contract impact: `PLAN.md` now maps W1 tasks to `docs/features/feature-wave1-runtime-shell.md`; no API/schema contract changes.
-- Decision: implemented `dev` and `serve` through the same HTTP runtime path.
-  - Rationale: reduce early command divergence while meeting Wave 1 run requirements.
-  - Spec/contract impact: no OpenAPI or DB impact.
+- Decision: complete Wave 2 by delivering login/logout session lifecycle, jobs/metrics read APIs, and dashboard integration.
+  - Rationale: unlock operator visibility baseline before mutation/queue implementation starts.
+  - Spec/contract impact: aligned implementation with existing OpenAPI paths for `/api/login`, `/api/logout`, `/api/jobs`, `/api/jobs/{id}`, and `/api/metrics`; no DB schema change.
+- Decision: adopt repo-local `Makefile` commands as recommended day-to-day workflow.
+  - Rationale: avoid global PATH dependency and provide deterministic clone-and-run commands for all agents/operators.
+  - Spec/contract impact: updated `README.md`, `docs/testing.md`, and `docs/features/feature-wave1-runtime-shell.md`; no API/schema/infra contract change.
 
 ### 4) Priorities and Next Steps
 
-1. First next task: execute W2-T1 login/logout cookie session lifecycle.
-2. Second next task: implement W2-T2 jobs/metrics read APIs.
-3. Verification required before moving phases: rerun backend gates after each W2 milestone and preserve browser-visible behavior.
+1. First next task: execute W3-T1 transactional mutation queue worker with concurrency invariants under `docs/features/feature-node-provision.md`.
+2. Second next task: execute W3-T2 node provision mutation path via Ansible execution contract.
+3. Verification required before moving phases: run `make backend-gates` and Wave 3 manual flow smoke checks (`pressluft dev`, node-provision enqueue/state transitions, lock acquire/release logs).
 
 ### 5) Warnings and Blockers
 
-- Known risk: Wave 2+ may require additional scaffolding for persistence and handlers.
+- Known risk: Wave 3 concurrency invariants (`max 1 mutation job per site` and `max 1 per node`) can regress if worker locking is implemented outside DB transaction boundaries.
 - Open blocker: none currently.
-- Avoid this pitfall next session: do not start implementation for any wave task without a feature spec that explicitly owns intended paths.
+- Avoid this pitfall next session: do not bypass job queue or Ansible execution contract while implementing node mutation paths.
