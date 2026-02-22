@@ -2,8 +2,6 @@ package backups
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +26,7 @@ type ExecutionInput struct {
 	EnvironmentID string
 	BackupScope   string
 	StoragePath   string
+	ArtifactPath  string
 }
 
 type AnsibleExecutor struct {
@@ -57,6 +56,7 @@ func (e *AnsibleExecutor) RunBackupCreate(ctx context.Context, input ExecutionIn
 		"environment_id": input.EnvironmentID,
 		"backup_scope":   input.BackupScope,
 		"storage_path":   input.StoragePath,
+		"artifact_path":  input.ArtifactPath,
 	})
 	if err != nil {
 		return jobs.ExecutionError{Code: "ANSIBLE_UNEXPECTED_ERROR", Message: fmt.Sprintf("marshal extra vars: %v", err), Retryable: false}
@@ -119,13 +119,19 @@ func (h *Handler) Handle(ctx context.Context, job jobs.Job) error {
 		EnvironmentID: backup.EnvironmentID,
 		BackupScope:   backup.BackupScope,
 		StoragePath:   backup.StoragePath,
+		ArtifactPath:  LocalArtifactPath(backup.StoragePath),
 	}); err != nil {
 		_, _ = h.backups.MarkBackupFailed(ctx, backup.ID, h.now())
 		return forceNonRetryable(err)
 	}
 
-	checksum := checksumForBackup(backup.ID)
-	if _, err := h.backups.MarkBackupCompleted(ctx, backup.ID, checksum, 0, h.now()); err != nil {
+	checksum, sizeBytes, err := ChecksumAndSize(LocalArtifactPath(backup.StoragePath))
+	if err != nil {
+		_, _ = h.backups.MarkBackupFailed(ctx, backup.ID, h.now())
+		return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: fmt.Sprintf("read backup artifact: %v", err), Retryable: false}
+	}
+
+	if _, err := h.backups.MarkBackupCompleted(ctx, backup.ID, checksum, sizeBytes, h.now()); err != nil {
 		return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: err.Error(), Retryable: false}
 	}
 
@@ -140,11 +146,6 @@ func forceNonRetryable(err error) error {
 	}
 
 	return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: err.Error(), Retryable: false}
-}
-
-func checksumForBackup(backupID string) string {
-	hash := sha256.Sum256([]byte(backupID))
-	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {

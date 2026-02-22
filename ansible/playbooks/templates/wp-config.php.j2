@@ -1,0 +1,70 @@
+<?php
+/**
+ * WordPress Configuration - Managed by Pressluft
+ *
+ * Site ID: {{ site_id }}
+ * Environment ID: {{ environment_id }}
+ */
+
+// Database settings
+define('DB_NAME', 'wp_{{ environment_id[:8] }}');
+define('DB_USER', 'wp_{{ environment_id[:8] }}');
+define('DB_PASSWORD', '{{ db_password }}');
+define('DB_HOST', 'localhost');
+define('DB_CHARSET', 'utf8mb4');
+define('DB_COLLATE', '');
+
+// Authentication unique keys and salts
+define('AUTH_KEY',         '{{ wp_auth_key }}');
+define('SECURE_AUTH_KEY',  '{{ wp_secure_auth_key }}');
+define('LOGGED_IN_KEY',    '{{ wp_logged_in_key }}');
+define('NONCE_KEY',        '{{ wp_nonce_key }}');
+define('AUTH_SALT',        '{{ wp_auth_salt }}');
+define('SECURE_AUTH_SALT', '{{ wp_secure_auth_salt }}');
+define('LOGGED_IN_SALT',   '{{ wp_logged_in_salt }}');
+define('NONCE_SALT',       '{{ wp_nonce_salt }}');
+
+// WordPress database table prefix
+$table_prefix = 'wp_';
+
+// Redis Object Cache configuration
+define('WP_REDIS_HOST', '127.0.0.1');
+define('WP_REDIS_PORT', 6379);
+define('WP_REDIS_PREFIX', '{{ redis_prefix }}');
+define('WP_REDIS_DATABASE', 0);
+{% if redis_cache_enabled | default(true) %}
+define('WP_REDIS_DISABLED', false);
+{% else %}
+define('WP_REDIS_DISABLED', true);
+{% endif %}
+
+// Debugging (disabled in production)
+define('WP_DEBUG', false);
+define('WP_DEBUG_LOG', false);
+define('WP_DEBUG_DISPLAY', false);
+
+// Disable file editing in admin
+define('DISALLOW_FILE_EDIT', true);
+
+// Disable automatic updates (managed by Pressluft)
+define('AUTOMATIC_UPDATER_DISABLED', true);
+define('WP_AUTO_UPDATE_CORE', false);
+
+// Environment type
+{% if environment_type | default('production') == 'production' %}
+define('WP_ENVIRONMENT_TYPE', 'production');
+{% else %}
+define('WP_ENVIRONMENT_TYPE', 'staging');
+{% endif %}
+
+// Site URL
+define('WP_HOME', '{{ preview_url }}');
+define('WP_SITEURL', '{{ preview_url }}');
+
+// Absolute path to the WordPress directory
+if (!defined('ABSPATH')) {
+    define('ABSPATH', __DIR__ . '/');
+}
+
+// Sets up WordPress vars and included files
+require_once ABSPATH . 'wp-settings.php';

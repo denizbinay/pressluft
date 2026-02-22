@@ -16,7 +16,10 @@ import (
 	"pressluft/internal/environments"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
+	"pressluft/internal/nodes"
+	"pressluft/internal/providers"
 	"pressluft/internal/sites"
+	"pressluft/internal/ssh"
 	"pressluft/internal/store"
 )
 
@@ -31,27 +34,47 @@ type Router struct {
 	jobs         jobs.Reader
 	metrics      *metrics.Service
 	auditor      audit.Recorder
+	nodeStore    nodes.Store
 	sites        *sites.Service
 	environments *environments.Service
 	backups      *backups.Service
+	restores     *environments.RestoreService
+	providers    *providers.Service
+	sshRunner    ssh.QueryRunner
+	readiness    *nodes.ReadinessChecker
 }
 
-func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Reader, metricsService *metrics.Service, auditRecorder audit.Recorder) http.Handler {
+func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Reader, metricsService *metrics.Service, auditRecorder audit.Recorder, nodeStore *nodes.InMemoryStore, providerStore *providers.InMemoryStore) http.Handler {
 	var siteService *sites.Service
 	var environmentService *environments.Service
 	var backupService *backups.Service
+	var restoreService *environments.RestoreService
+	var providerService *providers.Service
+	var sshRunner ssh.QueryRunner
+	var readinessChecker *nodes.ReadinessChecker
+	if nodeStore != nil {
+		sshRunner = ssh.NewRunner()
+		readinessChecker = nodes.NewReadinessChecker(sshRunner)
+	}
+	if providerStore != nil {
+		providerService = providers.NewService(providerStore)
+	}
+
 	queue, ok := jobsReader.(sites.JobQueue)
 	if ok {
 		siteStore := store.DefaultSiteStore()
-		siteService = sites.NewService(siteStore, queue)
-		environmentService = environments.NewService(siteStore, queue)
+		siteService = sites.NewService(siteStore, nodeStore, queue, readinessChecker)
+		environmentService = environments.NewService(siteStore, queue, nodeStore, readinessChecker)
 		backupService = backups.NewService(siteStore, store.DefaultBackupStore(), queue)
+		restoreService = environments.NewRestoreService(siteStore, store.DefaultBackupStore(), store.DefaultRestoreRequestStore(), queue)
 	}
 
-	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService, auditor: auditRecorder, sites: siteService, environments: environmentService, backups: backupService}
+	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService, auditor: auditRecorder, nodeStore: nodeStore, sites: siteService, environments: environmentService, backups: backupService, restores: restoreService, providers: providerService, sshRunner: sshRunner, readiness: readinessChecker}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", router.handleLogin)
 	mux.HandleFunc("/logout", router.handleLogout)
+	mux.HandleFunc("/nodes", router.handleNodes)
+	mux.HandleFunc("/providers", router.handleProviders)
 	mux.HandleFunc("/jobs", router.handleJobsList)
 	mux.HandleFunc("/jobs/", router.handleJobDetail)
 	mux.HandleFunc("/metrics", router.handleMetrics)
@@ -60,6 +83,50 @@ func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Re
 	mux.HandleFunc("/environments/", router.handleEnvironmentByID)
 
 	return router.withAuth(mux)
+}
+
+func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
+	if r.providers == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "providers service unavailable")
+		return
+	}
+
+	switch req.Method {
+	case http.MethodGet:
+		connections, err := r.providers.List(req.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list providers")
+			return
+		}
+		writeJSON(w, http.StatusOK, connections)
+	case http.MethodPost:
+		var payload struct {
+			ProviderID string `json:"provider_id"`
+			APIToken   string `json:"api_token"`
+		}
+
+		decoder := json.NewDecoder(req.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+			return
+		}
+
+		connection, err := r.providers.Connect(req.Context(), providers.ConnectInput{ProviderID: payload.ProviderID, Secret: payload.APIToken})
+		if err != nil {
+			switch {
+			case errors.Is(err, providers.ErrUnknownProvider), errors.Is(err, providers.ErrMissingSecret):
+				writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+			default:
+				writeError(w, http.StatusInternalServerError, "internal_error", "failed to connect provider")
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, connection)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+	}
 }
 
 func (r *Router) handleSites(w http.ResponseWriter, req *http.Request) {
@@ -98,6 +165,10 @@ func (r *Router) handleSites(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			if errors.Is(err, store.ErrSiteSlugConflict) || errors.Is(err, sites.ErrMutationConflict) {
 				writeError(w, http.StatusConflict, "conflict", "conflicting site mutation")
+				return
+			}
+			if errors.Is(err, sites.ErrNodeNotReady) {
+				writeError(w, http.StatusConflict, "node_not_ready", err.Error())
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create site")
@@ -216,6 +287,8 @@ func (r *Router) handleSiteEnvironments(w http.ResponseWriter, req *http.Request
 			switch {
 			case errors.Is(err, store.ErrSiteNotFound):
 				writeError(w, http.StatusNotFound, "not_found", "site not found")
+			case errors.Is(err, environments.ErrNodeNotReady):
+				writeError(w, http.StatusConflict, "node_not_ready", err.Error())
 			case errors.Is(err, environments.ErrMutationConflict) || errors.Is(err, store.ErrEnvironmentSlugConflict):
 				writeError(w, http.StatusConflict, "conflict", "conflicting environment mutation")
 			case errors.Is(err, store.ErrInvalidEnvironmentCreate):
@@ -233,7 +306,7 @@ func (r *Router) handleSiteEnvironments(w http.ResponseWriter, req *http.Request
 }
 
 func (r *Router) handleEnvironmentByID(w http.ResponseWriter, req *http.Request) {
-	if r.environments == nil || r.backups == nil {
+	if r.environments == nil || r.backups == nil || r.restores == nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "environments service unavailable")
 		return
 	}
@@ -264,7 +337,52 @@ func (r *Router) handleEnvironmentByID(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
+	if len(parts) == 2 && parts[1] == "restore" {
+		r.handleEnvironmentRestore(w, req, id)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "wordpress-version" {
+		r.handleEnvironmentWordPressVersion(w, req, id)
+		return
+	}
+
 	writeError(w, http.StatusNotFound, "not_found", "environment not found")
+}
+
+func (r *Router) handleEnvironmentRestore(w http.ResponseWriter, req *http.Request, environmentID string) {
+	if req.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+		return
+	}
+
+	var payload struct {
+		BackupID string `json:"backup_id"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+
+	jobID, err := r.restores.Create(req.Context(), environmentID, payload.BackupID)
+	if err != nil {
+		switch {
+		case errors.Is(err, environments.ErrInvalidRestoreRequest):
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid restore request")
+		case errors.Is(err, store.ErrEnvironmentNotFound):
+			writeError(w, http.StatusNotFound, "not_found", "environment not found")
+		case errors.Is(err, environments.ErrMutationConflict):
+			writeError(w, http.StatusConflict, "conflict", "conflicting environment mutation")
+		default:
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to restore environment")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
 }
 
 func (r *Router) handleEnvironmentDetail(w http.ResponseWriter, req *http.Request, id string) {
@@ -280,6 +398,81 @@ func (r *Router) handleEnvironmentDetail(w http.ResponseWriter, req *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, environment)
+}
+
+func (r *Router) handleEnvironmentWordPressVersion(w http.ResponseWriter, req *http.Request, id string) {
+	if req.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+		return
+	}
+
+	if r.environments == nil || r.sshRunner == nil || r.nodeStore == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "service unavailable")
+		return
+	}
+
+	userID, _ := req.Context().Value(userIDContextKey).(string)
+	if userID == "" {
+		userID = auth.DefaultUserID
+	}
+
+	environment, err := r.environments.GetByID(req.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrEnvironmentNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "environment not found")
+			return
+		}
+		r.logger.Printf("event=wp_version_query_failed id=%s err=%v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load environment")
+		return
+	}
+
+	if environment.Status != "active" {
+		r.recordAudit(req.Context(), userID, "wp_version_query", "environment", id, "failed")
+		writeError(w, http.StatusConflict, "environment_not_active", "Environment is not in active state")
+		return
+	}
+
+	node, err := r.nodeStore.GetByID(req.Context(), environment.NodeID)
+	if err != nil {
+		r.logger.Printf("event=wp_version_query_failed id=%s node_id=%s err=%v", id, environment.NodeID, err)
+		r.recordAudit(req.Context(), userID, "wp_version_query", "environment", id, "failed")
+		writeError(w, http.StatusBadGateway, "node_unreachable", "Node not found for environment")
+		return
+	}
+
+	site, err := r.sites.GetByID(req.Context(), environment.SiteID)
+	if err != nil {
+		r.logger.Printf("event=wp_version_query_failed id=%s site_id=%s err=%v", id, environment.SiteID, err)
+		r.recordAudit(req.Context(), userID, "wp_version_query", "environment", id, "failed")
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to load site")
+		return
+	}
+
+	version, err := r.sshRunner.WordPressVersion(req.Context(), node.Hostname, node.SSHPort, node.SSHUser, site.Slug, environment.Slug)
+	if err != nil {
+		r.logger.Printf("event=wp_version_query_failed id=%s err=%v", id, err)
+		r.recordAudit(req.Context(), userID, "wp_version_query", "environment", id, "failed")
+		if errors.Is(err, ssh.ErrNodeUnreachable) || errors.Is(err, ssh.ErrQueryTimeout) {
+			writeError(w, http.StatusBadGateway, "node_unreachable", "SSH connection to node failed or timed out")
+			return
+		}
+		if errors.Is(err, ssh.ErrWPCLIError) {
+			writeError(w, http.StatusBadGateway, "wp_cli_error", "WP-CLI command failed")
+			return
+		}
+		writeError(w, http.StatusBadGateway, "node_unreachable", "Node query failed")
+		return
+	}
+
+	r.recordAudit(req.Context(), userID, "wp_version_query", "environment", id, "succeeded")
+	r.logger.Printf("event=wp_version_query_succeeded id=%s version=%s", id, version)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"environment_id":    id,
+		"wordpress_version": version,
+		"queried_at":        time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 func (r *Router) handleEnvironmentBackups(w http.ResponseWriter, req *http.Request, environmentID string) {
@@ -528,6 +721,168 @@ func (r *Router) handleMetrics(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (r *Router) handleNodes(w http.ResponseWriter, req *http.Request) {
+	if r.nodeStore == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "nodes service unavailable")
+		return
+	}
+
+	switch req.Method {
+	case http.MethodGet:
+		r.handleNodesList(w, req)
+	case http.MethodPost:
+		r.handleNodesCreate(w, req)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+	}
+}
+
+func (r *Router) handleNodesList(w http.ResponseWriter, req *http.Request) {
+
+	nodesList, err := r.nodeStore.List(req.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to list nodes")
+		return
+	}
+
+	type NodeResponse struct {
+		ID         string                `json:"id"`
+		Name       string                `json:"name"`
+		Hostname   string                `json:"hostname"`
+		PublicIP   *string               `json:"public_ip"`
+		SSHPort    int                   `json:"ssh_port"`
+		Status     string                `json:"status"`
+		IsLocal    bool                  `json:"is_local"`
+		LastSeenAt *time.Time            `json:"last_seen_at"`
+		CreatedAt  time.Time             `json:"created_at"`
+		UpdatedAt  time.Time             `json:"updated_at"`
+		Readiness  nodes.ReadinessReport `json:"readiness"`
+	}
+
+	response := make([]NodeResponse, 0, len(nodesList))
+	for _, node := range nodesList {
+		readiness := nodes.ReadinessReport{IsReady: false, ReasonCodes: []string{nodes.ReasonNodeUnreachable}, Guidance: []string{"Readiness probe unavailable."}, CheckedAt: time.Now().UTC()}
+		if r.readiness != nil {
+			report, err := r.readiness.Evaluate(req.Context(), node)
+			if err != nil {
+				r.logger.Printf("event=node_readiness_probe_failed node_id=%s err=%v", node.ID, err)
+				readiness = nodes.ReadinessReport{IsReady: false, ReasonCodes: []string{nodes.ReasonNodeUnreachable}, Guidance: []string{"Readiness probe failed. Verify SSH connectivity and runtime prerequisites."}, CheckedAt: time.Now().UTC()}
+			} else {
+				readiness = report
+			}
+		}
+		var publicIP *string
+		if node.PublicIP != "" {
+			publicIP = &node.PublicIP
+		}
+		response = append(response, NodeResponse{
+			ID:         node.ID,
+			Name:       node.Name,
+			Hostname:   node.Hostname,
+			PublicIP:   publicIP,
+			SSHPort:    node.SSHPort,
+			Status:     string(node.Status),
+			IsLocal:    node.IsLocal,
+			LastSeenAt: node.LastSeenAt,
+			CreatedAt:  node.CreatedAt,
+			UpdatedAt:  node.UpdatedAt,
+			Readiness:  readiness,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (r *Router) handleNodesCreate(w http.ResponseWriter, req *http.Request) {
+	queue, ok := r.jobs.(interface {
+		Enqueue(ctx context.Context, input jobs.EnqueueInput) (jobs.Job, error)
+	})
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "internal_error", "jobs queue unavailable")
+		return
+	}
+
+	var payload struct {
+		ProviderID string `json:"provider_id"`
+		Name       string `json:"name"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+
+	providerID := strings.TrimSpace(strings.ToLower(payload.ProviderID))
+	if providerID == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "provider_id is required")
+		return
+	}
+
+	if r.providers == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "providers service unavailable")
+		return
+	}
+
+	connections, err := r.providers.List(req.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to evaluate provider connection")
+		return
+	}
+
+	providerConnected := false
+	for _, connection := range connections {
+		if strings.EqualFold(connection.ProviderID, providerID) && connection.Status == providers.StatusConnected {
+			providerConnected = true
+			break
+		}
+	}
+	if !providerConnected {
+		writeError(w, http.StatusConflict, "conflict", "provider is not connected")
+		return
+	}
+
+	now := time.Now().UTC()
+	name := strings.TrimSpace(payload.Name)
+	if name == "" {
+		name = providerID + "-node"
+	}
+
+	node, err := r.nodeStore.Create(req.Context(), nodes.CreateInput{
+		ProviderID:        providerID,
+		Name:              name,
+		Hostname:          "pending.provider",
+		PublicIP:          "pending.provider",
+		SSHPort:           22,
+		SSHUser:           "ubuntu",
+		SSHPrivateKeyPath: "",
+		IsLocal:           false,
+		Now:               now,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to create node")
+		return
+	}
+
+	job, err := queue.Enqueue(req.Context(), jobs.EnqueueInput{
+		JobType:     "node_provision",
+		NodeID:      &node.ID,
+		MaxAttempts: 3,
+		CreatedAt:   now,
+	})
+	if err != nil {
+		if errors.Is(err, jobs.ErrConflict) {
+			writeError(w, http.StatusConflict, "conflict", "conflicting node mutation")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "failed to enqueue node provisioning")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": job.ID})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

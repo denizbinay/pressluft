@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-22
 Depends On: contracts/openapi.yaml, contracts/schemas/error.json, docs/api-contract.md, docs/job-execution.md, docs/ansible-execution.md
 Supersedes: none
 
@@ -32,11 +32,17 @@ Use these for cross-endpoint validation/auth/resource failures where no domain-s
 | `POST /api/environments/{id}/magic-login` | `environment_not_active` | 409 | Environment is not in `active` state. |
 | `POST /api/environments/{id}/magic-login` | `node_unreachable` | 502 | SSH connection failed or timed out. |
 | `POST /api/environments/{id}/magic-login` | `wp_cli_error` | 502 | WP-CLI command failed on target environment. |
+| `POST /api/sites` | `node_not_ready` | 409 | Target node failed runtime readiness preflight checks. |
+| `POST /api/sites/{id}/environments` | `node_not_ready` | 409 | Target node failed runtime readiness preflight checks. |
+| `GET /api/environments/{id}/wordpress-version` | `environment_not_active` | 409 | Environment is not in `active` state. |
+| `GET /api/environments/{id}/wordpress-version` | `node_unreachable` | 502 | SSH connection failed or timed out. |
+| `GET /api/environments/{id}/wordpress-version` | `wp_cli_error` | 502 | WP-CLI command failed on target environment. |
 | `POST /api/jobs/{id}/cancel` | `job_not_cancellable` | 409 | Job cannot be cancelled from its current state. |
 | `POST /api/sites/{id}/reset` | `resource_not_failed` | 409 | Reset requires resource to be in `failed` state. |
 | `POST /api/environments/{id}/reset` | `resource_not_failed` | 409 | Reset requires resource to be in `failed` state. |
 | `POST /api/sites/{id}/reset` | `reset_validation_failed` | 409 | Safety validation for reset action failed. |
 | `POST /api/environments/{id}/reset` | `reset_validation_failed` | 409 | Safety validation for reset action failed. |
+| `POST /api/nodes` | `conflict` | 409 | Request-level node mutation conflict (for example provider not connected or concurrent node mutation). |
 
 ## Job Error Codes (`jobs.error_code`)
 
@@ -50,6 +56,10 @@ Use these for cross-endpoint validation/auth/resource failures where no domain-s
 | `ANSIBLE_SYNTAX_ERROR` | no | ansible exit code 5 | Invalid playbook/options/syntax. |
 | `ANSIBLE_UNEXPECTED_ERROR` | no | ansible exit code 250 | Unexpected Ansible runtime error. |
 | `ANSIBLE_UNKNOWN_EXIT` | no | ansible other non-zero | Unknown Ansible failure. |
+| `PROVIDER_ACQUISITION_TIMEOUT` | yes | provider acquisition adapter | Provider create/poll lifecycle timed out before node target became provisionable. |
+| `PROVIDER_ACQUISITION_UNAVAILABLE` | no | provider acquisition adapter | Provider acquisition cannot run due to missing credentials/managed SSH key/adapter wiring. |
+| `PROVIDER_API_ERROR` | yes | provider acquisition adapter | Provider API returned non-2xx during acquisition lifecycle. |
+| `PROVIDER_ACQUISITION_FAILED` | no | provider acquisition adapter | Provider acquisition failed with a non-retryable error. |
 
 ## Rules
 

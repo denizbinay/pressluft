@@ -1,17 +1,23 @@
 package devserver
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"pressluft/internal/api"
 	"pressluft/internal/audit"
 	"pressluft/internal/auth"
+	"pressluft/internal/backups"
+	"pressluft/internal/environments"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
 	"pressluft/internal/nodes"
+	"pressluft/internal/providers"
+	"pressluft/internal/sites"
 	"pressluft/internal/store"
 )
 
@@ -222,6 +228,50 @@ const dashboardHTML = `<!doctype html>
 
     .job-link:hover { color: #63b9ff; }
 
+    .actions-cell { width: 64px; position: relative; text-align: right; }
+
+    .icon-btn {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #142433;
+      color: var(--ink);
+      cursor: pointer;
+      min-width: 34px;
+      min-height: 30px;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .icon-btn:hover { border-color: #3d5b75; }
+
+    .actions-menu {
+      position: absolute;
+      right: 8px;
+      top: 42px;
+      z-index: 2;
+      min-width: 190px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0f1925;
+      padding: 6px;
+      display: grid;
+      gap: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .actions-menu button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #152536;
+      color: var(--ink);
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    .actions-menu button:hover { border-color: #3d5b75; }
+
     th { color: var(--ink-soft); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
     .status { font-weight: 700; text-transform: capitalize; }
@@ -278,7 +328,7 @@ const dashboardHTML = `<!doctype html>
       <div class="head">
         <div>
           <h1>Pressluft Operator Console</h1>
-          <p class="muted">Wave 5 dashboard IA overhaul in progress with route-level subsites.</p>
+          <p class="muted">Wave 5.6 nodes-first dashboard realignment is in progress.</p>
         </div>
         <button id="logout" class="btn ghost hidden" type="button">Logout</button>
       </div>
@@ -297,11 +347,84 @@ const dashboardHTML = `<!doctype html>
       <section id="dashboard" class="hidden">
         <nav id="subsite-nav" class="subsite-nav" aria-label="Dashboard sections">
           <a class="subsite-link" data-nav="overview" href="/">Overview</a>
+          <a class="subsite-link" data-nav="providers" href="/providers">Providers</a>
+          <a class="subsite-link" data-nav="nodes" href="/nodes">Nodes</a>
           <a class="subsite-link" data-nav="sites" href="/sites">Sites</a>
-          <a class="subsite-link" data-nav="environments" href="/environments">Environments</a>
-          <a class="subsite-link" data-nav="backups" href="/backups">Backups</a>
           <a class="subsite-link" data-nav="jobs" href="/jobs">Jobs</a>
         </nav>
+
+        <section class="panel" data-subsite="providers" id="subsite-providers" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Providers</h2>
+            <p id="providers-title" class="muted">Connect provider bearer credentials before creating nodes.</p>
+          </div>
+          <form id="provider-connect-form">
+            <div class="inline">
+              <label>Provider
+                <select id="provider-id">
+                  <option value="hetzner">Hetzner Cloud</option>
+                </select>
+              </label>
+              <label>API Token
+                <input id="provider-api-token" name="api_token" type="password" required placeholder="Bearer token from Hetzner Cloud Console">
+              </label>
+            </div>
+            <button class="btn" type="submit">Connect Provider</button>
+            <p id="provider-success" class="success" aria-live="polite"></p>
+            <p id="provider-error" class="error" aria-live="polite"></p>
+          </form>
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Status</th>
+                <th>Secret</th>
+                <th>Capabilities</th>
+                <th>Guidance</th>
+              </tr>
+            </thead>
+            <tbody id="providers-body"></tbody>
+          </table>
+        </section>
+
+        <section class="panel" data-subsite="nodes" id="subsite-nodes" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Nodes</h2>
+            <p id="nodes-title" class="muted">Runtime node inventory and local-node readiness.</p>
+          </div>
+          <p id="local-node-readiness" class="muted">Local node readiness unknown.</p>
+          <section class="split" style="margin-top: 10px; margin-bottom: 10px;">
+            <article class="panel">
+              <h3>Create Node</h3>
+              <p class="muted">Create a node from a connected provider.</p>
+              <form id="node-provider-form">
+                <label>Provider
+                  <select id="node-provider-id">
+                    <option value="hetzner">Hetzner Cloud</option>
+                  </select>
+                </label>
+                <label>Name <input id="node-name" name="name" placeholder="edge-1"></label>
+                <button class="btn" type="submit">Create Node</button>
+                <p id="node-create-success" class="success" aria-live="polite"></p>
+                <p id="node-create-error" class="error" aria-live="polite"></p>
+              </form>
+            </article>
+          </section>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Host</th>
+                <th>Status</th>
+                <th>Local</th>
+                <th>Deploy Ready</th>
+                <th>Readiness Codes</th>
+                <th>Guidance</th>
+              </tr>
+            </thead>
+            <tbody id="nodes-body"></tbody>
+          </table>
+        </section>
 
         <section class="panel" data-subsite="overview" id="subsite-overview" style="margin-bottom: 14px;">
           <h2>Overview</h2>
@@ -333,18 +456,28 @@ const dashboardHTML = `<!doctype html>
                 <th>Name</th>
                 <th>Slug</th>
                 <th>Status</th>
-                <th>Primary Env</th>
+                <th>Node</th>
+                <th>Preview URL</th>
+                <th>WordPress</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="sites-body"></tbody>
           </table>
         </section>
 
-        <section data-subsite="environments" id="subsite-environments">
+        <section class="panel" data-subsite="site-detail" id="subsite-site-detail" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Site Detail</h2>
+            <p id="site-detail-title" class="muted">Select a site from /sites to manage environments and backups.</p>
+          </div>
+        </section>
+
+        <section data-subsite="site-detail" id="subsite-environments">
           <article class="panel">
             <h2>Create Environment</h2>
             <form id="environment-form">
-              <label>Site
+              <label id="environment-site-label">Site
                 <select id="environment-site" required>
                   <option value="">Select a site</option>
                 </select>
@@ -377,7 +510,7 @@ const dashboardHTML = `<!doctype html>
           </article>
         </section>
 
-        <section class="panel" data-subsite="environments" style="margin-bottom: 14px;">
+        <section class="panel" data-subsite="site-detail" style="margin-bottom: 14px;">
           <div class="head">
             <h2>Environments</h2>
             <p id="environment-title" class="muted">Select a site to view environments.</p>
@@ -396,16 +529,16 @@ const dashboardHTML = `<!doctype html>
           </table>
         </section>
 
-        <section class="panel" data-subsite="backups" id="subsite-backups" style="margin-bottom: 14px;">
+        <section class="panel" data-subsite="site-detail" id="subsite-backups" style="margin-bottom: 14px;">
           <div class="head">
             <h2>Backups</h2>
             <p id="backup-title" class="muted">Select a site and environment to create and view backups.</p>
           </div>
           <form id="backup-form">
-            <label>Site
-              <select id="backup-site" required>
-                <option value="">Select site</option>
-              </select>
+            <label id="backup-site-label">Site
+                <select id="backup-site" required>
+                  <option value="">Select site</option>
+                </select>
             </label>
             <div class="inline">
               <label>Environment
@@ -424,6 +557,24 @@ const dashboardHTML = `<!doctype html>
             <button class="btn" type="submit">Create Backup</button>
             <p id="backup-success" class="success" aria-live="polite"></p>
             <p id="backup-error" class="error" aria-live="polite"></p>
+          </form>
+          <form id="restore-form" style="margin-top: 10px;">
+            <div class="inline">
+              <label>Completed Backup
+                <select id="restore-backup" required>
+                  <option value="">Select completed backup</option>
+                </select>
+              </label>
+              <label>Confirm
+                <select id="restore-confirm" required>
+                  <option value="">Choose</option>
+                  <option value="yes">I understand this will replace environment content</option>
+                </select>
+              </label>
+            </div>
+            <button class="btn" type="submit">Restore Environment</button>
+            <p id="restore-success" class="success" aria-live="polite"></p>
+            <p id="restore-error" class="error" aria-live="polite"></p>
           </form>
           <table>
             <thead>
@@ -481,6 +632,21 @@ const dashboardHTML = `<!doctype html>
       logoutButton: document.getElementById('logout'),
       refreshButton: document.getElementById('refresh'),
       metricsEl: document.getElementById('metrics'),
+      nodesTitle: document.getElementById('nodes-title'),
+      localNodeReadiness: document.getElementById('local-node-readiness'),
+      nodesBody: document.getElementById('nodes-body'),
+      providersTitle: document.getElementById('providers-title'),
+      providersBody: document.getElementById('providers-body'),
+      providerConnectForm: document.getElementById('provider-connect-form'),
+      providerID: document.getElementById('provider-id'),
+      providerAPIToken: document.getElementById('provider-api-token'),
+      providerSuccess: document.getElementById('provider-success'),
+      providerError: document.getElementById('provider-error'),
+      nodeProviderForm: document.getElementById('node-provider-form'),
+      nodeProviderID: document.getElementById('node-provider-id'),
+      nodeName: document.getElementById('node-name'),
+      nodeCreateSuccess: document.getElementById('node-create-success'),
+      nodeCreateError: document.getElementById('node-create-error'),
       subsiteNav: document.getElementById('subsite-nav'),
       subsiteLinks: Array.from(document.querySelectorAll('[data-nav]')),
       subsiteSections: Array.from(document.querySelectorAll('[data-subsite]')),
@@ -491,7 +657,9 @@ const dashboardHTML = `<!doctype html>
       siteSuccess: document.getElementById('site-success'),
       sitesBody: document.getElementById('sites-body'),
       siteCount: document.getElementById('site-count'),
+      siteDetailTitle: document.getElementById('site-detail-title'),
       environmentForm: document.getElementById('environment-form'),
+      environmentSiteLabel: document.getElementById('environment-site-label'),
       environmentSite: document.getElementById('environment-site'),
       environmentNameInput: document.getElementById('environment-name'),
       environmentSlugInput: document.getElementById('environment-slug'),
@@ -503,12 +671,18 @@ const dashboardHTML = `<!doctype html>
       environmentsBody: document.getElementById('environments-body'),
       environmentTitle: document.getElementById('environment-title'),
       backupForm: document.getElementById('backup-form'),
+      backupSiteLabel: document.getElementById('backup-site-label'),
       backupSite: document.getElementById('backup-site'),
       backupEnvironment: document.getElementById('backup-environment'),
       backupScope: document.getElementById('backup-scope'),
       backupTitle: document.getElementById('backup-title'),
       backupSuccess: document.getElementById('backup-success'),
       backupError: document.getElementById('backup-error'),
+      restoreForm: document.getElementById('restore-form'),
+      restoreBackup: document.getElementById('restore-backup'),
+      restoreConfirm: document.getElementById('restore-confirm'),
+      restoreSuccess: document.getElementById('restore-success'),
+      restoreError: document.getElementById('restore-error'),
       backupsBody: document.getElementById('backups-body'),
       jobsBody: document.getElementById('jobs-body'),
       jobDetailTitle: document.getElementById('job-detail-title'),
@@ -527,9 +701,15 @@ const dashboardHTML = `<!doctype html>
       selectedJobID: '',
       selectedSiteID: '',
       selectedBackupEnvironmentID: '',
+      selectedRestoreBackupID: '',
+      requestedSiteDetailID: '',
+      requestedDetailFocus: '',
       activeSubsite: 'overview',
       siteEnvironmentsBySite: {},
       backupsByEnvironment: {},
+      nodesByID: {},
+      providersByID: {},
+      wpVersionByEnvironment: {},
     };
 
     const api = {
@@ -597,33 +777,53 @@ const dashboardHTML = `<!doctype html>
     };
 
     const shell = {
-      normalizeSubsite(pathname) {
+      resolveRoute(pathname, search) {
+        const siteDetailMatch = pathname.match(/^\/sites\/([^/]+)$/);
+        if (siteDetailMatch) {
+          const params = new URLSearchParams(search || '');
+          const focusParam = params.get('focus') || '';
+          const focus = focusParam === 'environment' || focusParam === 'backup' ? focusParam : '';
+          return {
+            subsite: 'site-detail',
+            navSubsite: 'sites',
+            siteID: decodeURIComponent(siteDetailMatch[1] || ''),
+            focus,
+          };
+        }
+
         switch (pathname) {
           case '/':
-            return 'overview';
+            return { subsite: 'overview', navSubsite: 'overview', siteID: '', focus: '' };
+          case '/providers':
+            return { subsite: 'providers', navSubsite: 'providers', siteID: '', focus: '' };
+          case '/nodes':
+            return { subsite: 'nodes', navSubsite: 'nodes', siteID: '', focus: '' };
           case '/sites':
-            return 'sites';
-          case '/environments':
-            return 'environments';
-          case '/backups':
-            return 'backups';
+            return { subsite: 'sites', navSubsite: 'sites', siteID: '', focus: '' };
           case '/jobs':
-            return 'jobs';
+            return { subsite: 'jobs', navSubsite: 'jobs', siteID: '', focus: '' };
           default:
-            return 'overview';
+            return { subsite: 'overview', navSubsite: 'overview', siteID: '', focus: '' };
         }
       },
-      applySubsite(pathname) {
-        state.activeSubsite = shell.normalizeSubsite(pathname);
+      applySubsite(pathname, search) {
+        const route = shell.resolveRoute(pathname, search);
+        state.activeSubsite = route.subsite;
+        state.requestedSiteDetailID = route.siteID;
+        state.requestedDetailFocus = route.focus;
+        if (route.siteID) {
+          state.selectedSiteID = route.siteID;
+        }
 
         dom.subsiteSections.forEach((section) => {
           const sectionName = section.getAttribute('data-subsite') || '';
           section.classList.toggle('hidden', sectionName !== state.activeSubsite);
         });
+        siteDetailView.syncVisibility();
 
         dom.subsiteLinks.forEach((link) => {
           const linkName = link.getAttribute('data-nav') || '';
-          const isActive = linkName === state.activeSubsite;
+          const isActive = linkName === route.navSubsite;
           link.classList.toggle('active', isActive);
           if (isActive) {
             link.setAttribute('aria-current', 'page');
@@ -637,7 +837,7 @@ const dashboardHTML = `<!doctype html>
         dom.dashboard.classList.toggle('hidden', !authed);
         dom.logoutButton.classList.toggle('hidden', !authed);
         if (authed) {
-          shell.applySubsite(window.location.pathname);
+          shell.applySubsite(window.location.pathname, window.location.search);
         }
       },
       bindNavigation() {
@@ -657,12 +857,25 @@ const dashboardHTML = `<!doctype html>
           if (window.location.pathname !== nextPath) {
             window.history.pushState({}, '', nextPath);
           }
-          shell.applySubsite(nextPath);
+          shell.applySubsite(nextPath, '');
         });
 
         window.addEventListener('popstate', () => {
-          shell.applySubsite(window.location.pathname);
+          shell.applySubsite(window.location.pathname, window.location.search);
         });
+      },
+      navigateToSiteDetail(siteID, focus) {
+        if (!siteID) {
+          return;
+        }
+        const base = '/sites/' + encodeURIComponent(siteID);
+        const query = focus ? ('?focus=' + encodeURIComponent(focus)) : '';
+        const nextPath = base + query;
+        if ((window.location.pathname + window.location.search) !== nextPath) {
+          window.history.pushState({}, '', nextPath);
+        }
+        shell.applySubsite(window.location.pathname, window.location.search);
+        siteDetailView.applyFocus();
       },
     };
 
@@ -675,6 +888,205 @@ const dashboardHTML = `<!doctype html>
       },
       clear() {
         dom.metricsEl.innerHTML = '';
+      },
+    };
+
+    const nodesView = {
+      cache(nodesList) {
+        util.resetMap(state.nodesByID);
+        (Array.isArray(nodesList) ? nodesList : []).forEach((node) => {
+          if (node && node.id) {
+            state.nodesByID[node.id] = node;
+          }
+        });
+      },
+      render(nodesList) {
+        const nodes = Array.isArray(nodesList) ? nodesList : [];
+        nodesView.cache(nodes);
+        dom.nodesTitle.textContent = nodes.length === 1 ? '1 node registered.' : String(nodes.length) + ' nodes registered.';
+
+        const providerNode = nodes.find((node) => node && node.is_local === false);
+        if (!providerNode) {
+          dom.localNodeReadiness.textContent = 'Provider-backed node not registered. Site create will fail until a provider node is ready.';
+        } else {
+          const readiness = providerNode.readiness || {};
+          const reasonCodes = Array.isArray(readiness.reason_codes) ? readiness.reason_codes : [];
+          const guidance = Array.isArray(readiness.guidance) ? readiness.guidance : [];
+          if (readiness.is_ready) {
+            dom.localNodeReadiness.textContent = 'Provider-backed node is present and deploy-ready.';
+          } else {
+            const details = reasonCodes.length > 0 ? reasonCodes.join(', ') : ('status: ' + providerNode.status);
+            const help = guidance.length > 0 ? (' ' + guidance.join(' ')) : '';
+            dom.localNodeReadiness.textContent = 'Provider-backed node is not ready (' + details + ').' + help;
+          }
+        }
+
+        if (nodes.length === 0) {
+          dom.nodesBody.innerHTML = '<tr><td colspan="7" class="muted">No nodes registered yet.</td></tr>';
+          return;
+        }
+
+        dom.nodesBody.innerHTML = nodes.map((node) => {
+          const status = String(node.status || 'unknown');
+          const host = node.public_ip || node.hostname || (node.is_local ? 'localhost' : '-');
+          const readiness = node.readiness || {};
+          const reasonCodes = Array.isArray(readiness.reason_codes) ? readiness.reason_codes : [];
+          const guidance = Array.isArray(readiness.guidance) ? readiness.guidance : [];
+          const deployReady = readiness.is_ready ? 'yes' : 'no';
+          const local = node.is_local ? 'yes' : 'no';
+          const readinessCodesLabel = reasonCodes.length > 0 ? reasonCodes.join(', ') : '-';
+          const guidanceLabel = guidance.length > 0 ? guidance.join(' ') : '-';
+          return [
+            '<tr>',
+            '<td>' + util.escapeHTML(node.name || '-') + '</td>',
+            '<td>' + util.escapeHTML(host) + '</td>',
+            '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
+            '<td>' + local + '</td>',
+            '<td>' + deployReady + '</td>',
+            '<td>' + util.escapeHTML(readinessCodesLabel) + '</td>',
+            '<td>' + util.escapeHTML(guidanceLabel) + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+      },
+      clear() {
+        dom.nodesTitle.textContent = 'Runtime node inventory and provider readiness.';
+        dom.localNodeReadiness.textContent = 'Provider-backed node readiness unknown.';
+        dom.nodesBody.innerHTML = '';
+        nodesView.clearMessages();
+      },
+      clearMessages() {
+        dom.nodeCreateSuccess.textContent = '';
+        dom.nodeCreateError.textContent = '';
+      },
+      bind() {
+        dom.nodeProviderForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          nodesView.clearMessages();
+
+          const payload = { provider_id: dom.nodeProviderID.value };
+          const name = dom.nodeName.value.trim();
+          if (name) {
+            payload.name = name;
+          }
+
+          try {
+            const accepted = await api.request('/nodes', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            await dashboardController.load();
+            dom.nodeCreateSuccess.textContent = 'Create Node accepted (' + (accepted.job_id || '-') + ').';
+          } catch (err) {
+            dom.nodeCreateError.textContent = err.message || 'Create Node failed';
+          }
+        });
+      },
+    };
+
+    const providersView = {
+      cache(providersList) {
+        util.resetMap(state.providersByID);
+        (Array.isArray(providersList) ? providersList : []).forEach((provider) => {
+          if (provider && provider.provider_id) {
+            state.providersByID[provider.provider_id] = provider;
+          }
+        });
+      },
+      render(providersList) {
+        const providers = Array.isArray(providersList) ? providersList : [];
+        providersView.cache(providers);
+        if (providers.length === 0) {
+          dom.providersTitle.textContent = 'No providers available.';
+          dom.providersBody.innerHTML = '<tr><td colspan="5" class="muted">No providers available.</td></tr>';
+          return;
+        }
+
+        const connected = providers.filter((provider) => provider && provider.status === 'connected').length;
+        if (connected === 0) {
+          dom.providersTitle.textContent = 'No connected providers. Node creation remains blocked until a provider is connected.';
+        } else {
+          dom.providersTitle.textContent = String(connected) + ' provider' + (connected === 1 ? '' : 's') + ' connected for node workflows.';
+        }
+
+        dom.providersBody.innerHTML = providers.map((provider) => {
+          const status = String(provider.status || 'unknown');
+          const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities.join(', ') : '-';
+          const guidance = Array.isArray(provider.guidance) ? provider.guidance.join(' ') : '-';
+          const secret = provider.secret_configured ? 'configured' : 'missing';
+          return [
+            '<tr>',
+            '<td>' + util.escapeHTML(provider.display_name || provider.provider_id || '-') + '</td>',
+            '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
+            '<td>' + util.escapeHTML(secret) + '</td>',
+            '<td>' + util.escapeHTML(capabilities || '-') + '</td>',
+            '<td>' + util.escapeHTML(guidance || '-') + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+      },
+      clearMessages() {
+        dom.providerSuccess.textContent = '';
+        dom.providerError.textContent = '';
+      },
+      clear() {
+        providersView.clearMessages();
+        dom.providersTitle.textContent = 'Connect provider bearer credentials before creating nodes.';
+        dom.providersBody.innerHTML = '';
+        util.resetMap(state.providersByID);
+      },
+      bind() {
+        dom.providerConnectForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          providersView.clearMessages();
+
+          try {
+            const provider = await api.request('/providers', {
+              method: 'POST',
+              body: JSON.stringify({
+                provider_id: dom.providerID.value,
+                api_token: dom.providerAPIToken.value,
+              }),
+            });
+            dom.providerSuccess.textContent = (provider.display_name || provider.provider_id || 'Provider') + ' connected.';
+            dom.providerAPIToken.value = '';
+            await dashboardController.load();
+          } catch (err) {
+            dom.providerError.textContent = err.message || 'Provider connect failed';
+          }
+        });
+      },
+    };
+
+    const siteDetailView = {
+      syncVisibility() {
+        const isDetail = state.activeSubsite === 'site-detail';
+        dom.environmentSiteLabel.classList.toggle('hidden', isDetail);
+        dom.backupSiteLabel.classList.toggle('hidden', isDetail);
+      },
+      renderTitle(sites) {
+        siteDetailView.syncVisibility();
+        if (state.activeSubsite !== 'site-detail') {
+          dom.siteDetailTitle.textContent = 'Select a site from /sites to manage environments and backups.';
+          return;
+        }
+        const site = (Array.isArray(sites) ? sites : []).find((entry) => entry && entry.id === state.selectedSiteID);
+        if (!site) {
+          dom.siteDetailTitle.textContent = 'Requested site was not found. Return to /sites and pick another site.';
+          return;
+        }
+        dom.siteDetailTitle.textContent = 'Managing environments and backups for ' + (site.name || site.slug || site.id || 'selected site') + '.';
+      },
+      applyFocus() {
+        if (state.activeSubsite !== 'site-detail') {
+          return;
+        }
+        if (state.requestedDetailFocus === 'environment') {
+          dom.environmentForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        if (state.requestedDetailFocus === 'backup') {
+          dom.backupForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       },
     };
 
@@ -692,7 +1104,11 @@ const dashboardHTML = `<!doctype html>
         if (state.selectedSiteID) {
           const exists = sites.some((site) => site.id === state.selectedSiteID);
           if (!exists) {
-            state.selectedSiteID = sites.length > 0 ? (sites[0].id || '') : '';
+            if (state.activeSubsite === 'site-detail' && state.requestedSiteDetailID) {
+              state.selectedSiteID = state.requestedSiteDetailID;
+            } else {
+              state.selectedSiteID = sites.length > 0 ? (sites[0].id || '') : '';
+            }
           }
         }
         dom.environmentSite.value = state.selectedSiteID || '';
@@ -700,19 +1116,41 @@ const dashboardHTML = `<!doctype html>
       },
       renderSitesTable(sites) {
         if (sites.length === 0) {
-          dom.sitesBody.innerHTML = '<tr><td colspan="4" class="muted">No sites available.</td></tr>';
+          dom.sitesBody.innerHTML = '<tr><td colspan="7" class="muted">No sites available yet. Create your first site to unlock environments and backups.</td></tr>';
           return;
         }
 
         dom.sitesBody.innerHTML = sites.map((site) => {
           const status = String(site.status || 'unknown');
-          const primary = site.primary_environment_id || '-';
+          const siteEnvironments = state.siteEnvironmentsBySite[site.id] || [];
+          const primaryEnvironment = siteEnvironments.find((environment) => environment.id === site.primary_environment_id) || null;
+          const preview = primaryEnvironment ? (primaryEnvironment.preview_url || '-') : '-';
+          const nodeID = primaryEnvironment ? (primaryEnvironment.node_id || '') : '';
+          const node = nodeID ? state.nodesByID[nodeID] : null;
+          const nodeLabel = node ? ((node.name || node.id || 'node') + (node.is_local ? ' (local)' : '')) : (nodeID || '-');
+          const wpVersionEntry = primaryEnvironment ? state.wpVersionByEnvironment[primaryEnvironment.id] : null;
+          let wpVersion = '-';
+          if (wpVersionEntry && wpVersionEntry.version) {
+            wpVersion = wpVersionEntry.version;
+          } else if (wpVersionEntry && wpVersionEntry.error) {
+            wpVersion = 'error: ' + wpVersionEntry.error;
+          }
           return [
             '<tr>',
             '<td>' + util.escapeHTML(site.name || '-') + '</td>',
             '<td>' + util.escapeHTML(site.slug || '-') + '</td>',
             '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
-            '<td>' + util.escapeHTML(primary) + '</td>',
+            '<td>' + util.escapeHTML(nodeLabel) + '</td>',
+            '<td>' + util.escapeHTML(preview) + '</td>',
+            '<td>' + util.escapeHTML(wpVersion) + '</td>',
+            '<td class="actions-cell">',
+            '<button class="icon-btn" type="button" data-site-actions-toggle="' + util.escapeHTML(site.id || '') + '" aria-haspopup="true" aria-expanded="false">...</button>',
+            '<div class="actions-menu hidden" data-site-actions-menu="' + util.escapeHTML(site.id || '') + '">',
+            '<button type="button" data-site-action="open-detail" data-site-id="' + util.escapeHTML(site.id || '') + '">Open details</button>',
+            '<button type="button" data-site-action="create-environment" data-site-id="' + util.escapeHTML(site.id || '') + '">Create environment</button>',
+            '<button type="button" data-site-action="create-backup" data-site-id="' + util.escapeHTML(site.id || '') + '">Create backup</button>',
+            '</div>',
+            '</td>',
             '</tr>',
           ].join('');
         }).join('');
@@ -722,12 +1160,14 @@ const dashboardHTML = `<!doctype html>
         dom.siteCount.textContent = String(list.length) + (list.length === 1 ? ' site' : ' sites');
         sitesView.renderSiteOptions(list);
         sitesView.renderSitesTable(list);
+        siteDetailView.renderTitle(list);
       },
       clearMessages() {
         dom.siteError.textContent = '';
         dom.siteSuccess.textContent = '';
       },
       clear() {
+        siteDetailView.syncVisibility();
         dom.sitesBody.innerHTML = '';
         dom.siteCount.textContent = '0 sites';
         dom.environmentSite.innerHTML = '<option value="">Select a site</option>';
@@ -735,6 +1175,73 @@ const dashboardHTML = `<!doctype html>
         sitesView.clearMessages();
       },
       bind() {
+        document.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+          const isToggle = target.closest('button[data-site-actions-toggle]');
+          const isAction = target.closest('button[data-site-action]');
+          if (isToggle || isAction) {
+            return;
+          }
+          document.querySelectorAll('[data-site-actions-menu]').forEach((entry) => {
+            entry.classList.add('hidden');
+          });
+          document.querySelectorAll('[data-site-actions-toggle]').forEach((entry) => {
+            entry.setAttribute('aria-expanded', 'false');
+          });
+        });
+
+        dom.sitesBody.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+
+          const toggle = target.closest('button[data-site-actions-toggle]');
+          if (toggle) {
+            const siteID = toggle.getAttribute('data-site-actions-toggle') || '';
+            const menu = dom.sitesBody.querySelector('[data-site-actions-menu="' + siteID + '"]');
+            if (!menu) {
+              return;
+            }
+            const expanded = toggle.getAttribute('aria-expanded') === 'true';
+            document.querySelectorAll('[data-site-actions-menu]').forEach((entry) => entry.classList.add('hidden'));
+            document.querySelectorAll('[data-site-actions-toggle]').forEach((entry) => entry.setAttribute('aria-expanded', 'false'));
+            if (!expanded) {
+              menu.classList.remove('hidden');
+              toggle.setAttribute('aria-expanded', 'true');
+            }
+            return;
+          }
+
+          const action = target.closest('button[data-site-action]');
+          if (!action) {
+            return;
+          }
+
+          const siteID = action.getAttribute('data-site-id') || '';
+          if (!siteID) {
+            return;
+          }
+
+          const actionName = action.getAttribute('data-site-action') || '';
+          switch (actionName) {
+            case 'open-detail':
+              shell.navigateToSiteDetail(siteID, '');
+              return;
+            case 'create-environment':
+              shell.navigateToSiteDetail(siteID, 'environment');
+              return;
+            case 'create-backup':
+              shell.navigateToSiteDetail(siteID, 'backup');
+              return;
+            default:
+              return;
+          }
+        });
+
         dom.siteForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           sitesView.clearMessages();
@@ -757,6 +1264,12 @@ const dashboardHTML = `<!doctype html>
     };
 
     const environmentsView = {
+      hasRequestedMissingSite() {
+        if (state.activeSubsite !== 'site-detail' || !state.requestedSiteDetailID) {
+          return false;
+        }
+        return !Object.prototype.hasOwnProperty.call(state.siteEnvironmentsBySite, state.selectedSiteID);
+      },
       renderSourceOptions() {
         const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
         dom.environmentSource.innerHTML = ['<option value="">Select source environment</option>'].concat(
@@ -765,6 +1278,14 @@ const dashboardHTML = `<!doctype html>
       },
       renderTable() {
         const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        const requestedButMissing = environmentsView.hasRequestedMissingSite();
+        if (requestedButMissing) {
+          dom.environmentsBody.innerHTML = '<tr><td colspan="5" class="muted">Requested site not found. Return to /sites and choose a valid site.</td></tr>';
+          dom.environmentTitle.textContent = 'Requested site not found.';
+          environmentsView.renderSourceOptions();
+          return;
+        }
+
         if (!state.selectedSiteID) {
           dom.environmentsBody.innerHTML = '<tr><td colspan="5" class="muted">Create or select a site to view environments.</td></tr>';
           dom.environmentTitle.textContent = 'Select a site to view environments.';
@@ -803,22 +1324,19 @@ const dashboardHTML = `<!doctype html>
         dom.environmentsBody.innerHTML = '';
         dom.environmentTitle.textContent = 'Select a site to view environments.';
         dom.environmentSource.innerHTML = '<option value="">Select source environment</option>';
+        dom.environmentSiteLabel.classList.add('hidden');
         environmentsView.clearMessages();
       },
       bind() {
-        dom.environmentSite.addEventListener('change', () => {
-          state.selectedSiteID = dom.environmentSite.value;
-          dom.backupSite.value = state.selectedSiteID;
-          state.selectedBackupEnvironmentID = '';
-          environmentsView.renderTable();
-          backupsView.renderTable();
-        });
-
         dom.environmentForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           environmentsView.clearMessages();
 
-          const siteID = dom.environmentSite.value;
+          const siteID = state.selectedSiteID || dom.environmentSite.value;
+          if (environmentsView.hasRequestedMissingSite()) {
+            dom.environmentError.textContent = '404 requested site not found';
+            return;
+          }
           if (!siteID) {
             dom.environmentError.textContent = '400 site is required';
             return;
@@ -846,6 +1364,12 @@ const dashboardHTML = `<!doctype html>
     };
 
     const backupsView = {
+      hasRequestedMissingSite() {
+        if (state.activeSubsite !== 'site-detail' || !state.requestedSiteDetailID) {
+          return false;
+        }
+        return !Object.prototype.hasOwnProperty.call(state.siteEnvironmentsBySite, state.selectedSiteID);
+      },
       renderEnvironmentOptions() {
         const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
         dom.backupEnvironment.innerHTML = ['<option value="">Select environment</option>'].concat(
@@ -863,9 +1387,36 @@ const dashboardHTML = `<!doctype html>
         }
 
         dom.backupEnvironment.value = state.selectedBackupEnvironmentID || '';
+	      backupsView.renderRestoreBackupOptions();
+      },
+      renderRestoreBackupOptions() {
+        const backups = state.backupsByEnvironment[state.selectedBackupEnvironmentID] || [];
+        const completed = backups.filter((backup) => backup && backup.status === 'completed');
+        dom.restoreBackup.innerHTML = ['<option value="">Select completed backup</option>'].concat(
+          completed.map((backup) => '<option value="' + util.escapeHTML(backup.id) + '">' + util.escapeHTML(backup.id) + ' (' + util.escapeHTML(backup.backup_scope || '-') + ')</option>')
+        ).join('');
+
+        if (!state.selectedRestoreBackupID && completed.length > 0) {
+          state.selectedRestoreBackupID = completed[0].id || '';
+        }
+        if (state.selectedRestoreBackupID) {
+          const exists = completed.some((backup) => backup.id === state.selectedRestoreBackupID);
+          if (!exists) {
+            state.selectedRestoreBackupID = completed.length > 0 ? (completed[0].id || '') : '';
+          }
+        }
+        dom.restoreBackup.value = state.selectedRestoreBackupID || '';
       },
       renderTable() {
         const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        const requestedButMissing = backupsView.hasRequestedMissingSite();
+        if (requestedButMissing) {
+          dom.backupTitle.textContent = 'Requested site not found.';
+          dom.backupsBody.innerHTML = '<tr><td colspan="5" class="muted">Requested site not found. Return to /sites and choose a valid site.</td></tr>';
+          backupsView.renderEnvironmentOptions();
+          return;
+        }
+
         if (!state.selectedSiteID) {
           dom.backupTitle.textContent = 'Select a site and environment to create and view backups.';
           dom.backupsBody.innerHTML = '<tr><td colspan="5" class="muted">Select a site and environment to view backups.</td></tr>';
@@ -906,33 +1457,38 @@ const dashboardHTML = `<!doctype html>
       clearMessages() {
         dom.backupError.textContent = '';
         dom.backupSuccess.textContent = '';
+	      dom.restoreError.textContent = '';
+	      dom.restoreSuccess.textContent = '';
       },
       clear() {
         dom.backupsBody.innerHTML = '';
         dom.backupTitle.textContent = 'Select a site and environment to create and view backups.';
         dom.backupSite.innerHTML = '<option value="">Select site</option>';
         dom.backupEnvironment.innerHTML = '<option value="">Select environment</option>';
+        dom.restoreBackup.innerHTML = '<option value="">Select completed backup</option>';
+        dom.restoreConfirm.value = '';
+        dom.backupSiteLabel.classList.add('hidden');
         backupsView.clearMessages();
       },
       bind() {
-        dom.backupSite.addEventListener('change', () => {
-          state.selectedSiteID = dom.backupSite.value;
-          dom.environmentSite.value = state.selectedSiteID;
-          state.selectedBackupEnvironmentID = '';
-          environmentsView.renderTable();
-          backupsView.renderTable();
-        });
-
         dom.backupEnvironment.addEventListener('change', () => {
           state.selectedBackupEnvironmentID = dom.backupEnvironment.value;
           backupsView.renderTable();
         });
+
+	      dom.restoreBackup.addEventListener('change', () => {
+	        state.selectedRestoreBackupID = dom.restoreBackup.value;
+	      });
 
         dom.backupForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           backupsView.clearMessages();
 
           const environmentID = dom.backupEnvironment.value;
+          if (backupsView.hasRequestedMissingSite()) {
+            dom.backupError.textContent = '404 requested site not found';
+            return;
+          }
           if (!environmentID) {
             dom.backupError.textContent = '400 environment is required';
             return;
@@ -950,6 +1506,38 @@ const dashboardHTML = `<!doctype html>
             dom.backupError.textContent = err.message || 'Backup create failed';
           }
         });
+
+	      dom.restoreForm.addEventListener('submit', async (event) => {
+	        event.preventDefault();
+	        backupsView.clearMessages();
+
+	        const environmentID = dom.backupEnvironment.value;
+	        const backupID = dom.restoreBackup.value;
+	        if (backupsView.hasRequestedMissingSite()) {
+	          dom.restoreError.textContent = '404 requested site not found';
+	          return;
+	        }
+	        if (!environmentID || !backupID) {
+	          dom.restoreError.textContent = '400 environment and backup are required';
+	          return;
+	        }
+	        if (dom.restoreConfirm.value !== 'yes') {
+	          dom.restoreError.textContent = '400 explicit restore confirmation is required';
+	          return;
+	        }
+
+	        try {
+	          await api.request('/environments/' + encodeURIComponent(environmentID) + '/restore', {
+	            method: 'POST',
+	            body: JSON.stringify({ backup_id: backupID }),
+	          });
+	          dom.restoreSuccess.textContent = 'Restore accepted.';
+	          dom.restoreConfirm.value = '';
+	          await dashboardData.loadSiteEnvironmentBackupData();
+	        } catch (err) {
+	          dom.restoreError.textContent = err.message || 'Restore failed';
+	        }
+	      });
       },
     };
 
@@ -1129,7 +1717,30 @@ const dashboardHTML = `<!doctype html>
           state.backupsByEnvironment[entry.environmentID] = Array.isArray(entry.backups) ? entry.backups : [];
         });
 
+        const wpVersionByEnvironment = await Promise.all(environmentIDs.map((environmentID) => {
+          return api.request('/environments/' + encodeURIComponent(environmentID) + '/wordpress-version')
+            .then((payload) => ({
+              environmentID,
+              version: payload && payload.wordpress_version ? payload.wordpress_version : '',
+              error: '',
+            }))
+            .catch((err) => ({
+              environmentID,
+              version: '',
+              error: err && err.code ? err.code : 'query_failed',
+            }));
+        }));
+
+        util.resetMap(state.wpVersionByEnvironment);
+        wpVersionByEnvironment.forEach((entry) => {
+          state.wpVersionByEnvironment[entry.environmentID] = {
+            version: entry.version,
+            error: entry.error,
+          };
+        });
+
         backupsView.renderTable();
+        sitesView.render(sites);
       },
     };
 
@@ -1165,12 +1776,17 @@ const dashboardHTML = `<!doctype html>
 
     const dashboardController = {
       async load() {
-        const [metrics, jobs] = await Promise.all([
+        shell.applySubsite(window.location.pathname, window.location.search);
+        const [metrics, jobs, nodes, providers] = await Promise.all([
           api.request('/metrics'),
           api.request('/jobs'),
+          api.request('/nodes'),
+          api.request('/providers'),
         ]);
 
         overviewView.renderMetrics(metrics);
+        nodesView.render(nodes);
+        providersView.render(providers);
         jobsView.renderJobsTable(jobs);
         await dashboardData.loadSiteEnvironmentBackupData();
 
@@ -1185,16 +1801,22 @@ const dashboardHTML = `<!doctype html>
         }
 
         shell.setAuthed(true);
+        siteDetailView.applyFocus();
       },
       reset() {
         overviewView.clear();
+        providersView.clear();
+        nodesView.clear();
         sitesView.clear();
         environmentsView.clear();
         backupsView.clear();
         jobsView.clear();
 
+        util.resetMap(state.nodesByID);
+        util.resetMap(state.providersByID);
         util.resetMap(state.siteEnvironmentsBySite);
         util.resetMap(state.backupsByEnvironment);
+        util.resetMap(state.wpVersionByEnvironment);
         state.selectedJobID = '';
         state.selectedSiteID = '';
         state.selectedBackupEnvironmentID = '';
@@ -1203,6 +1825,8 @@ const dashboardHTML = `<!doctype html>
       bind() {
         shell.bindNavigation();
         authController.bind();
+        providersView.bind();
+        nodesView.bind();
         sitesView.bind();
         environmentsView.bind();
         backupsView.bind();
@@ -1232,18 +1856,50 @@ type Server struct {
 	httpServer *http.Server
 	logger     *log.Logger
 	addr       string
+	worker     *jobs.Worker
+	workerWg   sync.WaitGroup
+	workerStop chan struct{}
 }
 
 func New(addr string, logger *log.Logger) *Server {
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "", "", 24*time.Hour)
-	jobStore := jobs.NewInMemoryRepository(seedJobs())
-	nodeStore := nodes.NewInMemoryStore(seedNodes())
-	siteStore := store.NewInMemorySiteStore(1)
+	jobStore := jobs.NewInMemoryRepository(nil)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	providerStore := providers.NewInMemoryStore(nil)
+	siteStore := store.NewInMemorySiteStore(0)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
 	auditStore := audit.NewInMemoryStore()
 	auditService := audit.NewService(auditStore)
-	apiHandler := api.NewRouter(logger, authService, jobStore, metricsService, auditService)
+	backupStore := store.NewInMemoryBackupStore()
+	restoreRequestStore := store.NewInMemoryRestoreRequestStore()
+	apiHandler := api.NewRouter(logger, authService, jobStore, metricsService, auditService, nodeStore, providerStore)
+
+	// Build job handlers for worker execution
+	siteExecutor := sites.NewAnsibleSiteCreateExecutor()
+	siteHandler := sites.NewSiteCreateHandler(store.DefaultSiteStore(), nodeStore, siteExecutor, logger)
+
+	envExecutor := environments.NewAnsibleEnvCreateExecutor()
+	envHandler := environments.NewEnvCreateHandler(store.DefaultSiteStore(), nodeStore, envExecutor, logger)
+
+	backupExecutor := backups.NewAnsibleExecutor()
+	backupHandler := backups.NewHandler(backupStore, backupExecutor)
+
+	restoreExecutor := environments.NewAnsibleEnvRestoreExecutor()
+	restoreHandler := environments.NewEnvRestoreHandler(store.DefaultSiteStore(), nodeStore, backupStore, restoreRequestStore, restoreExecutor, logger)
+
+	nodeExecutor := nodes.NewAnsibleExecutor()
+	nodeHandler := nodes.NewProvisionHandler(nodeStore, nodeExecutor, providerStore, nil, logger)
+
+	handlers := map[string]jobs.Handler{
+		"node_provision": nodeHandler.Handle,
+		"site_create":    siteHandler.Handle,
+		"env_create":     envHandler.Handle,
+		"backup_create":  backupHandler.Handle,
+		"env_restore":    restoreHandler.Handle,
+	}
+
+	worker := jobs.NewWorker(jobStore, "dev-worker", handlers, auditService)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiHandler))
@@ -1264,18 +1920,33 @@ func New(addr string, logger *log.Logger) *Server {
 			Addr:    addr,
 			Handler: wrapped,
 		},
-		logger: logger,
-		addr:   addr,
+		logger:     logger,
+		addr:       addr,
+		worker:     worker,
+		workerStop: make(chan struct{}),
 	}
 }
 
 func isDashboardRoute(path string) bool {
 	switch path {
-	case "/", "/sites", "/environments", "/backups", "/jobs":
+	case "/", "/providers", "/nodes", "/sites", "/jobs":
 		return true
 	default:
-		return false
+		if len(path) <= len("/sites/") || path[:len("/sites/")] != "/sites/" {
+			return false
+		}
+		tail := path[len("/sites/"):]
+		return tail != "" && !containsSlash(tail)
 	}
+}
+
+func containsSlash(value string) bool {
+	for _, r := range value {
+		if r == '/' {
+			return true
+		}
+	}
+	return false
 }
 
 func seedJobs() []jobs.Job {
@@ -1376,11 +2047,43 @@ func (s *Server) Addr() string {
 
 func (s *Server) Start() error {
 	s.logger.Printf("event=startup addr=%s", s.addr)
+
+	// Start the worker loop in a goroutine
+	s.workerWg.Add(1)
+	go s.runWorkerLoop()
+
 	err := s.httpServer.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("listen and serve: %w", err)
 	}
 	return nil
+}
+
+func (s *Server) runWorkerLoop() {
+	defer s.workerWg.Done()
+
+	s.logger.Printf("event=worker_start worker_id=dev-worker")
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.workerStop:
+			s.logger.Printf("event=worker_stop worker_id=dev-worker")
+			return
+		case <-ticker.C:
+			ctx := context.Background()
+			processed, err := s.worker.ProcessNext(ctx)
+			if err != nil {
+				s.logger.Printf("event=worker_error error=%v", err)
+				continue
+			}
+			if processed {
+				s.logger.Printf("event=worker_job_processed")
+			}
+		}
+	}
 }
 
 func requestLogger(logger *log.Logger, next http.Handler) http.Handler {

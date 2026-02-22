@@ -7,8 +7,33 @@ import (
 	"time"
 
 	"pressluft/internal/jobs"
+	"pressluft/internal/nodes"
 	"pressluft/internal/store"
 )
+
+type fakeNodeStore struct {
+	node nodes.Node
+	err  error
+}
+
+func (f fakeNodeStore) GetByID(context.Context, string) (nodes.Node, error) {
+	if f.err != nil {
+		return nodes.Node{}, f.err
+	}
+	return f.node, nil
+}
+
+type fakeReadinessChecker struct {
+	report nodes.ReadinessReport
+	err    error
+}
+
+func (f fakeReadinessChecker) Evaluate(context.Context, nodes.Node) (nodes.ReadinessReport, error) {
+	if f.err != nil {
+		return nodes.ReadinessReport{}, f.err
+	}
+	return f.report, nil
+}
 
 func TestCreatePersistsEnvironmentAndEnqueuesJob(t *testing.T) {
 	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
@@ -25,7 +50,7 @@ func TestCreatePersistsEnvironmentAndEnqueuesJob(t *testing.T) {
 		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
 	}
 
-	svc := NewService(siteStore, queue)
+	svc := NewService(siteStore, queue, nil, nil)
 	svc.now = func() time.Time { return now }
 
 	jobID, err := svc.Create(context.Background(), CreateInput{
@@ -107,7 +132,7 @@ func TestCreateReturnsConflictWhenMutationAlreadyQueued(t *testing.T) {
 		UpdatedAt:     now,
 	}})
 
-	svc := NewService(siteStore, queue)
+	svc := NewService(siteStore, queue, nil, nil)
 	svc.now = func() time.Time { return now }
 
 	_, err = svc.Create(context.Background(), CreateInput{
@@ -138,7 +163,7 @@ func TestCreateRejectsMissingSourceEnvironment(t *testing.T) {
 		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
 	}
 
-	svc := NewService(siteStore, queue)
+	svc := NewService(siteStore, queue, nil, nil)
 	_, err = svc.Create(context.Background(), CreateInput{
 		SiteID:          site.ID,
 		Name:            "Staging",
@@ -148,5 +173,36 @@ func TestCreateRejectsMissingSourceEnvironment(t *testing.T) {
 	})
 	if !errors.Is(err, store.ErrInvalidEnvironmentCreate) {
 		t.Fatalf("Create() error = %v, want ErrInvalidEnvironmentCreate", err)
+	}
+}
+
+func TestCreateFailsWhenTargetNodeNotReady(t *testing.T) {
+	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	siteStore := store.NewInMemorySiteStore(0)
+	queue := jobs.NewInMemoryRepository(nil)
+	site, production, err := siteStore.CreateSiteWithProductionEnvironment(context.Background(), store.CreateSiteInput{
+		Name:       "Acme",
+		Slug:       "acme",
+		NodeID:     nodes.SelfNodeID,
+		NodePublic: "127.0.0.1",
+		Now:        now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
+	}
+
+	readiness := fakeReadinessChecker{report: nodes.ReadinessReport{IsReady: false, ReasonCodes: []string{nodes.ReasonRuntimeMissing}}}
+	svc := NewService(siteStore, queue, fakeNodeStore{node: nodes.Node{ID: nodes.SelfNodeID}}, readiness)
+
+	_, err = svc.Create(context.Background(), CreateInput{
+		SiteID:              site.ID,
+		Name:                "Staging",
+		Slug:                "staging",
+		EnvironmentType:     "staging",
+		SourceEnvironmentID: &production.ID,
+		PromotionPreset:     "commerce-protect",
+	})
+	if !errors.Is(err, ErrNodeNotReady) {
+		t.Fatalf("Create() error = %v, want ErrNodeNotReady", err)
 	}
 }

@@ -9,6 +9,8 @@ security:
   - sessionAuth: []
 tags:
   - name: Auth
+  - name: Providers
+  - name: Nodes
   - name: Sites
   - name: Environments
   - name: Caching
@@ -17,6 +19,93 @@ tags:
   - name: Jobs
   - name: Metrics
 paths:
+  /providers:
+    get:
+      tags: [Providers]
+      operationId: listProviders
+      summary: List provider connections
+      responses:
+        '200':
+          description: Provider connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderConnection'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Providers]
+      operationId: connectProvider
+      summary: Connect provider credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectProviderRequest'
+      responses:
+        '200':
+          description: Provider connection updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderConnection'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /nodes:
+    get:
+      tags: [Nodes]
+      operationId: listNodes
+      summary: List nodes
+      responses:
+        '200':
+          description: Nodes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Node'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Nodes]
+      operationId: createNode
+      summary: Create node
+      description: |
+        Enqueues asynchronous node acquisition/provisioning.
+        Request must target a connected provider.
+        Provider acquisition and provisioning execute inside `node_provision` job lifecycle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/AcceptedJob'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Request-level conflict (for example, concurrent mutation guard)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    code: conflict
+                    message: conflicting node mutation
+
   /login:
     post:
       tags: [Auth]
@@ -100,7 +189,20 @@ paths:
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '409':
-          $ref: '#/components/responses/ConflictError'
+          description: Resource state conflict or readiness preflight failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    code: conflict
+                    message: conflicting site mutation
+                nodeNotReady:
+                  value:
+                    code: node_not_ready
+                    message: target node is not ready
 
   /sites/{id}:
     get:
@@ -163,7 +265,20 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundError'
         '409':
-          $ref: '#/components/responses/ConflictError'
+          description: Resource state conflict or readiness preflight failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    code: conflict
+                    message: conflicting environment mutation
+                nodeNotReady:
+                  value:
+                    code: node_not_ready
+                    message: target node is not ready
 
   /sites/{id}/import:
     post:
@@ -217,65 +332,6 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/AcceptedJob'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '409':
-          $ref: '#/components/responses/ConflictError'
-
-  /environments/{id}/deploy:
-    post:
-      tags: [Environments]
-      operationId: deployEnvironment
-      summary: Deploy environment
-      parameters:
-        - $ref: '#/components/parameters/IdPathParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DeployRequest'
-            examples:
-              git:
-                value:
-                  source_type: git
-                  source_ref: git@github.com:acme/site.git#main
-              upload:
-                value:
-                  source_type: upload
-                  source_ref: s3://bucket/releases/site-20260219.tar.gz
-      responses:
-        '202':
-          $ref: '#/components/responses/AcceptedJob'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
-        '409':
-          $ref: '#/components/responses/ConflictError'
-
-  /environments/{id}/updates:
-    post:
-      tags: [Environments]
-      operationId: applyEnvironmentUpdates
-      summary: Apply updates
-      parameters:
-        - $ref: '#/components/parameters/IdPathParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdatesRequest'
-      responses:
-        '202':
-          $ref: '#/components/responses/AcceptedJob'
-        '400':
-          $ref: '#/components/responses/BadRequestError'
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '404':
@@ -404,6 +460,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MagicLoginResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Environment is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: environment_not_active
+                message: Environment is not in active state
+        '502':
+          description: Node query failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                nodeUnreachable:
+                  value:
+                    code: node_unreachable
+                    message: SSH connection to node failed or timed out
+                wpCliError:
+                  value:
+                    code: wp_cli_error
+                    message: WP-CLI command failed
+
+  /environments/{id}/wordpress-version:
+    get:
+      tags: [Environments]
+      operationId: getEnvironmentWordPressVersion
+      summary: Get WordPress version for environment
+      description: |
+        Synchronous node query that bypasses the job queue. Returns the WordPress version string directly.
+        Query times out after 10 seconds.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: WordPress version retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordPressVersionResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '404':
@@ -701,6 +803,141 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    ProviderConnection:
+      type: object
+      required: [provider_id, display_name, status, capabilities, secret_configured, guidance, last_status_message, updated_at]
+      properties:
+        provider_id:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [connected, degraded, disconnected]
+        capabilities:
+          type: array
+          items:
+            type: string
+        secret_configured:
+          type: boolean
+        guidance:
+          type: array
+          items:
+            type: string
+        last_status_message:
+          type: string
+        connected_at:
+          type: [string, 'null']
+          format: date-time
+        last_checked_at:
+          type: [string, 'null']
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    ConnectProviderRequest:
+      type: object
+      required: [provider_id, api_token]
+      properties:
+        provider_id:
+          type: string
+          enum: [hetzner]
+        api_token:
+          type: string
+          minLength: 1
+          description: Hetzner bearer credential from Cloud Console; no static token prefix requirement.
+      additionalProperties: false
+
+    Node:
+      type: object
+      required: [id, name, hostname, status, is_local, readiness, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        hostname:
+          type: string
+        public_ip:
+          type: [string, 'null']
+        ssh_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        status:
+          type: string
+          enum: [active, provisioning, unreachable, decommissioned]
+        is_local:
+          type: boolean
+        last_seen_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        readiness:
+          $ref: '#/components/schemas/NodeReadiness'
+      additionalProperties: false
+
+    CreateNodeRequest:
+      type: object
+      required: [provider_id]
+      properties:
+        provider_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+      additionalProperties: false
+
+    NodeReadiness:
+      type: object
+      required: [is_ready, reason_codes, guidance, checked_at]
+      properties:
+        is_ready:
+          type: boolean
+        reason_codes:
+          type: array
+          items:
+            type: string
+            enum:
+              - node_status_not_active
+              - node_host_missing
+              - ssh_port_invalid
+              - ssh_user_missing
+              - node_unreachable
+              - sudo_unavailable
+              - runtime_missing
+        guidance:
+          type: array
+          items:
+            type: string
+        checked_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    WordPressVersionResponse:
+      type: object
+      required: [environment_id, wordpress_version, queried_at]
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+        wordpress_version:
+          type: string
+        queried_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -874,27 +1111,6 @@ components:
         state_version:
           type: integer
           minimum: 1
-      additionalProperties: false
-
-    DeployRequest:
-      type: object
-      required: [source_type, source_ref]
-      properties:
-        source_type:
-          type: string
-          enum: [git, upload]
-        source_ref:
-          type: string
-          minLength: 1
-      additionalProperties: false
-
-    UpdatesRequest:
-      type: object
-      required: [scope]
-      properties:
-        scope:
-          type: string
-          enum: [core, plugins, themes, all]
       additionalProperties: false
 
     RestoreRequest:

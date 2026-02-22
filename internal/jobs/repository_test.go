@@ -19,7 +19,7 @@ func TestClaimNextRunnableEnforcesSiteAndNodeConcurrency(t *testing.T) {
 	repo := NewInMemoryRepository([]Job{
 		{
 			ID:           "running-lock",
-			JobType:      "env_deploy",
+			JobType:      "site_create",
 			Status:       StatusRunning,
 			SiteID:       &siteA,
 			NodeID:       &nodeA,

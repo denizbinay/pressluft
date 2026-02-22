@@ -3,6 +3,8 @@ package backups
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -103,6 +105,15 @@ type stubExecutor struct {
 	err error
 }
 
-func (s stubExecutor) RunBackupCreate(context.Context, ExecutionInput) error {
+func (s stubExecutor) RunBackupCreate(_ context.Context, input ExecutionInput) error {
+	if s.err != nil {
+		return s.err
+	}
+	if err := os.MkdirAll(filepath.Dir(input.ArtifactPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(input.ArtifactPath, []byte("backup artifact payload"), 0o600); err != nil {
+		return err
+	}
 	return s.err
 }

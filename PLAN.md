@@ -40,6 +40,12 @@ A wave is complete only when all are true:
 - Wave 4: site/environment create + clone flows in dashboard.
 - Wave 5: backup create/list + retention visibility + dashboard IA overhaul.
 - Wave 5.5: WordPress-first runtime vertical slice (self-node support + reachable preview URL).
+- Wave 5.6: dashboard/runtime realignment (nodes-first visibility + site-centric hierarchy).
+- Wave 5.7: sites drilldown refinement (dedicated site details route + row quick actions).
+- Wave 5.8: stabilization fixes for Wave 5 dashboard flows before release automation.
+- Wave 5.9: runtime readiness enforcement (node preflight checks + deterministic create failures).
+- Wave 5.10: backup/restore vertical slice hardening (real artifacts + restore execution + e2e smokes).
+- Wave 5.11: provider-first node acquisition (Hetzner-first) with provider-backed creation only.
 - Wave 6: deploy/update + health checks + automatic rollback.
 - Wave 7: restore + promotion with drift guardrails.
 - Wave 8: domains/TLS + settings domain config control surface.
@@ -48,7 +54,7 @@ A wave is complete only when all are true:
 Merge points:
 
 - MP1: end of Wave 3 before site/env lifecycle expansion.
-- MP1.5: end of Wave 5.5 before deploy/update safety automation.
+- MP1.5: end of Wave 5.11 (includes Wave 5.5 through Wave 5.11 completion) before deploy/update safety automation.
 - MP2: end of Wave 6 before advanced operator and routing controls.
 - MP3: end of Wave 9 before MVP release hardening.
 
@@ -177,16 +183,16 @@ Wave 5 manual test contract:
 - [x] W5.5-T1: Author major-change packet for runtime pivot.
   - Depends on: W5-T7
   - Feature spec: `docs/features/feature-wp-first-runtime.md`
-- [ ] W5.5-T2: Define and validate self-node runtime target for local/WSL2 execution.
+- [x] W5.5-T2: Define and validate self-node runtime target for local/WSL2 execution.
   - Depends on: W5.5-T1
   - Feature spec: `docs/features/feature-wp-first-runtime.md`
-- [ ] W5.5-T3: Wire site/environment mutation execution to provision runnable WordPress runtime.
+- [x] W5.5-T3: Wire site/environment mutation execution to provision runnable WordPress runtime.
   - Depends on: W5.5-T2
   - Feature spec: `docs/features/feature-wp-first-runtime.md`
-- [ ] W5.5-T4: Enforce lifecycle semantics where job success implies reachable runtime.
+- [x] W5.5-T4: Enforce lifecycle semantics where job success implies reachable runtime.
   - Depends on: W5.5-T3
   - Feature spec: `docs/features/feature-wp-first-runtime.md`
-- [ ] W5.5-T5: Add end-to-end smoke verification for create-site to reachable preview URL.
+- [x] W5.5-T5: Add end-to-end smoke verification for create-site to reachable preview URL and prove active dev worker execution.
   - Depends on: W5.5-T4
   - Feature spec: `docs/features/feature-wp-first-runtime.md`
 
@@ -195,6 +201,225 @@ Wave 5.5 manual test contract:
 - CLI: `pressluft dev`
 - Browser: create a site and load the returned preview URL (self-node local/WSL2 baseline)
 - Logs: enqueue, lock acquire/release, ansible runtime provisioning, WordPress reachability validation, final state transition
+
+### Wave 5.6 - Dashboard and Runtime Realignment
+
+- [x] W5.6-T1: Author major-change packet and feature specs for nodes-first site-centric dashboard hierarchy.
+  - Depends on: W5.5-T4
+  - Feature specs:
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+    - `docs/features/feature-runtime-inventory-queries.md`
+- [x] W5.6-T2: Add nodes read API and runtime WordPress version query contract/doc updates.
+  - Depends on: W5.5-T5, W5.6-T1
+  - Feature specs:
+    - `docs/features/feature-runtime-inventory-queries.md`
+- [x] W5.6-T3: Implement dashboard route hierarchy as `/`, `/nodes`, `/sites`, `/jobs`.
+  - Depends on: W5.6-T2
+  - Feature specs:
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.6-T4: Move environment/backups visibility under site-scoped `/sites` workflows and remove top-level `/environments` and `/backups` routes.
+  - Depends on: W5.6-T3
+  - Feature specs:
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.6-T5: Remove dashboard seed records and replace with runtime-truth empty-state behavior.
+  - Depends on: W5.6-T4
+  - Feature specs:
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.6-T6: Add nodes and sites truth panels (local-node readiness, node placement, status, preview URL, WordPress version).
+  - Depends on: W5.6-T5
+  - Feature specs:
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+    - `docs/features/feature-runtime-inventory-queries.md`
+
+Wave 5.6 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: navigate `/`, `/nodes`, `/sites`, `/jobs`; no dedicated `/environments` or `/backups` dashboard routes.
+- Browser: nodes view shows self-node readiness and sites view shows node/status/preview/WordPress version fields.
+- Logs: startup, worker-loop activity for queued jobs, nodes query requests, and WordPress-version query outcomes.
+
+### Wave 5.7 - Site Detail Drilldown and Quick Actions
+
+- [x] W5.7-T1: Finalize feature spec for dedicated site details route and row quick actions.
+  - Depends on: W5.6-T6
+  - Feature spec: `docs/features/feature-site-detail-drilldown.md`
+- [x] W5.7-T2: Implement dashboard route split (`/sites` index and `/sites/{site_id}` detail) with site-scoped environments/backups on detail only.
+  - Depends on: W5.7-T1
+  - Feature specs:
+    - `docs/features/feature-site-detail-drilldown.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.7-T3: Add site-row three-point quick actions menu and site-detail deep-link coverage/tests.
+  - Depends on: W5.7-T2
+  - Feature specs:
+    - `docs/features/feature-site-detail-drilldown.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+
+Wave 5.7 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: navigate `/sites` for index/create; click site quick actions to open `/sites/{site_id}` and manage environments/backups only there.
+- Browser: direct-load `/sites/{site_id}` works; `/environments` and `/backups` remain `404`.
+- Logs: request logs show `/sites` and `/sites/{site_id}` shell serving and site-scoped API calls.
+
+### Wave 5.8 - Wave 5 Stabilization Pass
+
+- [x] W5.8-T1: Capture Wave 5 bug list and acceptance criteria for stabilization scope.
+  - Depends on: W5.7-T3
+  - Feature specs:
+    - `docs/features/feature-site-detail-drilldown.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.8-T2: Implement Wave 5 bug fixes for `/nodes`, `/sites`, and `/sites/{site_id}` operator workflows.
+  - Depends on: W5.8-T1
+  - Feature specs:
+    - `docs/features/feature-site-detail-drilldown.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+    - `docs/features/feature-runtime-inventory-queries.md`
+- [x] W5.8-T3: Add/refresh regression coverage for fixed Wave 5 behaviors and run manual site drilldown flow.
+  - Depends on: W5.8-T2
+  - Feature specs:
+    - `docs/features/feature-site-detail-drilldown.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+
+Wave 5.8 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: validate fixed behaviors across `/nodes`, `/sites`, and `/sites/{site_id}`.
+- Logs: request logs reflect corrected site detail and site-scoped environment/backup flows.
+
+### Wave 5.9 - Runtime Readiness and Preview Reliability
+
+- [x] W5.9-T1: Define and implement node runtime readiness checks with stable reason codes for provider-provisioned nodes.
+  - Depends on: W5.8-T3
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-readiness.md`
+    - `docs/features/feature-runtime-inventory-queries.md`
+- [x] W5.9-T2: Enforce readiness preflight gates for `site_create` and `env_create` so create flows fail fast before non-viable job execution.
+  - Depends on: W5.9-T1
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-readiness.md`
+    - `docs/features/feature-site-create.md`
+    - `docs/features/feature-environment-create-clone.md`
+    - `docs/features/feature-wp-first-runtime.md`
+- [x] W5.9-T3: Add actionable readiness UX in `/nodes` and `/sites/{site_id}` for missing SSH/sudo/runtime prerequisites.
+  - Depends on: W5.9-T2
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-readiness.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+    - `docs/features/feature-site-detail-drilldown.md`
+- [ ] W5.9-T4: Add deterministic e2e runtime smoke coverage for create-environment clone preview reachability.
+  - Depends on: W5.9-T3
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-e2e.md`
+    - `docs/features/feature-wp-first-runtime.md`
+
+Wave 5.9 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: `/nodes` shows explicit readiness reasons; `/sites` create flow blocks early when prerequisites are missing.
+- Browser: create clone environment produces reachable preview URL.
+- Logs: preflight readiness evaluation appears before enqueue/run and includes stable failure reasons.
+
+### Wave 5.10 - Backup and Restore Vertical Slice Hardening
+
+- [x] W5.10-T1: Replace backup placeholder execution with real backup artifact generation and metadata integrity checks.
+  - Depends on: W5.9-T4
+  - Feature specs:
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+    - `docs/features/feature-backups.md`
+- [x] W5.10-T2: Implement `env_restore` execution path (API/service/job/playbook) with pre-restore backup guard and environment-scoped restore semantics.
+  - Depends on: W5.10-T1
+  - Feature specs:
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+    - `docs/features/feature-environment-restore.md`
+- [x] W5.10-T3: Add site-detail restore operator flow with explicit confirmation and contract-aligned failure handling.
+  - Depends on: W5.10-T2
+  - Feature specs:
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+    - `docs/features/feature-site-detail-drilldown.md`
+- [ ] W5.10-T4: Add e2e smoke and regression coverage for backup create/list/restore success and scoped failure paths on a provider-acquired node target.
+  - Depends on: W5.10-T3
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-e2e.md`
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+
+Wave 5.10 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: create backup from `/sites/{site_id}` and restore selected backup to target environment.
+- Browser: restored environment preview URL remains reachable post-restore.
+- Logs: backup artifact metadata, restore preflight, restore execution, and post-restore reachability checks are visible.
+
+### Wave 5.11 - Provider-First Node Acquisition (Hetzner-First)
+
+- [x] W5.11-T1: Author major-change packet and feature specs for provider-first node acquisition; explicitly remove local (`multipass`) and manual remote SSH node creation from Wave 5 scope.
+  - Depends on: W5.10-T4
+  - Feature specs:
+    - `docs/features/feature-wave5-provider-first-node-acquisition.md`
+    - `docs/features/feature-provider-connections.md`
+    - `docs/features/feature-hetzner-node-provider.md`
+- [x] W5.11-T2: Implement provider connection control plane and dashboard route (`/providers`) with persisted provider secrets and provider health/status visibility.
+  - Depends on: W5.11-T1
+  - Feature specs:
+    - `docs/features/feature-provider-connections.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- [x] W5.11-T3: Replace node creation contract with provider-backed semantics only; remove `acquisition_source=local|remote` and manual SSH-input create path.
+  - Depends on: W5.11-T2
+  - Feature specs:
+    - `docs/features/feature-wave5-provider-first-node-acquisition.md`
+    - `docs/features/feature-node-provision.md`
+- [x] W5.11-T4: Implement Hetzner-backed asynchronous acquisition in `node_provision` (`create server -> poll action -> fetch server -> provision via SSH`) with Pressluft-managed SSH key registration/injection semantics.
+  - Depends on: W5.11-T3
+  - Feature specs:
+    - `docs/features/feature-hetzner-node-provider.md`
+    - `docs/features/feature-node-provision.md`
+- [x] W5.11-T5: Execute cleanup pass removing obsolete local/manual/self-node acquisition code paths, docs references, scripts, and regression fixtures.
+  - Depends on: W5.11-T4
+  - Feature specs:
+    - `docs/features/feature-wave5-provider-first-node-acquisition.md`
+    - `docs/features/feature-wave5-runtime-readiness.md`
+- [x] W5.11-T6: Re-open provider credential semantics to remove static `hcloud_` prefix checks and enforce live provider health validation.
+  - Depends on: W5.11-T5
+  - Feature specs:
+    - `docs/features/feature-provider-connections.md`
+    - `docs/features/feature-hetzner-sdk-integration.md`
+- [x] W5.11-T7: Integrate Hetzner SDK (`hcloud-go`) for acquisition lifecycle (`create server -> poll action -> fetch server -> SSH key`) and preserve deterministic `PROVIDER_*` error mapping.
+  - Depends on: W5.11-T6
+  - Feature specs:
+    - `docs/features/feature-hetzner-node-provider.md`
+    - `docs/features/feature-hetzner-sdk-integration.md`
+- [x] W5.11-T8: Align dashboard and API guidance with bearer-token credentials (`/providers`, `/nodes`) and remove prefix-oriented UX copy.
+  - Depends on: W5.11-T6
+  - Feature specs:
+    - `docs/features/feature-provider-connections.md`
+    - `docs/features/feature-dashboard-site-centric-hierarchy.md`
+    - `docs/features/feature-hetzner-sdk-integration.md`
+- [ ] W5.11-T9: Extend Wave 5 smoke/regression coverage for SDK-backed provider flows and deterministic provider diagnostics.
+  - Depends on: W5.11-T7, W5.11-T8
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-e2e.md`
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+    - `docs/features/feature-wave5-provider-first-node-acquisition.md`
+    - `docs/features/feature-hetzner-sdk-integration.md`
+- [ ] W5.11-T10: Run provider-backed Wave 5 closeout evidence (`clone`, `backup/restore`) and close pending smoke-linked tasks.
+  - Depends on: W5.11-T9
+  - Feature specs:
+    - `docs/features/feature-wave5-runtime-e2e.md`
+    - `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+    - `docs/features/feature-wave5-provider-first-node-acquisition.md`
+
+Wave 5.11 manual test contract:
+
+- CLI: connect Hetzner provider in `/providers`, then create node from `/nodes` using provider-backed flow only.
+- CLI/API: provider token is treated as bearer credential; no `hcloud_` prefix assumption is required.
+- Browser: `/nodes` does not expose `Create Local Node` or manual remote SSH node creation controls.
+- Browser: Wave 5 create-site, clone, and backup/restore flows succeed on provider-acquired node when readiness is met.
+- Logs: provider API request lifecycle, acquisition transitions, provisioning/readiness transitions, and Wave 5 preview outcomes are visible.
+- API: node create responds with `202` accepted and converges through async provider acquisition + provisioning.
+
+Wave 5 closeout gate (mandatory):
+
+- Wave 5 remains incomplete until `W5.9-T4`, `W5.10-T4`, and `W5.11-T6` through `W5.11-T10` are complete on provider-acquired node runtime.
+- Success evidence must include: provider node create accepted-job output, SDK-backed acquisition+provisioning transitions, readiness success (`reason_codes=[]`), and passing outputs from the Wave 5 clone and backup/restore smoke scripts.
 
 ### Wave 6 - Deploy/Update Safety with Health and Rollback
 

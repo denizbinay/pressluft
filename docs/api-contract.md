@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-20
+Last Reviewed: 2026-02-22
 Depends On: contracts/openapi.yaml, docs/contract-guardrails.md, docs/contract-traceability.md, docs/error-codes.md
 Supersedes: none
 
@@ -56,12 +56,37 @@ This document is explanatory and must stay aligned with OpenAPI.
 - `POST /api/logout`
   - Response: `{ success: true }` and `Set-Cookie` that clears `session_token`
 
+### Providers
+
+- `GET /api/providers`
+  - Response: list of provider connections with `{ provider_id, display_name, status, capabilities, secret_configured, guidance, last_status_message, connected_at?, last_checked_at?, updated_at }`.
+  - `status`: `connected | degraded | disconnected`.
+
+- `POST /api/providers`
+  - Body: `{ provider_id, api_token }`
+  - `provider_id`: currently `hetzner`.
+  - `api_token`: Hetzner bearer credential from Cloud Console; no static prefix is required.
+  - Persists provider secret for subsequent provider-backed node workflows.
+  - Response: provider connection status payload; secret values are never returned.
+
+### Nodes
+
+- `GET /api/nodes`
+- `POST /api/nodes`
+  - Body: `{ provider_id, name? }`
+  - `provider_id`: connected provider identifier (currently `hetzner`).
+  - Node creation is provider-backed and asynchronous: endpoint accepts and enqueues `node_provision`; provider acquisition and provisioning complete in job lifecycle.
+  - Response: `{ job_id }` for enqueued `node_provision` mutation.
+  - Transient provider states are handled by job retries and must not require manual re-submit.
+  - Manual remote SSH creation and local VM creation are not exposed by this API.
+
 ### Sites
 
 - `GET /api/sites`
 - `POST /api/sites`
   - Body: `{ name, slug }`
   - Response: `{ job_id }`
+  - `409` may return `node_not_ready` when runtime readiness preflight fails.
 
 - `GET /api/sites/{id}`
 - `GET /api/sites/{id}/environments`
@@ -77,23 +102,16 @@ This document is explanatory and must stay aligned with OpenAPI.
   - type: `staging | clone`
   - source_environment_id: required for staging/clone creation and must reference an environment on the same site
   - Response: `{ job_id }`
+  - `409` may return `node_not_ready` when runtime readiness preflight fails.
 
 - `GET /api/environments/{id}`
 - `POST /api/environments/{id}/drift-check`
   - Response: `{ job_id }`
-- `POST /api/environments/{id}/deploy`
-  - Body: `{ source_type, source_ref }`
-  - source_type: `git | upload`
-  - Response: `{ job_id }`
-
-- `POST /api/environments/{id}/updates`
-  - Body: `{ scope }`
-  - scope: `core | plugins | themes | all`
-  - Response: `{ job_id }`
-
 - `POST /api/environments/{id}/restore`
   - Body: `{ backup_id }`
   - Response: `{ job_id }`
+  - `backup_id` must reference a completed backup that belongs to the target environment and has checksum/size metadata.
+  - Restore job creates a pre-restore full backup checkpoint before applying backup content.
 
 - `POST /api/environments/{id}/promote`
   - Body: `{ target_environment_id }`

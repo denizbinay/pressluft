@@ -57,7 +57,7 @@ Contract/spec files:
 1. On a valid self-node target, creating a site results in a reachable preview URL that serves WordPress.
 2. `site_create` and `env_create` job success is emitted only after runtime reachability checks pass.
 3. Runtime provisioning failures produce stable job failure states and operator-visible error context.
-4. Wave 5.5 can be verified end-to-end using local/WSL2 baseline without manual post-fix commands.
+4. Wave 5.5 can be verified end-to-end using local/WSL2 baseline without manual post-fix commands, including active worker execution in the `pressluft dev` runtime path.
 
 ## Scenarios (WHEN/THEN)
 

@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-21
+Last Reviewed: 2026-02-22
 Depends On: docs/spec-index.md, docs/job-execution.md, docs/api-contract.md, docs/pre-plan-readiness.md
 Supersedes: none
 
@@ -50,6 +50,23 @@ Run from repository root:
 - Run `ansible-playbook --syntax-check` for affected playbooks.
 - Run `ansible-lint` when available.
 
+### Wave 5 runtime and backup/restore smoke checks
+
+- Required success-path precondition:
+  - provider-acquired node created via `POST /api/nodes` (`provider_id`) and readiness reported as ready.
+- Required credentials for smoke scripts:
+  - `PROVIDER_API_TOKEN` (or `HETZNER_API_TOKEN`) must be exported in the shell before running smokes.
+  - Optional: set `PROVIDER_ID` to override default (`hetzner`).
+- Token semantics:
+  - Treat provider tokens as bearer credentials; do not require static `hcloud_` prefix checks.
+- Provider acquisition is async via `node_provision`; smokes must poll job/readiness and not assume immediate provider completion.
+- Provider success path must use Pressluft-managed SSH key injection semantics; verification must not rely on provider-internal daemon key paths.
+- Hetzner provider communication in active runtime path must use `hcloud-go` (`https://github.com/hetznercloud/hcloud-go`).
+- `bash scripts/smoke-site-clone-preview.sh`
+- `bash scripts/smoke-backup-restore.sh`
+- Optional diagnostics (legacy host-local troubleshooting only, not a Wave 5 success gate):
+  - `bash scripts/check-local-runtime-prereqs.sh`
+
 ## Acceptance Mapping
 
 Every substantial PR should map acceptance criteria to verification evidence:
@@ -90,6 +107,7 @@ Project command presets under `.opencode/commands/` provide deterministic gate e
 - `/frontend-gates`
 - `/session-kickoff <docs/features/feature-*.md>`
 - `/run-plan`
+- `/resume-plan`
 - `/resume-run`
 - `/triage-failures`
 

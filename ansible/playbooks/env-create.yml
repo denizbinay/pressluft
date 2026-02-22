@@ -1,0 +1,259 @@
+---
+- name: Create WordPress environment (clone)
+  hosts: target
+  gather_facts: false
+  become: true
+  vars:
+    site_root: "/var/www/sites/{{ site_id }}"
+    source_env_root: "{{ site_root }}/{{ source_environment_id }}"
+    env_root: "{{ site_root }}/{{ environment_id }}"
+    releases_dir: "{{ env_root }}/releases"
+    shared_dir: "{{ env_root }}/shared"
+    current_link: "{{ env_root }}/current"
+    wp_config_path: "{{ shared_dir }}/wp-config.php"
+    uploads_dir: "{{ shared_dir }}/uploads"
+    nginx_conf_path: "/etc/nginx/sites-available/{{ environment_id }}.conf"
+    nginx_enabled_path: "/etc/nginx/sites-enabled/{{ environment_id }}.conf"
+    php_fpm_pool_path: "/etc/php/8.3/fpm/pool.d/{{ environment_id }}.conf"
+    redis_prefix: "pressluft_{{ environment_id }}:"
+
+  tasks:
+    - name: Validate required env create vars
+      ansible.builtin.assert:
+        that:
+          - site_id is string
+          - site_id | length > 0
+          - environment_id is string
+          - environment_id | length > 0
+          - environment_slug is string
+          - environment_slug | length > 0
+          - environment_type in ['staging', 'clone']
+          - source_environment_id is string
+          - source_environment_id | length > 0
+          - preview_url is string
+          - preview_url | length > 0
+        fail_msg: "Required variables for env_create are missing"
+
+    - name: Extract preview hostname from URL
+      ansible.builtin.set_fact:
+        preview_hostname: "{{ preview_url | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
+
+    - name: Verify source environment exists
+      ansible.builtin.stat:
+        path: "{{ source_env_root }}/current"
+      register: source_current
+
+    - name: Fail if source environment does not exist
+      ansible.builtin.fail:
+        msg: "Source environment {{ source_environment_id }} does not exist or has no current release"
+      when: not source_current.stat.exists
+
+    - name: Create environment directory structure
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0750"
+      loop:
+        - "{{ env_root }}"
+        - "{{ releases_dir }}"
+        - "{{ shared_dir }}"
+        - "{{ uploads_dir }}"
+
+    - name: Set uploads directory permissions
+      ansible.builtin.file:
+        path: "{{ uploads_dir }}"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0770"
+
+    - name: Create MariaDB database for new environment
+      community.mysql.mysql_db:
+        name: "wp_{{ environment_id[:8] }}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Generate random database password
+      ansible.builtin.set_fact:
+        db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+
+    - name: Create MariaDB user for new environment
+      community.mysql.mysql_user:
+        name: "wp_{{ environment_id[:8] }}"
+        password: "{{ db_password }}"
+        priv: "wp_{{ environment_id[:8] }}.*:ALL"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      no_log: true
+
+    - name: Export source database
+      ansible.builtin.shell: |
+        mysqldump --single-transaction \
+          wp_{{ source_environment_id[:8] }} \
+          > /tmp/clone-{{ environment_id }}.sql
+      args:
+        creates: /tmp/clone-{{ environment_id }}.sql
+
+    - name: Import database to new environment
+      ansible.builtin.shell: |
+        mysql wp_{{ environment_id[:8] }} < /tmp/clone-{{ environment_id }}.sql
+      changed_when: true
+
+    - name: Clean up database dump
+      ansible.builtin.file:
+        path: /tmp/clone-{{ environment_id }}.sql
+        state: absent
+
+    - name: Create initial release directory
+      ansible.builtin.file:
+        path: "{{ releases_dir }}/initial"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0750"
+
+    - name: Copy files from source environment
+      ansible.builtin.shell: |
+        rsync -a --exclude='wp-config.php' \
+          {{ source_env_root }}/current/ \
+          {{ releases_dir }}/initial/
+      changed_when: true
+
+    - name: Copy uploads from source environment
+      ansible.builtin.shell: |
+        rsync -a \
+          {{ source_env_root }}/shared/uploads/ \
+          {{ uploads_dir }}/
+      changed_when: true
+
+    - name: Fix ownership on copied files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        recurse: true
+      loop:
+        - "{{ releases_dir }}/initial"
+        - "{{ uploads_dir }}"
+
+    - name: Generate WordPress salts
+      ansible.builtin.set_fact:
+        wp_auth_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_secure_auth_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_logged_in_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_nonce_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_auth_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_secure_auth_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_logged_in_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_nonce_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+      no_log: true
+
+    - name: Deploy wp-config.php
+      ansible.builtin.template:
+        src: wp-config.php.j2
+        dest: "{{ wp_config_path }}"
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0640"
+      no_log: true
+
+    - name: Symlink wp-config.php into release
+      ansible.builtin.file:
+        src: "{{ wp_config_path }}"
+        dest: "{{ releases_dir }}/initial/wp-config.php"
+        state: link
+        force: true
+
+    - name: Symlink uploads into release
+      ansible.builtin.file:
+        src: "{{ uploads_dir }}"
+        dest: "{{ releases_dir }}/initial/wp-content/uploads"
+        state: link
+        force: true
+
+    - name: Create current symlink to initial release
+      ansible.builtin.file:
+        src: "{{ releases_dir }}/initial"
+        dest: "{{ current_link }}"
+        state: link
+        force: true
+
+    - name: Deploy PHP-FPM pool configuration
+      ansible.builtin.template:
+        src: php-fpm-pool.conf.j2
+        dest: "{{ php_fpm_pool_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload PHP-FPM
+
+    - name: Deploy Nginx server block
+      ansible.builtin.template:
+        src: nginx-site.conf.j2
+        dest: "{{ nginx_conf_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload Nginx
+
+    - name: Enable Nginx site
+      ansible.builtin.file:
+        src: "{{ nginx_conf_path }}"
+        dest: "{{ nginx_enabled_path }}"
+        state: link
+      notify: Reload Nginx
+
+    - name: Update WordPress URLs via WP-CLI
+      ansible.builtin.command:
+        cmd: >
+          wp option update home "{{ preview_url }}"
+          --path="{{ current_link }}"
+      become_user: "site_{{ site_id[:8] }}"
+      changed_when: true
+
+    - name: Update WordPress siteurl via WP-CLI
+      ansible.builtin.command:
+        cmd: >
+          wp option update siteurl "{{ preview_url }}"
+          --path="{{ current_link }}"
+      become_user: "site_{{ site_id[:8] }}"
+      changed_when: true
+
+    - name: Search-replace URLs in database
+      ansible.builtin.command:
+        cmd: >
+          wp search-replace
+          "{{ source_preview_url | default(preview_url) }}"
+          "{{ preview_url }}"
+          --all-tables
+          --path="{{ current_link }}"
+      become_user: "site_{{ site_id[:8] }}"
+      when: source_preview_url is defined and source_preview_url != preview_url
+      changed_when: true
+
+    - name: Flush handlers to ensure services are reloaded
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify WordPress is reachable
+      ansible.builtin.uri:
+        url: "{{ preview_url }}"
+        method: GET
+        status_code: [200, 301, 302]
+        timeout: 30
+      register: wp_health
+      retries: 3
+      delay: 5
+      until: wp_health is succeeded
+
+  handlers:
+    - name: Reload PHP-FPM
+      ansible.builtin.service:
+        name: php8.3-fpm
+        state: reloaded
+
+    - name: Reload Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

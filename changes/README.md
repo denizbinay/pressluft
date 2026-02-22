@@ -17,7 +17,9 @@ This directory contains proposal-based change packets for major changes.
 
 - `changes/dashboard-ia-overhaul/`
 - `changes/wp-first-runtime/`
+- `changes/dashboard-runtime-realignment/`
+- `changes/provider-first-node-acquisition/`
 
 ### Archived
 
-- (none)
+- `changes/node-acquisition-parity/` (superseded by provider-first scope)

@@ -224,7 +224,7 @@ Response header:
 
 Cache purge:
 
-- On `env_deploy`, `env_update`, `env_promote`, and `env_restore` operations, the Ansible playbook purges the FastCGI cache for the affected environment. This is implemented as an Ansible handler in the shared `nginx-cache-purge` role (see `docs/ansible-execution.md`).
+- On `env_promote` and `env_restore` operations, the Ansible playbook purges the FastCGI cache for the affected environment. This is implemented as an Ansible handler in the shared `nginx-cache-purge` role (see `docs/ansible-execution.md`).
 - The `cache_purge` job type provides on-demand purge via the API (see `docs/api-contract.md`).
 
 The `fastcgi_cache_path` directive is configured globally in the Nginx `http` block during node provisioning (see `docs/provisioning-spec.md`), not per server block.

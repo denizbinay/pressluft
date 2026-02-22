@@ -13,7 +13,22 @@
           - backup_scope in ['db', 'files', 'full']
           - storage_path is string
           - storage_path | length > 0
+          - artifact_path is string
+          - artifact_path | length > 0
 
-    - name: Backup lifecycle placeholder
-      ansible.builtin.debug:
-        msg: "backup_create placeholder backup_id={{ backup_id }} environment_id={{ environment_id }} scope={{ backup_scope }} path={{ storage_path }}"
+    - name: Ensure artifact directory exists
+      ansible.builtin.file:
+        path: "{{ artifact_path | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Write backup artifact payload
+      ansible.builtin.copy:
+        dest: "{{ artifact_path }}"
+        mode: "0600"
+        content: |
+          backup_id={{ backup_id }}
+          environment_id={{ environment_id }}
+          backup_scope={{ backup_scope }}
+          storage_path={{ storage_path }}
+          generated_at={{ ansible_date_time.iso8601 }}

@@ -14,9 +14,13 @@ import (
 	"time"
 
 	"pressluft/internal/jobs"
+	"pressluft/internal/providers"
+	"pressluft/internal/providers/hetzner"
 )
 
 const nodeProvisionPlaybookPath = "ansible/playbooks/node-provision.yml"
+
+const defaultProvisionStepTimeout = 2 * time.Minute
 
 type Executor interface {
 	RunNodeProvision(ctx context.Context, node Node) error
@@ -73,18 +77,33 @@ func (e *AnsibleExecutor) RunNodeProvision(ctx context.Context, node Node) error
 }
 
 type ProvisionHandler struct {
-	store    Store
-	executor Executor
-	logger   *log.Logger
-	now      func() time.Time
+	store             Store
+	executor          Executor
+	providerStore     providers.Store
+	hetznerAcquirer   HetznerAcquirer
+	logger            *log.Logger
+	now               func() time.Time
+	timeout           time.Duration
+	providerWaitLimit time.Duration
 }
 
-func NewProvisionHandler(store Store, executor Executor, logger *log.Logger) *ProvisionHandler {
+type HetznerAcquirer interface {
+	Acquire(ctx context.Context, input hetzner.AcquireInput) (hetzner.AcquireTarget, error)
+}
+
+func NewProvisionHandler(store Store, executor Executor, providerStore providers.Store, hetznerAcquirer HetznerAcquirer, logger *log.Logger) *ProvisionHandler {
+	if hetznerAcquirer == nil {
+		hetznerAcquirer = hetzner.NewAcquirer()
+	}
 	return &ProvisionHandler{
-		store:    store,
-		executor: executor,
-		logger:   logger,
-		now:      func() time.Time { return time.Now().UTC() },
+		store:             store,
+		executor:          executor,
+		providerStore:     providerStore,
+		hetznerAcquirer:   hetznerAcquirer,
+		logger:            logger,
+		now:               func() time.Time { return time.Now().UTC() },
+		timeout:           defaultProvisionStepTimeout,
+		providerWaitLimit: 10 * time.Minute,
 	}
 }
 
@@ -94,7 +113,57 @@ func (h *ProvisionHandler) Handle(ctx context.Context, job jobs.Job) error {
 	}
 
 	now := h.now()
-	node, err := h.store.MarkProvisioning(ctx, *job.NodeID, now)
+	node, err := h.store.GetByID(ctx, *job.NodeID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: "node not found for node_provision job", Retryable: false}
+		}
+		return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: err.Error(), Retryable: false}
+	}
+
+	if !node.IsLocal && requiresProviderAcquisition(node) {
+		if h.providerStore == nil {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_UNAVAILABLE", Message: "provider store unavailable", Retryable: false}
+		}
+		if h.hetznerAcquirer == nil {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_UNAVAILABLE", Message: "hetzner acquisition adapter unavailable", Retryable: false}
+		}
+
+		providerID := strings.TrimSpace(strings.ToLower(node.ProviderID))
+		if providerID == "" {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_FAILED", Message: "provider id missing from node target", Retryable: false}
+		}
+		if providerID != "hetzner" {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_FAILED", Message: fmt.Sprintf("unsupported provider_id %q", providerID), Retryable: false}
+		}
+
+		providerConnection, providerErr := h.providerStore.GetByProviderID(ctx, providerID)
+		if providerErr != nil {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_FAILED", Message: fmt.Sprintf("provider credentials unavailable: %v", providerErr), Retryable: false}
+		}
+
+		stepCtx, cancel := context.WithTimeout(ctx, h.providerWaitLimit)
+		defer cancel()
+		target, acquireErr := h.hetznerAcquirer.Acquire(stepCtx, hetzner.AcquireInput{Token: providerConnection.SecretToken, Name: node.Name})
+		if acquireErr != nil {
+			return classifyProviderAcquisitionError(acquireErr)
+		}
+
+		node, err = h.store.UpdateConnection(ctx, node.ID, ConnectionInput{
+			Hostname:          target.Hostname,
+			PublicIP:          target.PublicIP,
+			SSHPort:           target.SSHPort,
+			SSHUser:           target.SSHUser,
+			SSHPrivateKeyPath: target.SSHPrivateKeyPath,
+			Now:               now,
+		})
+		if err != nil {
+			return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_FAILED", Message: fmt.Sprintf("persist provider acquisition target: %v", err), Retryable: false}
+		}
+		h.logger.Printf("event=node_acquisition provider=hetzner stage=succeeded node_id=%s job_id=%s server_id=%d action_id=%d", node.ID, job.ID, target.ServerID, target.ActionID)
+	}
+
+	node, err = h.store.MarkProvisioning(ctx, node.ID, now)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return jobs.ExecutionError{Code: "ANSIBLE_UNKNOWN_EXIT", Message: "node not found for node_provision job", Retryable: false}
@@ -104,11 +173,17 @@ func (h *ProvisionHandler) Handle(ctx context.Context, job jobs.Job) error {
 
 	h.logger.Printf("event=node_provision stage=start node_id=%s job_id=%s", node.ID, job.ID)
 
-	if err := h.executor.RunNodeProvision(ctx, node); err != nil {
+	stepCtx, cancel := context.WithTimeout(ctx, h.timeout)
+	defer cancel()
+
+	if err := h.executor.RunNodeProvision(stepCtx, node); err != nil {
 		if _, markErr := h.store.MarkUnreachable(ctx, node.ID, h.now()); markErr != nil {
 			return fmt.Errorf("mark node unreachable: %w", markErr)
 		}
 		h.logger.Printf("event=node_provision stage=failed node_id=%s job_id=%s", node.ID, job.ID)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return jobs.ExecutionError{Code: "ANSIBLE_TIMEOUT", Message: strings.TrimSpace(err.Error()), Retryable: true}
+		}
 		return err
 	}
 
@@ -118,6 +193,22 @@ func (h *ProvisionHandler) Handle(ctx context.Context, job jobs.Job) error {
 
 	h.logger.Printf("event=node_provision stage=succeeded node_id=%s job_id=%s", node.ID, job.ID)
 	return nil
+}
+
+func requiresProviderAcquisition(node Node) bool {
+	if strings.TrimSpace(node.Hostname) == "" || strings.EqualFold(strings.TrimSpace(node.Hostname), "pending.provider") {
+		return true
+	}
+	if strings.TrimSpace(node.SSHUser) == "" {
+		return true
+	}
+	if node.SSHPort <= 0 {
+		return true
+	}
+	if strings.TrimSpace(node.PublicIP) == "" || strings.EqualFold(strings.TrimSpace(node.PublicIP), "pending.provider") {
+		return true
+	}
+	return false
 }
 
 func buildInventory(node Node) string {
@@ -133,6 +224,28 @@ func buildInventory(node Node) string {
 	}
 
 	return "[target]\n" + strings.Join(fields, " ") + "\n"
+}
+
+func classifyProviderAcquisitionError(err error) jobs.ExecutionError {
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		message = "provider node acquisition failed"
+	}
+
+	if errors.Is(err, hetzner.ErrActionTimeout) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_TIMEOUT", Message: message, Retryable: true}
+	}
+
+	if errors.Is(err, hetzner.ErrCredentialMissing) || errors.Is(err, hetzner.ErrManagedKeyMissing) {
+		return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_UNAVAILABLE", Message: message, Retryable: false}
+	}
+
+	var apiStatusError hetzner.APIStatusError
+	if errors.As(err, &apiStatusError) {
+		return jobs.ExecutionError{Code: "PROVIDER_API_ERROR", Message: message, Retryable: true}
+	}
+
+	return jobs.ExecutionError{Code: "PROVIDER_ACQUISITION_FAILED", Message: message, Retryable: false}
 }
 
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {

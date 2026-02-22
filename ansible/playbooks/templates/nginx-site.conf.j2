@@ -1,0 +1,119 @@
+# Nginx server block managed by Pressluft
+# Environment ID: {{ environment_id }}
+
+server {
+    listen 80;
+    server_name {{ preview_hostname }};
+
+    root {{ current_link }};
+    index index.php index.html index.htm;
+
+    # Logging
+    access_log /var/log/nginx/{{ environment_id }}-access.log;
+    error_log /var/log/nginx/{{ environment_id }}-error.log;
+
+    # Security headers (applied globally per provisioning spec)
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+
+    # Include 7G WAF rules
+    include /etc/nginx/conf.d/7g-firewall.conf;
+    include /etc/nginx/conf.d/7g-exclusions.conf;
+
+    # ACME challenge for Let's Encrypt
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/html;
+    }
+
+{% if fastcgi_cache_enabled | default(true) %}
+    # FastCGI cache configuration
+    set $skip_cache 0;
+
+    # Skip cache for logged-in users
+    if ($http_cookie ~* "wordpress_logged_in_") {
+        set $skip_cache 1;
+    }
+
+    # Skip cache for POST requests
+    if ($request_method = POST) {
+        set $skip_cache 1;
+    }
+
+    # Skip cache for query strings
+    if ($query_string != "") {
+        set $skip_cache 1;
+    }
+
+    # Skip cache for admin/login pages
+    if ($request_uri ~* "/wp-admin/|/wp-login.php") {
+        set $skip_cache 1;
+    }
+
+    # Skip cache for WooCommerce pages
+    if ($request_uri ~* "/cart/|/checkout/|/my-account/") {
+        set $skip_cache 1;
+    }
+
+    if ($http_cookie ~* "woocommerce_items_in_cart") {
+        set $skip_cache 1;
+    }
+{% endif %}
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    # Static file handling
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires max;
+        log_not_found off;
+        access_log off;
+    }
+
+    # PHP handling
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php8.3-fpm-{{ environment_id }}.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+
+{% if fastcgi_cache_enabled | default(true) %}
+        # FastCGI cache
+        fastcgi_cache WORDPRESS;
+        fastcgi_cache_valid 200 301 302 60m;
+        fastcgi_cache_use_stale error timeout updating invalid_header http_500 http_503;
+        fastcgi_cache_bypass $skip_cache;
+        fastcgi_no_cache $skip_cache;
+        add_header X-FastCGI-Cache $upstream_cache_status;
+{% endif %}
+
+        # Timeouts
+        fastcgi_connect_timeout 60s;
+        fastcgi_send_timeout 300s;
+        fastcgi_read_timeout 300s;
+    }
+
+    # Deny access to sensitive files
+    location ~ /\. {
+        deny all;
+    }
+
+    location ~* /(?:uploads|files)/.*\.php$ {
+        deny all;
+    }
+
+    location ~* wp-config.php {
+        deny all;
+    }
+
+    # Block xmlrpc.php (Fail2Ban also monitors this)
+    location = /xmlrpc.php {
+        deny all;
+    }
+}

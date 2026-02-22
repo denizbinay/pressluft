@@ -72,6 +72,17 @@ Rule: no task acceptance criterion may require a capability that is first delive
 | W5.5-T4 reachability-gated success semantics | runnable runtime provisioning + mutation lifecycle | W5.5-T3 | PASS |
 | W5.5-T5 end-to-end smoke verification | reachability-gated success semantics | W5.5-T4 | PASS |
 
+## Wave 5.6
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W5.6-T1 hierarchy realignment specs/packet | runtime pivot semantics stabilized enough for scoped planning docs | W5.5-T4 | PASS |
+| W5.6-T2 nodes + WP version contract updates | approved hierarchy and inventory feature specs | W5.6-T1 | PASS |
+| W5.6-T3 dashboard route hierarchy (`/`, `/nodes`, `/sites`, `/jobs`) | node/site-centric route contract and inventory endpoints | W5.6-T2 | PASS |
+| W5.6-T4 site-scoped environments/backups only | route hierarchy in place | W5.6-T3 | PASS |
+| W5.6-T5 seed removal + runtime-truth empty states | site-scoped hierarchy complete | W5.6-T4 | PASS |
+| W5.6-T6 nodes/sites truth panels | runtime inventory contract + runtime-truth baseline | W5.6-T2, W5.6-T5 | PASS |
+
 ## Wave 6
 
 | Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |

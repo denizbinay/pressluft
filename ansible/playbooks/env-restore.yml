@@ -1,0 +1,57 @@
+---
+- name: Environment restore
+  hosts: target
+  gather_facts: false
+  tasks:
+    - name: Validate required restore vars
+      ansible.builtin.assert:
+        that:
+          - site_id is string
+          - site_id | length > 0
+          - site_slug is string
+          - site_slug | length > 0
+          - environment_id is string
+          - environment_id | length > 0
+          - environment_slug is string
+          - environment_slug | length > 0
+          - backup_id is string
+          - backup_id | length > 0
+          - backup_artifact_path is string
+          - backup_artifact_path | length > 0
+          - pre_restore_artifact_path is string
+          - pre_restore_artifact_path | length > 0
+          - restore_marker_path is string
+          - restore_marker_path | length > 0
+
+    - name: Ensure restore source artifact exists
+      ansible.builtin.stat:
+        path: "{{ backup_artifact_path }}"
+      register: backup_artifact
+
+    - name: Fail when restore source artifact is missing
+      ansible.builtin.fail:
+        msg: "restore source artifact missing: {{ backup_artifact_path }}"
+      when: not backup_artifact.stat.exists
+
+    - name: Ensure pre-restore artifact exists
+      ansible.builtin.stat:
+        path: "{{ pre_restore_artifact_path }}"
+      register: pre_restore_artifact
+
+    - name: Fail when pre-restore artifact is missing
+      ansible.builtin.fail:
+        msg: "pre-restore backup artifact missing: {{ pre_restore_artifact_path }}"
+      when: not pre_restore_artifact.stat.exists
+
+    - name: Ensure restore marker directory exists
+      ansible.builtin.file:
+        path: "{{ restore_marker_path | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Apply restore marker payload
+      ansible.builtin.copy:
+        src: "{{ backup_artifact_path }}"
+        dest: "{{ restore_marker_path }}"
+        mode: "0600"
+        remote_src: true

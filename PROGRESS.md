@@ -6,8 +6,8 @@ Last Updated: 2026-02-22
 
 ## Current Stage
 
-- Stage: Wave 5 complete; Wave 5.5 runtime-first pivot queued before Wave 6.
-- Blocker: none.
+- Stage: Wave 5-only hardening execution; Wave 6+ remains paused until Wave 5.11 SDK-backed provider acquisition closeout is complete.
+- Blocker: Wave 5.11 closeout still pending provider-backed smoke evidence (`W5.11-T9`, `W5.11-T10`).
 
 ## Completed
 
@@ -49,16 +49,58 @@ Last Updated: 2026-02-22
 - W5-T7 completed: expanded dashboard regression tests with concern-scoped marker assertions across overview/sites/environments/backups/jobs and maintained subsite route/404 coverage.
 - Course correction packet drafted for runtime-first pivot before Wave 6: `changes/wp-first-runtime/` and `docs/features/feature-wp-first-runtime.md`.
 - W5.5-T1 completed: major-change packet and feature spec authored for runtime-first pivot before Wave 6 (`changes/wp-first-runtime/*`, `docs/features/feature-wp-first-runtime.md`).
+- W5.5-T2 completed: defined and validated self-node runtime target for local/WSL2 execution with `IsLocal` node flag, `SelfNodeID` constant, `EnsureSelfNode` store method, and site service integration to use self-node as default target.
+- W5.5-T3 completed: wired `site_create` and `env_create` execution handlers with local-node inventory generation, structured Ansible error mapping, and handler coverage for success and failure semantics.
+- W5.5-T4 completed: added `site-create.yml` and `env-create.yml` provisioning playbooks with runtime reachability probes so job success remains gated on WordPress URL availability.
+- Wave 5.6 planning kickoff completed: added `changes/dashboard-runtime-realignment/` packet (`proposal.md`, `design.md`, `tasks.md`) and feature specs for site-centric dashboard hierarchy plus runtime inventory queries (`docs/features/feature-dashboard-site-centric-hierarchy.md`, `docs/features/feature-runtime-inventory-queries.md`).
+- W5.6-T1 completed: authored nodes-first/site-centric dashboard realignment planning artifacts and feature specs to stage implementation before Wave 6.
+- W5.5-T5 completed: wired queue worker execution loop into `pressluft dev` runtime path with `site_create` and `env_create` handlers, 2-second polling interval, and structured logging for worker start/stop/job-processed events.
+- W5.6-T2 completed: implemented `GET /api/nodes` and `GET /api/environments/{id}/wordpress-version` with nodes list API, synchronous SSH-based WordPress version query with 10-second timeout, stable error codes (`environment_not_active`, `node_unreachable`, `wp_cli_error`), audit logging for query invocations, and full test coverage for success/failure paths.
+- W5.6-T3 completed: dashboard route hierarchy now serves `/`, `/nodes`, `/sites`, and `/jobs`, while dedicated top-level `/environments` and `/backups` routes return `404`.
+- W5.6-T4 completed: environment and backup create/list workflows are now site-scoped panels under `/sites` only.
+- W5.6-T5 completed: removed dev-dashboard seed records for jobs/sites/nodes and switched to runtime-truth empty states (with self-node ensured by runtime bootstrap).
+- W5.6-T6 completed: added nodes truth panel (local-node readiness + deploy-ready signal) and expanded sites panel columns for node placement, status, preview URL, and live WordPress version query outcomes.
+- W5.7-T1 completed: finalized feature spec for dedicated site details route and row quick actions (`docs/features/feature-site-detail-drilldown.md`) and inserted Wave 5.7 tasks into `PLAN.md` before Wave 6.
+- W5.7-T2 completed: split dashboard routing between `/sites` index and `/sites/{site_id}` detail, moved environment/backup management to detail-only sections, and preserved top-level `/environments` and `/backups` as `404` routes.
+- W5.7-T3 completed: added per-site three-dot quick actions menu (open details/create environment/create backup) with deep-link handling for `/sites/{site_id}?focus=environment|backup` and updated `internal/devserver/server_test.go` coverage.
+- Wave 5-only extension planning completed: added Wave 5.9 and Wave 5.10 backlog to `PLAN.md` and authored feature specs for runtime readiness, runtime e2e smokes, and backup/restore vertical slice hardening.
+- W5.8-T1 completed: captured Wave 5 stabilization bug list and acceptance addenda in feature specs for site detail drilldown and dashboard site-centric hierarchy.
+- W5.8-T2 completed: fixed Wave 5 dashboard stabilization issues by constraining valid site-detail shell routes, adding deterministic local-node host fallback on `/nodes`, and failing fast on missing-site create attempts in `/sites/{site_id}` environment/backup forms.
+- W5.8-T3 completed: refreshed `internal/devserver/server_test.go` route regression coverage for invalid site-detail paths and reran manual `/nodes` + `/sites` + `/sites/{site_id}` route smoke checks.
+- W5.9-T1 completed: added node runtime readiness model with stable reason codes, guidance mapping, probe integration, and `GET /api/nodes` readiness payload expansion.
+- W5.9-T2 completed: enforced readiness preflight gates for `POST /api/sites` and `POST /api/sites/{id}/environments` with fast-fail `409 node_not_ready` responses before enqueueing jobs.
+- W5.9-T3 completed: updated dashboard `/nodes` readiness UX with per-node reason codes/guidance and propagated actionable preflight failure messaging in create flows.
+- Wave 5 runtime/e2e scripts expanded: added deterministic diagnostics and new scripts for clone preview and backup/restore smokes (`scripts/smoke-site-clone-preview.sh`, `scripts/smoke-backup-restore.sh`) with explicit `409 node_not_ready` capture.
+- Wave 5 backup/restore vertical-slice implementation added: real backup artifact generation/checksum+size metadata, `env_restore` API/service/job handler wiring, `ansible/playbooks/env-restore.yml`, and site/environment restore status transitions with regression tests.
+- Wave 5.11 extension planning drafted: added `docs/features/feature-wave5-node-acquisition-parity.md`, `changes/node-acquisition-parity/*`, and updated Wave 5.11 backlog in `PLAN.md` with explicit `Create Local Node`/`Create Remote Node` no-fallback semantics.
+- W5.10-T1 completed: backup execution now writes real artifacts with checksum/size metadata integrity checks and regression coverage.
+- W5.10-T2 completed: `POST /api/environments/{id}/restore` + `env_restore` service/handler/playbook path implemented with pre-restore backup guard semantics.
+- W5.10-T3 completed: `/sites/{site_id}` detail now includes restore flow controls with confirmation and terminal outcome messaging.
+- W5.11-T1 completed: node acquisition parity major-change packet and feature specs are finalized under `changes/node-acquisition-parity/` and `docs/features/feature-wave5-node-acquisition-parity.md`.
+- W5.11-T2 completed: added `POST /api/nodes` with explicit `acquisition_source` (`local|remote`) and strict no-fallback validation, plus `/nodes` UI controls exposing exactly `Create Local Node` and `Create Remote Node` actions with deterministic success/error messaging.
+- W5.11-T4 completed: remote node creation contract scaffolding is in place without changing downstream provisioning/readiness semantics.
+- W5.11 provider-first reset applied: prior local/manual parity artifacts remain historical only and are superseded by provider-first Wave 5.11 tasks in `PLAN.md`.
+- Wave 5.11 planning alignment completed: plan/spec/testing contracts now require `multipass`-backed local acquisition, no success-path self-node autoseed dependency, and acquired-node smoke evidence before Wave 5 closeout.
+- Wave 5.11 provider-parity planning alignment completed: local acquisition is now specified as provider-equivalent lifecycle (`create/start VM -> inject Pressluft-managed SSH key -> provision`) with explicit prohibition on provider-internal key-path dependency.
+- Wave 5.11 course-correction completed: provider-first Wave 5.11 plan/tasks now replace local/manual node acquisition scope, with new feature specs for provider connections and Hetzner-backed acquisition.
+- W5.11-T2 completed: provider connection control plane and `/providers` dashboard route are implemented with persisted provider secret handling and masked API responses.
+- W5.11-T3 completed: `/api/nodes` is now provider-backed (`provider_id`, `name?`) and no longer accepts `acquisition_source=local|remote` or manual SSH input fields.
+- W5.11-T4 completed: `node_provision` now executes Hetzner async acquisition lifecycle (`create server -> poll action -> fetch server`) before provisioning, with deterministic provider error mapping and handler/acquirer test coverage.
+- W5.11-T5 completed: cleanup pass removed active local-acquisition execution branch from node provisioning, switched site-create target selection to provider-backed nodes, updated dashboard readiness messaging, and replaced Wave 5 smoke scripts with provider-token driven acquisition flow.
+- W5.11-T6 completed: provider connect now validates bearer credentials via live Hetzner API checks (no `hcloud_` prefix heuristic), persists deterministic `connected|degraded` health status, and adds regression coverage for live-validation outcomes.
+- Wave 5.11 replan completed: backlog expanded to `W5.11-T6` through `W5.11-T10` for bearer-token validation, `hcloud-go` migration, dashboard/API guidance alignment, and mandatory smoke-evidence closeout.
+- W5.11-T7 completed: node acquisition now uses `hcloud-go` (`SSH key get/create -> server create -> action poll -> server fetch`) with deterministic `PROVIDER_*` classification preserved via typed Hetzner API status errors and updated acquirer regression coverage.
+- W5.11-T8 completed: dashboard and API guidance now reference bearer-token credentials for `/providers` and `/nodes`, removing prefix-oriented UX copy while preserving existing request/response contracts.
 
 ## In Progress
 
-- Preparing Wave 5.5 implementation for self-node runnable WordPress vertical slice.
+- W5.11-T9 implementation kickoff: extend Wave 5 smoke/regression coverage for SDK-backed provider diagnostics.
 
 ## Next Up
 
-1. Execute W5.5-T2 to define and validate self-node local/WSL2 runtime target.
-2. Execute W5.5-T3 to wire site/environment mutation execution to runnable runtime provisioning.
-3. Execute W5.5-T4/W5.5-T5 to enforce reachability-gated success and add end-to-end smoke verification.
+1. Execute `W5.11-T9`: extend smoke/regression coverage for SDK-backed provider diagnostics.
+2. Execute `W5.11-T10`: run clone + backup/restore smokes and capture provider acquisition/provision/readiness evidence.
+3. Capture provider-backed Wave 5 closeout artifacts in handoff notes for MP1.5 readiness.
 
 ## Open Risks
 
@@ -66,10 +108,73 @@ Last Updated: 2026-02-22
 - Parallel execution now has lock linting, but still depends on active discipline for ownership transfer during live parallel sessions.
 - Active contradictory specs can force implementation outside allowed paths unless corrected before coding.
 - Dashboard IA refactor can regress existing create/list behavior if subsite routing and shared context are introduced without compatibility tests.
-- Local runtime networking differences (host Linux vs WSL2 DNS/ports) can break preview reachability unless self-node assumptions are explicit.
+- Provider API availability/rate limits can delay acquisition convergence and make smoke runtimes flaky.
+- Credential persistence and masking mistakes in provider connection flow can create security exposure if not validated.
+- Hetzner API/schema drift can break adapter assumptions without robust error mapping and retries.
+- Live WordPress version queries can add latency to `/sites` rendering unless timeout and fallback behavior are explicit.
 
 ## Latest Verification Snapshot
 
+- `bash scripts/check-readiness.sh`: pass.
+- `GOTOOLCHAIN=local /usr/local/go/bin/go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `GOTOOLCHAIN=local /usr/local/go/bin/go vet ./...`: pass.
+- `GOTOOLCHAIN=local /usr/local/go/bin/go test ./internal/... -v`: pass (includes `internal/providers/hetzner` SDK-backed acquisition tests and provider API error classification path).
+- `bash scripts/check-readiness.sh`: pass.
+- `/usr/local/go/bin/go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `/usr/local/go/bin/go vet ./...`: pass.
+- `/usr/local/go/bin/go test ./internal/... -v`: pass (includes new provider credential live-validation coverage and provider connect status transitions).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes `POST /api/nodes` contract tests and `/nodes` UI marker coverage for explicit local/remote create actions).
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new `internal/bootstrap` acquisition adapter tests and `/api/nodes` local-acquired-target upsert coverage).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/backup-create.yml`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/env-restore.yml`: pass.
+- `bash scripts/check-local-runtime-prereqs.sh`: fail (`passwordless sudo` and `wp` missing on local host runtime path).
+- `bash scripts/smoke-create-site-preview.sh`: fail (`409 node_not_ready` with `sudo_unavailable, runtime_missing`).
+- `bash scripts/smoke-site-clone-preview.sh`: fail (`409 node_not_ready` with `sudo_unavailable, runtime_missing`).
+- `bash scripts/smoke-backup-restore.sh`: fail (`409 node_not_ready` with `sudo_unavailable, runtime_missing`).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new readiness model tests, API preflight `node_not_ready` coverage, and dashboard route regressions).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new `internal/devserver/server_test.go` coverage for invalid `/sites/` and nested `/sites/{id}/...` route rejection).
+- `go run ./cmd/pressluft dev --port 18620` + `curl http://127.0.0.1:18620/sites` + `curl http://127.0.0.1:18620/sites/test-site` + `curl http://127.0.0.1:18620/sites/` + `curl http://127.0.0.1:18620/sites/test-site/nested` + `curl http://127.0.0.1:18620/nodes`: pass (`200` for `/sites`, `/sites/test-site`, `/nodes`; `404` for `/sites/` and `/sites/test-site/nested`).
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes updated `internal/devserver/server_test.go` coverage for `/sites/{site_id}` route serving and site quick-action markers).
+- `go run ./cmd/pressluft dev --port 18600` + `curl http://127.0.0.1:18600/sites` + `curl http://127.0.0.1:18600/sites/test-site` + `curl http://127.0.0.1:18600/environments` + `curl http://127.0.0.1:18600/backups`: pass (`200` for `/sites` and `/sites/test-site`; `404` for `/environments` and `/backups`).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new concern-marker assertions in `internal/devserver/server_test.go`).
+- `./bin/pressluft dev --port 18500` + site create API call: pass (worker loop starts with `event=worker_start`, picks up `site_create` job, and logs `event=worker_job_processed`).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes updated `internal/devserver/server_test.go` route/marker coverage for `/nodes` and removed top-level `/environments`/`/backups`).
+- `go run ./cmd/pressluft dev --port 18400` + `curl http://127.0.0.1:18400/{,nodes,sites,jobs}` + `curl http://127.0.0.1:18400/{environments,backups}`: pass (`200` for `/`, `/nodes`, `/sites`, `/jobs`; `404` for `/environments`, `/backups`).
+- `bash scripts/check-readiness.sh`: pass (post-plan-extension for Wave 5.6 docs/change packet).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new `internal/sites/handler_test.go` and `internal/environments/handler_test.go` coverage for runtime provisioning handlers).
+- `ansible-playbook --syntax-check ansible/playbooks/node-provision.yml`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/site-create.yml`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/env-create.yml`: pass.
+- `bash scripts/smoke-create-site-preview.sh`: fail (`expected job to succeed, got status=queued`; dev runtime has no active worker loop).
+- `ansible-playbook --syntax-check ansible/playbooks/node-provision.yml`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/site-create.yml`: pass.
+- `ansible-playbook --syntax-check ansible/playbooks/env-create.yml`: pass.
 - `bash scripts/check-readiness.sh`: pass.
 - `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
 - `go vet ./...`: pass.
@@ -125,6 +230,11 @@ Last Updated: 2026-02-22
 - `go test ./internal/... -v`: pass (includes new backup API handler coverage, backup service enqueue/list tests, backup lifecycle handler/store transition tests).
 - `ansible-playbook --syntax-check ansible/playbooks/backup-create.yml`: pass.
 - `go run ./cmd/pressluft dev --port 18155` + `curl http://127.0.0.1:18155/`: pass (HTML contains `backup-form`, `backup-environment`, and `backups-body` markers).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new self-node store tests, site service self-node target tests, and updated API router tests with node store injection).
+- `./bin/pressluft dev --port 18340` + `curl http://127.0.0.1:18340/`: pass (startup + request logs show dashboard response).
 
 ## Session Handoff (2026-02-22)
 

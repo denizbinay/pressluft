@@ -1,0 +1,39 @@
+[{{ environment_id }}]
+; Pool configuration managed by Pressluft
+; Environment ID: {{ environment_id }}
+
+user = site_{{ site_id[:8] }}
+group = www-data
+
+listen = /run/php/php8.3-fpm-{{ environment_id }}.sock
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 4
+pm.max_requests = 500
+
+; PHP hardening per provisioning spec
+php_admin_value[open_basedir] = {{ env_root }}:/tmp/:/usr/share/php/
+
+; Error logging
+php_admin_value[error_log] = /var/log/php-fpm/{{ environment_id }}-error.log
+php_admin_flag[log_errors] = on
+
+; Session handling
+php_value[session.save_handler] = files
+php_value[session.save_path] = /tmp
+
+; Memory and execution limits
+php_admin_value[memory_limit] = 256M
+php_admin_value[max_execution_time] = 300
+php_admin_value[max_input_time] = 300
+php_admin_value[post_max_size] = 64M
+php_admin_value[upload_max_filesize] = 64M
+
+; Security settings
+php_admin_flag[expose_php] = off

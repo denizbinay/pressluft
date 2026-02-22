@@ -17,6 +17,7 @@ var (
 	ErrEnvironmentNotFound      = errors.New("environment not found")
 	ErrEnvironmentSlugConflict  = errors.New("environment slug already exists")
 	ErrInvalidEnvironmentCreate = errors.New("invalid environment create request")
+	ErrInvalidEnvironmentStatus = errors.New("invalid environment status transition")
 )
 
 type Site struct {
@@ -61,6 +62,8 @@ type SiteStore interface {
 	GetEnvironmentByID(ctx context.Context, id string) (Environment, error)
 	CreateSiteWithProductionEnvironment(ctx context.Context, input CreateSiteInput) (Site, Environment, error)
 	CreateEnvironment(ctx context.Context, input CreateEnvironmentInput) (Environment, error)
+	MarkEnvironmentRestoring(ctx context.Context, environmentID string, now time.Time) (Environment, Site, error)
+	MarkEnvironmentRestoreResult(ctx context.Context, environmentID string, succeeded bool, now time.Time) (Environment, Site, error)
 }
 
 type CreateSiteInput struct {
@@ -360,6 +363,83 @@ func (s *InMemorySiteStore) CreateEnvironment(_ context.Context, input CreateEnv
 	s.replaceSiteInListLocked(site)
 
 	return environment, nil
+}
+
+func (s *InMemorySiteStore) MarkEnvironmentRestoring(_ context.Context, environmentID string, now time.Time) (Environment, Site, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	environment, ok := s.environments[environmentID]
+	if !ok {
+		return Environment{}, Site{}, ErrEnvironmentNotFound
+	}
+	if environment.Status != "active" {
+		return Environment{}, Site{}, ErrInvalidEnvironmentStatus
+	}
+
+	site, ok := s.byID[environment.SiteID]
+	if !ok {
+		return Environment{}, Site{}, ErrSiteNotFound
+	}
+
+	updatedAt := now.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
+	environment.Status = "restoring"
+	environment.UpdatedAt = updatedAt
+	environment.StateVersion++
+	s.environments[environment.ID] = environment
+
+	site.Status = "restoring"
+	site.UpdatedAt = updatedAt
+	site.StateVersion++
+	s.byID[site.ID] = site
+	s.replaceSiteInListLocked(site)
+
+	return environment, site, nil
+}
+
+func (s *InMemorySiteStore) MarkEnvironmentRestoreResult(_ context.Context, environmentID string, succeeded bool, now time.Time) (Environment, Site, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	environment, ok := s.environments[environmentID]
+	if !ok {
+		return Environment{}, Site{}, ErrEnvironmentNotFound
+	}
+	if environment.Status != "restoring" {
+		return Environment{}, Site{}, ErrInvalidEnvironmentStatus
+	}
+
+	site, ok := s.byID[environment.SiteID]
+	if !ok {
+		return Environment{}, Site{}, ErrSiteNotFound
+	}
+
+	updatedAt := now.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
+	if succeeded {
+		environment.Status = "active"
+		site.Status = "active"
+	} else {
+		environment.Status = "failed"
+		site.Status = "failed"
+	}
+	environment.UpdatedAt = updatedAt
+	environment.StateVersion++
+	s.environments[environment.ID] = environment
+
+	site.UpdatedAt = updatedAt
+	site.StateVersion++
+	s.byID[site.ID] = site
+	s.replaceSiteInListLocked(site)
+
+	return environment, site, nil
 }
 
 func (s *InMemorySiteStore) insertEnvironmentLocked(environment Environment) {

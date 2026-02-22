@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-19
+Last Reviewed: 2026-02-22
 Depends On: docs/spec-index.md, docs/api-contract.md
 Supersedes: none
 
@@ -13,12 +13,56 @@ This document defines the minimal MVP UI flows that consume the API.
 - User enters email and password.
 - On success, session token is stored and user is redirected to Sites.
 
+## Dashboard Navigation (Wave 5.11)
+
+- Top-level operator navigation is `/`, `/providers`, `/nodes`, `/sites`, and `/jobs`.
+- There is no dedicated top-level `/environments` or `/backups` dashboard route.
+- `/providers` is the provider connection and status surface.
+- `/nodes` lists all nodes and highlights local-node readiness.
+- `/nodes` shows readiness reason codes and remediation guidance for non-ready nodes.
+- `/nodes` create view exposes one provider-backed action: `Create Node`.
+- Node creation targets a connected provider and never switches to local/manual fallback.
+- `/sites` is the site index/create surface.
+- `/sites/{site_id}` is the dedicated site details surface for environment and backup management.
+- Site rows expose a three-point quick actions menu for site-detail and site-scoped actions.
+
+## Provider Connections
+
+- Operator opens `/providers` and submits provider credentials.
+- `POST /api/providers` persists secret material and returns provider connection state.
+- UI never displays raw secret values; it only shows whether a secret is configured.
+- Provider status (`connected`, `degraded`, `disconnected`) and guidance are visible before node workflows.
+
+## Node Creation
+
+- Operator opens `/nodes` and submits `Create Node` for a connected provider.
+- Creation is provider-backed only; local/manual SSH creation is not available.
+- Create is async: UI receives accepted job response, then shows queued/running/retrying/terminal outcome from jobs timeline.
+- Transient provider preparation states are handled in background retries and do not require repeated button clicks.
+
 ## Site Creation
 
 - User clicks "Create Site".
 - Form: name, slug.
 - Submits to `POST /api/sites`.
+- If readiness preflight fails, UI shows `409 node_not_ready` guidance and no job is enqueued.
 - UI shows job progress and transitions to site view when complete.
+
+### Wave 5.5 Smoke (Create Site -> Preview Reachability)
+
+- `scripts/smoke-create-site-preview.sh` is retired and no longer part of required unattended verification.
+
+### Wave 5.9 Smoke (Create Clone -> Preview Reachability)
+
+- Run `scripts/smoke-site-clone-preview.sh` from repo root.
+- Script starts `pressluft dev`, authenticates, creates site + clone environment, and polls both jobs until terminal state.
+- Smoke passes only when clone preview URL returns HTTP `200`, `301`, or `302`.
+
+### Wave 5.10 Smoke (Backup + Restore)
+
+- Run `scripts/smoke-backup-restore.sh` from repo root.
+- Script starts `pressluft dev`, creates site, creates full backup, validates checksum/size metadata, and submits restore for selected environment.
+- Smoke passes only when restore job succeeds and post-restore preview URL returns HTTP `200`, `301`, or `302`.
 
 ## Site Import
 
@@ -29,17 +73,11 @@ This document defines the minimal MVP UI flows that consume the API.
 
 ## Environment Creation
 
-- User selects site and clicks "Create Environment".
+- User opens a site detail at `/sites/{site_id}` and clicks "Create Environment".
 - Form: name, slug, type, source environment, promotion preset.
 - Submits to `POST /api/sites/{id}/environments`.
+- If readiness preflight fails, UI shows `409 node_not_ready` guidance and no job is enqueued.
 - UI shows job progress.
-
-## Deployment
-
-- User selects environment and clicks "Deploy".
-- Form: source type (git or upload), source ref.
-- Submits to `POST /api/environments/{id}/deploy`.
-- UI shows job progress and health status.
 
 ## Promotion
 
@@ -51,7 +89,7 @@ This document defines the minimal MVP UI flows that consume the API.
 
 ## Backups
 
-- User clicks "Create Backup".
+- User opens a site detail at `/sites/{site_id}` and clicks "Create Backup".
 - Selects scope (db/files/full).
 - Submits to `POST /api/environments/{id}/backups`.
 - Backup list shows status and retention date.
@@ -88,12 +126,6 @@ The environment detail view includes a Caching section with per-environment cont
 
 - User removes a domain.
 - Submits to `DELETE /api/domains/{id}`.
-
-## Updates
-
-- User selects environment and clicks "Apply Updates".
-- Selects scope (core/plugins/themes/all).
-- Submits to `POST /api/environments/{id}/updates`.
 
 ## Jobs
 

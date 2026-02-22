@@ -27,7 +27,7 @@ func TestDashboardShellServedAtRoot(t *testing.T) {
 		t.Fatalf("dashboard HTML missing heading")
 	}
 
-	for _, token := range []string{"id=\"subsite-nav\"", "href=\"/sites\"", "href=\"/environments\"", "href=\"/backups\"", "href=\"/jobs\""} {
+	for _, token := range []string{"id=\"subsite-nav\"", "href=\"/providers\"", "href=\"/nodes\"", "href=\"/sites\"", "href=\"/jobs\""} {
 		if !strings.Contains(body, token) {
 			t.Fatalf("dashboard HTML missing %s", token)
 		}
@@ -45,7 +45,7 @@ func TestDashboardShellServedAtRoot(t *testing.T) {
 		t.Fatalf("dashboard HTML missing job timeline target")
 	}
 
-	for _, token := range []string{"id=\"site-form\"", "id=\"environment-form\"", "id=\"sites-body\"", "id=\"environments-body\"", "id=\"backup-form\"", "id=\"backups-body\""} {
+	for _, token := range []string{"id=\"provider-connect-form\"", "id=\"providers-body\"", "id=\"node-provider-form\"", "Create Node", "id=\"site-form\"", "id=\"sites-body\"", "id=\"subsite-site-detail\"", "id=\"environment-form\"", "id=\"environments-body\"", "id=\"backup-form\"", "id=\"restore-form\"", "id=\"restore-backup\"", "id=\"backups-body\"", "data-site-actions-toggle=", "data-site-action=\"open-detail\""} {
 		if !strings.Contains(body, token) {
 			t.Fatalf("dashboard HTML missing %s", token)
 		}
@@ -57,7 +57,7 @@ func TestDashboardShellServedAtSubsiteRoutes(t *testing.T) {
 	logger := log.New(&logs, "", 0)
 	server := New(":0", logger)
 
-	for _, route := range []string{"/", "/sites", "/environments", "/backups", "/jobs"} {
+	for _, route := range []string{"/", "/providers", "/nodes", "/sites", "/sites/test-site", "/jobs"} {
 		t.Run(route, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, route, nil)
 			rr := httptest.NewRecorder()
@@ -87,16 +87,29 @@ func TestDashboardContainsConcernScopedMarkers(t *testing.T) {
 	for _, token := range []string{
 		"id=\"subsite-overview\"",
 		"id=\"metrics\"",
+		"id=\"subsite-providers\"",
+		"id=\"provider-connect-form\"",
+		"id=\"providers-body\"",
+		"id=\"subsite-nodes\"",
+		"id=\"node-provider-form\"",
+		"id=\"nodes-body\"",
+		"id=\"local-node-readiness\"",
 		"id=\"subsite-sites\"",
 		"id=\"site-form\"",
 		"id=\"sites-body\"",
+		"id=\"subsite-site-detail\"",
 		"id=\"subsite-environments\"",
 		"id=\"environment-form\"",
 		"id=\"environments-body\"",
 		"id=\"subsite-backups\"",
 		"id=\"backup-site\"",
 		"id=\"backup-environment\"",
+		"id=\"restore-form\"",
+		"id=\"restore-backup\"",
 		"id=\"backups-body\"",
+		"data-site-actions-toggle=",
+		"data-site-action=\"create-environment\"",
+		"data-site-action=\"create-backup\"",
 		"id=\"subsite-jobs\"",
 		"id=\"jobs-body\"",
 		"id=\"job-timeline\"",
@@ -118,6 +131,42 @@ func TestDashboardUnknownRouteReturnsNotFound(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+}
+
+func TestDashboardRemovedTopLevelRoutesReturnNotFound(t *testing.T) {
+	var logs bytes.Buffer
+	logger := log.New(&logs, "", 0)
+	server := New(":0", logger)
+
+	for _, route := range []string{"/environments", "/backups"} {
+		t.Run(route, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, route, nil)
+			rr := httptest.NewRecorder()
+			server.httpServer.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
+func TestDashboardInvalidSiteDetailRoutesReturnNotFound(t *testing.T) {
+	var logs bytes.Buffer
+	logger := log.New(&logs, "", 0)
+	server := New(":0", logger)
+
+	for _, route := range []string{"/sites/", "/sites/site-a/nested"} {
+		t.Run(route, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, route, nil)
+			rr := httptest.NewRecorder()
+			server.httpServer.Handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+			}
+		})
 	}
 }
 

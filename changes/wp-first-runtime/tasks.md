@@ -16,21 +16,21 @@
   - Depends on: T1
   - Paths: `docs/features/feature-wp-first-runtime.md`, `docs/features/README.md`
   - Verification: spec completeness review against template and governance docs
-- [ ] T3: Implement self-node runtime target handling and mutation execution alignment.
+- [x] T3: Implement self-node runtime target handling and mutation execution alignment.
   - Depends on: T2
   - Paths: `internal/jobs/**`, `internal/sites/**`, `internal/environments/**`, `internal/nodes/**`, `internal/store/**`
   - Verification: `go test ./internal/... -v`
-- [ ] T4: Ensure Ansible mutation path provisions reachable WordPress runtime for site/env create.
+- [x] T4: Ensure Ansible mutation path provisions reachable WordPress runtime for site/env create.
   - Depends on: T3
   - Paths: `ansible/playbooks/**`, `ansible/roles/**`, `docs/ansible-execution.md`, `docs/provisioning-spec.md`
   - Verification: `ansible-playbook --syntax-check` for affected playbooks, runtime smoke checks
-- [ ] T5: Add create-site -> preview URL reachability smoke verification and dashboard visibility.
+- [ ] T5: Add create-site -> preview URL reachability smoke verification and complete runtime worker-loop proof.
   - Depends on: T4
-  - Paths: `scripts/**`, `internal/devserver/**`, `docs/ui-flows.md`
+  - Paths: `scripts/**`, `internal/devserver/**`, `internal/jobs/**`, `cmd/pressluft/**`, `docs/ui-flows.md`
   - Verification: scripted smoke run + `go test ./internal/... -v`
 
 ## Acceptance Mapping
 
 - AC1 (reworked plan gate) -> `bash scripts/check-readiness.sh` + doc review -> done
-- AC2 (site create yields reachable WP URL) -> Wave 5.5 manual + scripted smoke -> pending
-- AC3 (success semantics require reachability) -> lifecycle tests in `internal/jobs/**` -> pending
+- AC2 (site create yields reachable WP URL) -> site/env create playbook reachability probes + syntax checks -> done
+- AC3 (success semantics require reachability) -> lifecycle tests in `internal/jobs/**` + smoke proof with active worker loop -> pending

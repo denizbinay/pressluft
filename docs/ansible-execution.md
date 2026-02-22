@@ -137,8 +137,6 @@ Each job type maps to exactly one playbook. Playbook files live in `ansible/play
 | `site_create` | `site-create.yml` | Create system user, DB, PHP-FPM pool, Nginx block for preview URL, initial release, configure Redis Object Cache and `wp-config.php` Redis settings |
 | `site_import` | `site-import.yml` | Import archive, restore DB, copy files, URL rewrite, configure Redis Object Cache |
 | `env_create` | `env-create.yml` | Clone environment (files, DB, config), create Nginx block for preview URL, WordPress URL rewrite to new preview URL, configure Redis Object Cache |
-| `env_deploy` | `env-deploy.yml` | Create release, install deps, symlink switch, reload, purge FastCGI cache |
-| `env_update` | `env-update.yml` | Apply WordPress core/plugin/theme updates, purge FastCGI cache |
 | `env_restore` | `env-restore.yml` | Restore from backup archive, purge FastCGI cache |
 | `env_promote` | `env-promote.yml` | Selective sync with drift-protected tables/files, purge FastCGI cache on target |
 | `env_cache_toggle` | `env-cache-toggle.yml` | Enable or disable FastCGI page cache and/or Redis Object Cache for an environment. Regenerates Nginx server block, toggles Redis Object Cache drop-in via WP-CLI. |
@@ -164,7 +162,7 @@ Roles that accept variables from playbooks must define `meta/argument_specs.yml`
 | Role | Used By | Purpose |
 |------|---------|---------|
 | `nginx-reload` | Any playbook that modifies Nginx config | Handler-based Nginx reload |
-| `nginx-cache-purge` | `env-deploy`, `env-update`, `env-promote`, `env-restore`, `cache-purge`, `domain-add`, `domain-remove`, `release-rollback` | Purge FastCGI cache files for a specific environment |
+| `nginx-cache-purge` | `env-promote`, `env-restore`, `cache-purge`, `domain-add`, `domain-remove`, `release-rollback` | Purge FastCGI cache files for a specific environment |
 | `nginx-waf` | `node-provision` | Deploy vendored 7G WAF rules to `/etc/nginx/conf.d/` |
 | `redis-object-cache` | `site-create`, `site-import`, `env-create`, `env-cache-toggle` | Install/remove Redis Object Cache drop-in via WP-CLI, configure `wp-config.php` Redis constants |
 | `php-fpm-pool` | `site-create`, `env-create` | Create/configure PHP-FPM pool with hardened settings (including `open_basedir`) |

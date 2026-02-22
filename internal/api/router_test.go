@@ -8,14 +8,20 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"pressluft/internal/audit"
 	"pressluft/internal/auth"
+	"pressluft/internal/backups"
+	"pressluft/internal/environments"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
+	"pressluft/internal/nodes"
+	"pressluft/internal/providers"
+	"pressluft/internal/sites"
 	"pressluft/internal/store"
 )
 
@@ -135,10 +141,28 @@ func TestLoginReturnsInternalErrorWhenAuditWriteFails(t *testing.T) {
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", 24*time.Hour)
 	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
-	nodeStore := store.NewInMemoryNodeStore(2)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	_, _ = nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.20",
+		PublicIP:   "192.0.2.20",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC),
+	})
 	siteStore := store.NewInMemorySiteStore(0)
+	_ = store.NewInMemoryBackupStore()
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
-	router := NewRouter(logger, authService, jobStore, metricsService, failingAuditRecorder{})
+	if err := os.Setenv("PRESSLUFT_DISABLE_RUNTIME_PROBES", "1"); err != nil {
+		t.Fatalf("Setenv error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("PRESSLUFT_DISABLE_RUNTIME_PROBES")
+	})
+	providerStore := providers.NewInMemoryStore(nil)
+	router := NewRouter(logger, authService, jobStore, metricsService, failingAuditRecorder{}, nodeStore, providerStore)
 
 	body := strings.NewReader(`{"email":"admin@pressluft.local","password":"pressluft-dev-password"}`)
 	req := httptest.NewRequest(http.MethodPost, "/login", body)
@@ -304,7 +328,7 @@ func TestCreateSiteReturnsAcceptedJobAndPersistsSite(t *testing.T) {
 	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusAccepted)
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusAccepted, rr.Body.String())
 	}
 
 	var accepted map[string]string
@@ -365,7 +389,7 @@ func TestCreateSiteValidationAndConflict(t *testing.T) {
 	firstRR := httptest.NewRecorder()
 	router.ServeHTTP(firstRR, firstReq)
 	if firstRR.Code != http.StatusAccepted {
-		t.Fatalf("first create status = %d, want %d", firstRR.Code, http.StatusAccepted)
+		t.Fatalf("first create status = %d, want %d; body=%s", firstRR.Code, http.StatusAccepted, firstRR.Body.String())
 	}
 
 	secondReq := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"Acme Co","slug":"acme"}`))
@@ -377,6 +401,25 @@ func TestCreateSiteValidationAndConflict(t *testing.T) {
 		t.Fatalf("second create status = %d, want %d", secondRR.Code, http.StatusConflict)
 	}
 	assertErrorShape(t, secondRR.Body.Bytes(), "conflict")
+}
+
+func TestCreateSiteReturnsNodeNotReadyWhenPreflightFails(t *testing.T) {
+	router := newTestRouterWithForcedReadiness(t, 24*time.Hour, nodes.ReadinessReport{
+		IsReady:     false,
+		ReasonCodes: []string{nodes.ReasonSudoUnavailable},
+		Guidance:    []string{"configure passwordless sudo"},
+	})
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"Acme Co","slug":"acme"}`))
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusConflict)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "node_not_ready")
 }
 
 func TestGetSiteByIDReturnsNotFoundForUnknownSite(t *testing.T) {
@@ -503,6 +546,25 @@ func TestCreateEnvironmentValidationConflictAndNotFound(t *testing.T) {
 	}
 }
 
+func TestCreateEnvironmentReturnsNodeNotReadyWhenPreflightFails(t *testing.T) {
+	router, siteID, primaryEnvironmentID := newTestRouterWithForcedReadinessAndSeedSite(t, 24*time.Hour, nodes.ReadinessReport{
+		IsReady:     false,
+		ReasonCodes: []string{nodes.ReasonRuntimeMissing},
+		Guidance:    []string{"install wp CLI"},
+	})
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Staging","slug":"staging","type":"staging","source_environment_id":"`+primaryEnvironmentID+`","promotion_preset":"content-protect"}`))
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusConflict)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "node_not_ready")
+}
+
 func TestCreateAndListEnvironmentBackups(t *testing.T) {
 	router, _, environmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
 	sessionCookie := loginAndGetCookie(t, router)
@@ -551,6 +613,328 @@ func TestCreateAndListEnvironmentBackups(t *testing.T) {
 	}
 }
 
+func TestListNodesReturnsAllRegisteredNodes(t *testing.T) {
+	router := newTestRouterWithNodes(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/nodes", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	var payload []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode nodes list: %v", err)
+	}
+
+	if len(payload) != 1 {
+		t.Fatalf("nodes count = %d, want 1", len(payload))
+	}
+
+	node := payload[0]
+	if node["id"] == "" {
+		t.Fatal("node id is empty")
+	}
+	if node["name"] == "" {
+		t.Fatal("node name is empty")
+	}
+	if node["hostname"] == "" {
+		t.Fatal("node hostname is empty")
+	}
+	if _, ok := node["status"]; !ok {
+		t.Fatal("node status missing")
+	}
+	if _, ok := node["is_local"]; !ok {
+		t.Fatal("node is_local missing")
+	}
+	if _, ok := node["created_at"]; !ok {
+		t.Fatal("node created_at missing")
+	}
+	if _, ok := node["updated_at"]; !ok {
+		t.Fatal("node updated_at missing")
+	}
+	if _, ok := node["readiness"]; !ok {
+		t.Fatal("node readiness missing")
+	}
+}
+
+func TestListNodesRequiresAuth(t *testing.T) {
+	router := newTestRouterWithNodes(t, 24*time.Hour)
+
+	req := httptest.NewRequest(http.MethodGet, "/nodes", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "unauthorized")
+}
+
+func TestListProvidersReturnsDisconnectedCatalog(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/providers", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	var payload []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode providers list: %v", err)
+	}
+	if len(payload) == 0 {
+		t.Fatal("providers list is empty")
+	}
+
+	provider := payload[0]
+	if provider["provider_id"] != "hetzner" {
+		t.Fatalf("provider_id = %v, want hetzner", provider["provider_id"])
+	}
+	if provider["status"] != "disconnected" {
+		t.Fatalf("status = %v, want disconnected", provider["status"])
+	}
+	if provider["secret_configured"] != false {
+		t.Fatalf("secret_configured = %v, want false", provider["secret_configured"])
+	}
+}
+
+func TestConnectProviderPersistsMaskedConnection(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	connectReq := httptest.NewRequest(http.MethodPost, "/providers", strings.NewReader(`{"provider_id":"hetzner","api_token":"bearer-token"}`))
+	connectReq.AddCookie(sessionCookie)
+	connectRR := httptest.NewRecorder()
+	router.ServeHTTP(connectRR, connectReq)
+
+	if connectRR.Code != http.StatusOK {
+		t.Fatalf("connect status = %d, want %d", connectRR.Code, http.StatusOK)
+	}
+
+	var connectPayload map[string]any
+	if err := json.Unmarshal(connectRR.Body.Bytes(), &connectPayload); err != nil {
+		t.Fatalf("decode connect response: %v", err)
+	}
+	if connectPayload["status"] != "connected" {
+		t.Fatalf("status = %v, want connected", connectPayload["status"])
+	}
+	if connectPayload["secret_configured"] != true {
+		t.Fatalf("secret_configured = %v, want true", connectPayload["secret_configured"])
+	}
+	if _, ok := connectPayload["api_token"]; ok {
+		t.Fatalf("response unexpectedly includes api_token")
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/providers", nil)
+	listReq.AddCookie(sessionCookie)
+	listRR := httptest.NewRecorder()
+	router.ServeHTTP(listRR, listReq)
+
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRR.Code, http.StatusOK)
+	}
+
+	var listPayload []map[string]any
+	if err := json.Unmarshal(listRR.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode providers list: %v", err)
+	}
+	if len(listPayload) == 0 {
+		t.Fatal("providers list is empty")
+	}
+	if listPayload[0]["secret_configured"] != true {
+		t.Fatalf("secret_configured = %v, want true", listPayload[0]["secret_configured"])
+	}
+}
+
+func TestCreateNodeReturnsConflictWhenProviderNotConnected(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/nodes", strings.NewReader(`{"provider_id":"hetzner","name":"edge-1"}`))
+	createReq.AddCookie(sessionCookie)
+	createRR := httptest.NewRecorder()
+	router.ServeHTTP(createRR, createReq)
+
+	if createRR.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", createRR.Code, http.StatusConflict)
+	}
+	assertErrorShape(t, createRR.Body.Bytes(), "conflict")
+}
+
+func TestCreateNodeReturnsAcceptedAndEnqueuesProvisionJob(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	connectReq := httptest.NewRequest(http.MethodPost, "/providers", strings.NewReader(`{"provider_id":"hetzner","api_token":"bearer-token"}`))
+	connectReq.AddCookie(sessionCookie)
+	connectRR := httptest.NewRecorder()
+	router.ServeHTTP(connectRR, connectReq)
+	if connectRR.Code != http.StatusOK {
+		t.Fatalf("connect status = %d, want %d", connectRR.Code, http.StatusOK)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/nodes", strings.NewReader(`{"provider_id":"hetzner","name":"edge-1"}`))
+	createReq.AddCookie(sessionCookie)
+	createRR := httptest.NewRecorder()
+	router.ServeHTTP(createRR, createReq)
+
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", createRR.Code, http.StatusAccepted)
+	}
+
+	var accepted map[string]string
+	if err := json.Unmarshal(createRR.Body.Bytes(), &accepted); err != nil {
+		t.Fatalf("decode accepted response: %v", err)
+	}
+	if accepted["job_id"] == "" {
+		t.Fatal("job_id is empty")
+	}
+
+	nodesReq := httptest.NewRequest(http.MethodGet, "/nodes", nil)
+	nodesReq.AddCookie(sessionCookie)
+	nodesRR := httptest.NewRecorder()
+	router.ServeHTTP(nodesRR, nodesReq)
+
+	if nodesRR.Code != http.StatusOK {
+		t.Fatalf("nodes status = %d, want %d", nodesRR.Code, http.StatusOK)
+	}
+
+	var nodesPayload []map[string]any
+	if err := json.Unmarshal(nodesRR.Body.Bytes(), &nodesPayload); err != nil {
+		t.Fatalf("decode nodes response: %v", err)
+	}
+	if len(nodesPayload) != 2 {
+		t.Fatalf("nodes count = %d, want 2", len(nodesPayload))
+	}
+
+	var createdNode map[string]any
+	for _, node := range nodesPayload {
+		if node["name"] == "edge-1" {
+			createdNode = node
+			break
+		}
+	}
+	if createdNode == nil {
+		t.Fatalf("created provider node not found in payload: %+v", nodesPayload)
+	}
+
+	nodeID, _ := createdNode["id"].(string)
+	if nodeID == "" {
+		t.Fatal("node id is empty")
+	}
+	if createdNode["is_local"] != false {
+		t.Fatalf("is_local = %v, want false", createdNode["is_local"])
+	}
+	if createdNode["hostname"] != "pending.provider" {
+		t.Fatalf("hostname = %v, want pending.provider", createdNode["hostname"])
+	}
+
+	jobReq := httptest.NewRequest(http.MethodGet, "/jobs/"+accepted["job_id"], nil)
+	jobReq.AddCookie(sessionCookie)
+	jobRR := httptest.NewRecorder()
+	router.ServeHTTP(jobRR, jobReq)
+
+	if jobRR.Code != http.StatusOK {
+		t.Fatalf("job status = %d, want %d", jobRR.Code, http.StatusOK)
+	}
+
+	var jobPayload map[string]any
+	if err := json.Unmarshal(jobRR.Body.Bytes(), &jobPayload); err != nil {
+		t.Fatalf("decode job response: %v", err)
+	}
+	if jobPayload["job_type"] != "node_provision" {
+		t.Fatalf("job_type = %v, want node_provision", jobPayload["job_type"])
+	}
+	if jobPayload["node_id"] != nodeID {
+		t.Fatalf("node_id = %v, want %s", jobPayload["node_id"], nodeID)
+	}
+}
+
+func TestCreateNodeRejectsMissingProviderID(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/nodes", strings.NewReader(`{"name":"edge-1"}`))
+	createReq.AddCookie(sessionCookie)
+	createRR := httptest.NewRecorder()
+	router.ServeHTTP(createRR, createReq)
+
+	if createRR.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", createRR.Code, http.StatusBadRequest)
+	}
+	assertErrorShape(t, createRR.Body.Bytes(), "bad_request")
+
+}
+
+func TestWordPressVersionQuerySuccess(t *testing.T) {
+	router, _, environmentID := newTestRouterWithWordPressVersionAndIDs(t, 24*time.Hour, "6.4.3", nil)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/environments/"+environmentID+"/wordpress-version", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode wp version response: %v", err)
+	}
+
+	if payload["environment_id"] != environmentID {
+		t.Fatalf("environment_id = %v, want %s", payload["environment_id"], environmentID)
+	}
+	if payload["wordpress_version"] != "6.4.3" {
+		t.Fatalf("wordpress_version = %v", payload["wordpress_version"])
+	}
+	if payload["queried_at"] == "" {
+		t.Fatal("queried_at is empty")
+	}
+}
+
+func TestWordPressVersionQueryEnvironmentNotFound(t *testing.T) {
+	router, _, _ := newTestRouterWithWordPressVersionAndIDs(t, 24*time.Hour, "", nil)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/environments/00000000-0000-0000-0000-000000000000/wordpress-version", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "not_found")
+}
+
+func TestWordPressVersionQueryNodeUnreachable(t *testing.T) {
+	router, _, environmentID := newTestRouterWithWordPressVersionAndIDs(t, 24*time.Hour, "", errors.New("ssh timeout"))
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/environments/"+environmentID+"/wordpress-version", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadGateway)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "node_unreachable")
+}
+
 func TestCreateEnvironmentBackupValidationNotFoundAndConflict(t *testing.T) {
 	router, _, environmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
 	sessionCookie := loginAndGetCookie(t, router)
@@ -588,6 +972,37 @@ func TestCreateEnvironmentBackupValidationNotFoundAndConflict(t *testing.T) {
 	}
 }
 
+func TestRestoreEnvironmentReturnsAcceptedJob(t *testing.T) {
+	router, _, environmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+	backupID := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+	backupStore, ok := store.DefaultBackupStore().(*store.InMemoryBackupStore)
+	if !ok {
+		t.Fatal("default backup store type assertion failed")
+	}
+	now := time.Now().UTC()
+	_, _ = backupStore.CreateBackup(context.Background(), store.CreateBackupInput{
+		ID:             backupID,
+		EnvironmentID:  environmentID,
+		BackupScope:    "full",
+		StorageType:    "s3",
+		StoragePath:    "s3://pressluft/backups/" + environmentID + "/" + backupID + ".tar.zst",
+		RetentionUntil: now.AddDate(0, 0, 30),
+		CreatedAt:      now,
+	})
+	_, _ = backupStore.MarkBackupRunning(context.Background(), backupID, now)
+	_, _ = backupStore.MarkBackupCompleted(context.Background(), backupID, "sha256:test", 128, now)
+
+	restoreReq2 := httptest.NewRequest(http.MethodPost, "/environments/"+environmentID+"/restore", strings.NewReader(`{"backup_id":"`+backupID+`"}`))
+	restoreReq2.AddCookie(sessionCookie)
+	restoreRR2 := httptest.NewRecorder()
+	router.ServeHTTP(restoreRR2, restoreReq2)
+	if restoreRR2.Code != http.StatusAccepted {
+		t.Fatalf("restore status = %d, want %d", restoreRR2.Code, http.StatusAccepted)
+	}
+}
+
 func newTestRouter(t *testing.T, sessionTTL time.Duration) http.Handler {
 	t.Helper()
 	router, _ := newTestRouterWithAudit(t, sessionTTL)
@@ -600,12 +1015,29 @@ func newTestRouterWithAudit(t *testing.T, sessionTTL time.Duration) (http.Handle
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
 	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
-	nodeStore := store.NewInMemoryNodeStore(2)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	_, _ = nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.20",
+		PublicIP:   "192.0.2.20",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC),
+	})
 	siteStore := store.NewInMemorySiteStore(0)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
 	auditStore := audit.NewInMemoryStore()
 	auditService := audit.NewService(auditStore)
-	return NewRouter(logger, authService, jobStore, metricsService, auditService), auditStore
+	if err := os.Setenv("PRESSLUFT_DISABLE_RUNTIME_PROBES", "1"); err != nil {
+		t.Fatalf("Setenv error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("PRESSLUFT_DISABLE_RUNTIME_PROBES")
+	})
+	providerStore := providers.NewInMemoryStore(nil)
+	return NewRouter(logger, authService, jobStore, metricsService, auditService, nodeStore, providerStore), auditStore
 }
 
 func newTestRouterWithSeedSite(t *testing.T, sessionTTL time.Duration) (http.Handler, string, string) {
@@ -614,13 +1046,142 @@ func newTestRouterWithSeedSite(t *testing.T, sessionTTL time.Duration) (http.Han
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
 	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
-	nodeStore := store.NewInMemoryNodeStore(2)
+	nodeStore := nodes.NewInMemoryStore(nil)
 	siteStore := store.NewInMemorySiteStore(0)
+	_ = store.NewInMemoryBackupStore()
 	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	providerNode, _ := nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.25",
+		PublicIP:   "192.0.2.25",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        now,
+	})
 	site, environment, err := siteStore.CreateSiteWithProductionEnvironment(context.Background(), store.CreateSiteInput{
 		Name:       "Acme Co",
 		Slug:       "acme",
-		NodeID:     "44444444-4444-4444-4444-444444444444",
+		NodeID:     providerNode.ID,
+		NodePublic: providerNode.PublicIP,
+		Now:        now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
+	}
+
+	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	if err := os.Setenv("PRESSLUFT_DISABLE_RUNTIME_PROBES", "1"); err != nil {
+		t.Fatalf("Setenv error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("PRESSLUFT_DISABLE_RUNTIME_PROBES")
+	})
+	providerStore := providers.NewInMemoryStore(nil)
+	router := NewRouter(logger, authService, jobStore, metricsService, auditService, nodeStore, providerStore)
+	return router, site.ID, environment.ID
+}
+
+func newTestRouterWithNodes(t *testing.T, sessionTTL time.Duration) http.Handler {
+	t.Helper()
+	logger := log.New(&bytes.Buffer{}, "", 0)
+	sessionStore := store.NewInMemorySessionStore()
+	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
+	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
+
+	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	nodeStore := nodes.NewInMemoryStore([]nodes.Node{
+		{
+			ID:        nodes.SelfNodeID,
+			Name:      nodes.SelfNodeName,
+			Hostname:  "127.0.0.1",
+			PublicIP:  "127.0.0.1",
+			SSHPort:   22,
+			SSHUser:   "pressluft",
+			Status:    nodes.StatusActive,
+			IsLocal:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	})
+
+	siteStore := store.NewInMemorySiteStore(0)
+	_ = store.NewInMemoryBackupStore()
+	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	if err := os.Setenv("PRESSLUFT_DISABLE_RUNTIME_PROBES", "1"); err != nil {
+		t.Fatalf("Setenv error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("PRESSLUFT_DISABLE_RUNTIME_PROBES")
+	})
+	providerStore := providers.NewInMemoryStore(nil)
+	return NewRouter(logger, authService, jobStore, metricsService, auditService, nodeStore, providerStore)
+}
+
+type mockSSHRunner struct {
+	version string
+	err     error
+}
+
+type forcedReadinessChecker struct {
+	report nodes.ReadinessReport
+}
+
+func (f forcedReadinessChecker) Evaluate(context.Context, nodes.Node) (nodes.ReadinessReport, error) {
+	return f.report, nil
+}
+
+func (m *mockSSHRunner) WordPressVersion(ctx context.Context, host string, port int, user string, siteSlug string, envSlug string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.version, nil
+}
+
+func (m *mockSSHRunner) CheckNodePrerequisites(ctx context.Context, host string, port int, user string, isLocal bool) ([]string, error) {
+	_ = ctx
+	_ = host
+	_ = port
+	_ = user
+	_ = isLocal
+	return nil, nil
+}
+
+func newTestRouterWithWordPressVersionAndIDs(t *testing.T, sessionTTL time.Duration, version string, queryErr error) (http.Handler, string, string) {
+	t.Helper()
+	logger := log.New(&bytes.Buffer{}, "", 0)
+	sessionStore := store.NewInMemorySessionStore()
+	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
+	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
+
+	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	nodeID := "44444444-4444-4444-4444-444444444444"
+	nodeStore := nodes.NewInMemoryStore([]nodes.Node{
+		{
+			ID:        nodeID,
+			Name:      "test-node",
+			Hostname:  "127.0.0.1",
+			PublicIP:  "127.0.0.1",
+			SSHPort:   22,
+			SSHUser:   "pressluft",
+			Status:    nodes.StatusActive,
+			IsLocal:   true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	})
+
+	siteStore := store.NewInMemorySiteStore(0)
+	_ = store.NewInMemoryBackupStore()
+	site, environment, err := siteStore.CreateSiteWithProductionEnvironment(context.Background(), store.CreateSiteInput{
+		Name:       "Test Site",
+		Slug:       "testsite",
+		NodeID:     nodeID,
 		NodePublic: "127.0.0.1",
 		Now:        now,
 	})
@@ -631,8 +1192,113 @@ func newTestRouterWithSeedSite(t *testing.T, sessionTTL time.Duration) (http.Han
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
 	auditStore := audit.NewInMemoryStore()
 	auditService := audit.NewService(auditStore)
-	router := NewRouter(logger, authService, jobStore, metricsService, auditService)
-	return router, site.ID, environment.ID
+
+	readiness := nodes.NewReadinessChecker(&mockSSHRunner{})
+	siteService := sites.NewService(siteStore, nodeStore, jobStore, readiness)
+	envService := environments.NewService(siteStore, jobStore, nodeStore, readiness)
+	backupService := backups.NewService(siteStore, store.DefaultBackupStore(), jobStore)
+
+	router := &Router{
+		logger:       logger,
+		authService:  authService,
+		jobs:         jobStore,
+		metrics:      metricsService,
+		auditor:      auditService,
+		nodeStore:    nodeStore,
+		sites:        siteService,
+		environments: envService,
+		backups:      backupService,
+		restores:     environments.NewRestoreService(siteStore, store.DefaultBackupStore(), store.DefaultRestoreRequestStore(), jobStore),
+		sshRunner:    &mockSSHRunner{version: version, err: queryErr},
+	}
+
+	t.Logf("Created site %s with environment %s (status=%s)", site.ID, environment.ID, environment.Status)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", router.handleLogin)
+	mux.HandleFunc("/logout", router.handleLogout)
+	mux.HandleFunc("/providers", router.handleProviders)
+	mux.HandleFunc("/nodes", router.handleNodes)
+	mux.HandleFunc("/jobs", router.handleJobsList)
+	mux.HandleFunc("/jobs/", router.handleJobDetail)
+	mux.HandleFunc("/metrics", router.handleMetrics)
+	mux.HandleFunc("/sites", router.handleSites)
+	mux.HandleFunc("/sites/", router.handleSiteByID)
+	mux.HandleFunc("/environments/", router.handleEnvironmentByID)
+
+	return router.withAuth(mux), site.ID, environment.ID
+}
+
+func newTestRouterWithForcedReadiness(t *testing.T, sessionTTL time.Duration, report nodes.ReadinessReport) http.Handler {
+	t.Helper()
+	router, _, _ := newTestRouterWithForcedReadinessAndSeedSite(t, sessionTTL, report)
+	return router
+}
+
+func newTestRouterWithForcedReadinessAndSeedSite(t *testing.T, sessionTTL time.Duration, report nodes.ReadinessReport) (http.Handler, string, string) {
+	t.Helper()
+	logger := log.New(&bytes.Buffer{}, "", 0)
+	sessionStore := store.NewInMemorySessionStore()
+	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
+	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
+	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	providerNode, _ := nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.26",
+		PublicIP:   "192.0.2.26",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        now,
+	})
+
+	siteStore := store.NewInMemorySiteStore(0)
+	_ = store.NewInMemoryBackupStore()
+	site, environment, err := siteStore.CreateSiteWithProductionEnvironment(context.Background(), store.CreateSiteInput{
+		Name:       "Acme Co",
+		Slug:       "acme",
+		NodeID:     providerNode.ID,
+		NodePublic: providerNode.PublicIP,
+		Now:        now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
+	}
+
+	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	readiness := forcedReadinessChecker{report: report}
+
+	router := &Router{
+		logger:       logger,
+		authService:  authService,
+		jobs:         jobStore,
+		metrics:      metricsService,
+		auditor:      auditService,
+		nodeStore:    nodeStore,
+		sites:        sites.NewService(siteStore, nodeStore, jobStore, readiness),
+		environments: environments.NewService(siteStore, jobStore, nodeStore, readiness),
+		backups:      backups.NewService(siteStore, store.DefaultBackupStore(), jobStore),
+		restores:     environments.NewRestoreService(siteStore, store.DefaultBackupStore(), store.DefaultRestoreRequestStore(), jobStore),
+		sshRunner:    &mockSSHRunner{},
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", router.handleLogin)
+	mux.HandleFunc("/logout", router.handleLogout)
+	mux.HandleFunc("/providers", router.handleProviders)
+	mux.HandleFunc("/nodes", router.handleNodes)
+	mux.HandleFunc("/jobs", router.handleJobsList)
+	mux.HandleFunc("/jobs/", router.handleJobDetail)
+	mux.HandleFunc("/metrics", router.handleMetrics)
+	mux.HandleFunc("/sites", router.handleSites)
+	mux.HandleFunc("/sites/", router.handleSiteByID)
+	mux.HandleFunc("/environments/", router.handleEnvironmentByID)
+
+	return router.withAuth(mux), site.ID, environment.ID
 }
 
 type failingAuditRecorder struct{}

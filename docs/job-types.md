@@ -24,8 +24,6 @@ This document defines the canonical `jobs.job_type` registry for Pressluft MVP.
 | `site_create` | site | `ansible/playbooks/site-create.yml` | `docs/features/feature-site-create.md` |
 | `site_import` | site | `ansible/playbooks/site-import.yml` | `docs/features/feature-site-import.md` |
 | `env_create` | site | `ansible/playbooks/env-create.yml` | `docs/features/feature-environment-create-clone.md` |
-| `env_deploy` | site | `ansible/playbooks/env-deploy.yml` | `docs/features/feature-environment-deploy-updates.md` |
-| `env_update` | site | `ansible/playbooks/env-update.yml` | `docs/features/feature-environment-deploy-updates.md` |
 | `env_restore` | site | `ansible/playbooks/env-restore.yml` | `docs/features/feature-environment-restore.md` |
 | `env_promote` | site | `ansible/playbooks/env-promote.yml` | `docs/features/feature-promotion-drift.md` |
 | `env_cache_toggle` | site | `ansible/playbooks/env-cache-toggle.yml` | `docs/features/feature-cache-controls.md` |

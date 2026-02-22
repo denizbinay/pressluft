@@ -1,0 +1,222 @@
+---
+- name: Create WordPress site runtime
+  hosts: target
+  gather_facts: false
+  become: true
+  vars:
+    site_root: "/var/www/sites/{{ site_id }}"
+    env_root: "{{ site_root }}/{{ environment_id }}"
+    releases_dir: "{{ env_root }}/releases"
+    shared_dir: "{{ env_root }}/shared"
+    current_link: "{{ env_root }}/current"
+    wp_config_path: "{{ shared_dir }}/wp-config.php"
+    uploads_dir: "{{ shared_dir }}/uploads"
+    nginx_conf_path: "/etc/nginx/sites-available/{{ environment_id }}.conf"
+    nginx_enabled_path: "/etc/nginx/sites-enabled/{{ environment_id }}.conf"
+    php_fpm_pool_path: "/etc/php/8.3/fpm/pool.d/{{ environment_id }}.conf"
+    redis_prefix: "pressluft_{{ environment_id }}:"
+
+  tasks:
+    - name: Validate required site create vars
+      ansible.builtin.assert:
+        that:
+          - site_id is string
+          - site_id | length > 0
+          - site_slug is string
+          - site_slug | length > 0
+          - environment_id is string
+          - environment_id | length > 0
+          - environment_slug is string
+          - environment_slug | length > 0
+          - preview_url is string
+          - preview_url | length > 0
+        fail_msg: "Required variables for site_create are missing"
+
+    - name: Extract preview hostname from URL
+      ansible.builtin.set_fact:
+        preview_hostname: "{{ preview_url | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
+
+    - name: Create site system user
+      ansible.builtin.user:
+        name: "site_{{ site_id[:8] }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+        state: present
+
+    - name: Create site directory structure
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0750"
+      loop:
+        - "{{ site_root }}"
+        - "{{ env_root }}"
+        - "{{ releases_dir }}"
+        - "{{ shared_dir }}"
+        - "{{ uploads_dir }}"
+
+    - name: Set uploads directory permissions
+      ansible.builtin.file:
+        path: "{{ uploads_dir }}"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0770"
+
+    - name: Create MariaDB database for environment
+      community.mysql.mysql_db:
+        name: "wp_{{ environment_id[:8] }}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Generate random database password
+      ansible.builtin.set_fact:
+        db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+
+    - name: Create MariaDB user for environment
+      community.mysql.mysql_user:
+        name: "wp_{{ environment_id[:8] }}"
+        password: "{{ db_password }}"
+        priv: "wp_{{ environment_id[:8] }}.*:ALL"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      no_log: true
+
+    - name: Create initial release directory
+      ansible.builtin.file:
+        path: "{{ releases_dir }}/initial"
+        state: directory
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0750"
+
+    - name: Download WordPress
+      ansible.builtin.get_url:
+        url: https://wordpress.org/latest.tar.gz
+        dest: /tmp/wordpress-{{ environment_id }}.tar.gz
+        mode: "0644"
+
+    - name: Extract WordPress
+      ansible.builtin.unarchive:
+        src: /tmp/wordpress-{{ environment_id }}.tar.gz
+        dest: "{{ releases_dir }}/initial"
+        remote_src: true
+        extra_opts:
+          - --strip-components=1
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+
+    - name: Clean up WordPress archive
+      ansible.builtin.file:
+        path: /tmp/wordpress-{{ environment_id }}.tar.gz
+        state: absent
+
+    - name: Generate WordPress salts
+      ansible.builtin.set_fact:
+        wp_auth_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_secure_auth_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_logged_in_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_nonce_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_auth_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_secure_auth_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_logged_in_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+        wp_nonce_salt: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+      no_log: true
+
+    - name: Deploy wp-config.php
+      ansible.builtin.template:
+        src: wp-config.php.j2
+        dest: "{{ wp_config_path }}"
+        owner: "site_{{ site_id[:8] }}"
+        group: www-data
+        mode: "0640"
+      no_log: true
+
+    - name: Symlink wp-config.php into release
+      ansible.builtin.file:
+        src: "{{ wp_config_path }}"
+        dest: "{{ releases_dir }}/initial/wp-config.php"
+        state: link
+        force: true
+
+    - name: Symlink uploads into release
+      ansible.builtin.file:
+        src: "{{ uploads_dir }}"
+        dest: "{{ releases_dir }}/initial/wp-content/uploads"
+        state: link
+        force: true
+
+    - name: Create current symlink to initial release
+      ansible.builtin.file:
+        src: "{{ releases_dir }}/initial"
+        dest: "{{ current_link }}"
+        state: link
+        force: true
+
+    - name: Deploy PHP-FPM pool configuration
+      ansible.builtin.template:
+        src: php-fpm-pool.conf.j2
+        dest: "{{ php_fpm_pool_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload PHP-FPM
+
+    - name: Deploy Nginx server block
+      ansible.builtin.template:
+        src: nginx-site.conf.j2
+        dest: "{{ nginx_conf_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload Nginx
+
+    - name: Enable Nginx site
+      ansible.builtin.file:
+        src: "{{ nginx_conf_path }}"
+        dest: "{{ nginx_enabled_path }}"
+        state: link
+      notify: Reload Nginx
+
+    - name: Install WordPress via WP-CLI
+      ansible.builtin.command:
+        cmd: >
+          wp core install
+          --url="{{ preview_url }}"
+          --title="{{ site_slug }}"
+          --admin_user="admin"
+          --admin_password="{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+          --admin_email="admin@{{ preview_hostname }}"
+          --skip-email
+          --path="{{ current_link }}"
+        creates: "{{ current_link }}/wp-includes/version.php"
+      become_user: "site_{{ site_id[:8] }}"
+      no_log: true
+
+    - name: Flush handlers to ensure services are reloaded
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify WordPress is reachable
+      ansible.builtin.uri:
+        url: "{{ preview_url }}"
+        method: GET
+        status_code: [200, 301, 302]
+        timeout: 30
+      register: wp_health
+      retries: 3
+      delay: 5
+      until: wp_health is succeeded
+
+  handlers:
+    - name: Reload PHP-FPM
+      ansible.builtin.service:
+        name: php8.3-fpm
+        state: reloaded
+
+    - name: Reload Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

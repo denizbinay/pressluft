@@ -20,8 +20,10 @@ This directory contains implementation-bound feature specs.
 ## Current Specs
 
 - `docs/features/feature-auth-session.md`
-- `docs/features/feature-install-bootstrap.md`
 - `docs/features/feature-node-provision.md`
+- `docs/features/feature-provider-connections.md`
+- `docs/features/feature-hetzner-node-provider.md`
+- `docs/features/feature-wave5-provider-first-node-acquisition.md`
 - `docs/features/feature-site-create.md`
 - `docs/features/feature-site-import.md`
 - `docs/features/feature-settings-domain-config.md`
@@ -41,6 +43,12 @@ This directory contains implementation-bound feature specs.
 - `docs/features/feature-audit-logging.md`
 - `docs/features/feature-job-control.md`
 - `docs/features/feature-wp-first-runtime.md`
+- `docs/features/feature-wave5-runtime-readiness.md`
+- `docs/features/feature-wave5-runtime-e2e.md`
+- `docs/features/feature-wave5-backup-restore-vertical-slice.md`
+- `docs/features/feature-dashboard-site-centric-hierarchy.md`
+- `docs/features/feature-runtime-inventory-queries.md`
+- `docs/features/feature-site-detail-drilldown.md`
 
 ## How to Create
 

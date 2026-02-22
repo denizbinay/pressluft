@@ -1,6 +1,6 @@
 Status: active
 Owner: platform
-Last Reviewed: 2026-02-20
+Last Reviewed: 2026-02-22
 Depends On: contracts/openapi.yaml, docs/features/README.md, docs/job-execution.md, docs/state-machines.md, docs/ansible-execution.md, docs/job-types.md
 Supersedes: none
 
@@ -14,6 +14,10 @@ Path note: matrix endpoints use full runtime paths with `/api` prefix. OpenAPI p
 
 | Endpoint | Feature Spec | Execution Model | Job Type / Query | Primary State Surface |
 |---|---|---|---|---|
+| `GET /api/providers` | `docs/features/feature-provider-connections.md` | sync | none | provider connection read model |
+| `POST /api/providers` | `docs/features/feature-provider-connections.md` | sync | none | provider connection secret/status |
+| `GET /api/nodes` | `docs/features/feature-runtime-inventory-queries.md` | sync | none | node read model |
+| `POST /api/nodes` | `docs/features/feature-wave5-provider-first-node-acquisition.md` | async | `node_provision` (provider acquisition + provisioning) | node state |
 | `POST /api/login` | `docs/features/feature-auth-session.md` | sync | none | auth session |
 | `POST /api/logout` | `docs/features/feature-auth-session.md` | sync | none | auth session |
 | `GET /api/sites` | `docs/features/feature-site-create.md` | sync | none | site read model |
@@ -23,9 +27,8 @@ Path note: matrix endpoints use full runtime paths with `/api` prefix. OpenAPI p
 | `POST /api/sites/{id}/environments` | `docs/features/feature-environment-create-clone.md` | async | `env_create` | site/environment |
 | `POST /api/sites/{id}/import` | `docs/features/feature-site-import.md` | async | `site_import` | site/environment |
 | `GET /api/environments/{id}` | `docs/features/feature-environment-create-clone.md` | sync | none | environment read model |
+| `GET /api/environments/{id}/wordpress-version` | `docs/features/feature-runtime-inventory-queries.md` | sync | node query | environment read model |
 | `POST /api/environments/{id}/drift-check` | `docs/features/feature-promotion-drift.md` | async | `drift_check` | environment drift |
-| `POST /api/environments/{id}/deploy` | `docs/features/feature-environment-deploy-updates.md` | async | `env_deploy` | site/environment |
-| `POST /api/environments/{id}/updates` | `docs/features/feature-environment-deploy-updates.md` | async | `env_update` | site/environment |
 | `POST /api/environments/{id}/restore` | `docs/features/feature-environment-restore.md` | async | `env_restore` | site/environment |
 | `POST /api/environments/{id}/promote` | `docs/features/feature-promotion-drift.md` | async | `env_promote` | environment drift/promotion |
 | `PATCH /api/environments/{id}/cache` | `docs/features/feature-cache-controls.md` | async | `env_cache_toggle` | environment cache settings |

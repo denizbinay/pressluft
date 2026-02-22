@@ -4,11 +4,20 @@
   gather_facts: false
   become: true
   tasks:
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        lock_timeout: 180
+      register: apt_update
+      retries: 3
+      delay: 10
+      until: apt_update is succeeded
+
     - name: Ensure required system packages are installed
       ansible.builtin.package:
         name:
           - nginx
-          - php-fpm
+          - php8.3-fpm
           - php-redis
           - mariadb-server
           - redis-server

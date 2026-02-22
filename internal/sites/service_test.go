@@ -7,14 +7,38 @@ import (
 	"time"
 
 	"pressluft/internal/jobs"
+	"pressluft/internal/nodes"
 	"pressluft/internal/store"
 )
 
+type fakeReadinessChecker struct {
+	report nodes.ReadinessReport
+	err    error
+}
+
+func (f fakeReadinessChecker) Evaluate(context.Context, nodes.Node) (nodes.ReadinessReport, error) {
+	if f.err != nil {
+		return nodes.ReadinessReport{}, f.err
+	}
+	return f.report, nil
+}
+
 func TestCreatePersistsSiteEnvironmentAndEnqueuesJob(t *testing.T) {
 	siteStore := store.NewInMemorySiteStore(0)
+	nodeStore := nodes.NewInMemoryStore(nil)
 	queue := jobs.NewInMemoryRepository(nil)
-	svc := NewService(siteStore, queue)
+	svc := NewService(siteStore, nodeStore, queue, nil)
 	svc.now = func() time.Time { return time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC) }
+	_, _ = nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.20",
+		PublicIP:   "192.0.2.20",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        svc.now(),
+	})
 
 	jobID, err := svc.Create(context.Background(), "Acme", "acme")
 	if err != nil {
@@ -93,11 +117,89 @@ func TestCreateReturnsConflictWhenSlugAlreadyExists(t *testing.T) {
 		StateVersion:         1,
 	}})
 
-	svc := NewService(siteStore, queue)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	_, _ = nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.30",
+		PublicIP:   "192.0.2.30",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        now,
+	})
+	svc := NewService(siteStore, nodeStore, queue, nil)
 	svc.now = func() time.Time { return now }
 
 	_, err := svc.Create(context.Background(), "Existing", "existing")
 	if !errors.Is(err, store.ErrSiteSlugConflict) {
 		t.Fatalf("Create() error = %v, want site slug conflict", err)
+	}
+}
+
+func TestCreateUsesProviderBackedNodeAsTarget(t *testing.T) {
+	siteStore := store.NewInMemorySiteStore(0)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	queue := jobs.NewInMemoryRepository(nil)
+	svc := NewService(siteStore, nodeStore, queue, nil)
+	svc.now = func() time.Time { return time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC) }
+	providerNode, _ := nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.21",
+		PublicIP:   "192.0.2.21",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        svc.now(),
+	})
+
+	jobID, err := svc.Create(context.Background(), "Test Site", "test-site")
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	job, err := queue.GetByID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+
+	if job.NodeID == nil || *job.NodeID != providerNode.ID {
+		t.Fatalf("job.NodeID = %v, want %s", job.NodeID, providerNode.ID)
+	}
+}
+
+func TestCreateFailsWhenNoProviderNodeRegistered(t *testing.T) {
+	siteStore := store.NewInMemorySiteStore(0)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	queue := jobs.NewInMemoryRepository(nil)
+	svc := NewService(siteStore, nodeStore, queue, nil)
+
+	_, err := svc.Create(context.Background(), "Acme", "acme")
+	if !errors.Is(err, ErrNodeNotReady) {
+		t.Fatalf("Create() error = %v, want ErrNodeNotReady", err)
+	}
+}
+
+func TestCreateFailsWhenTargetNodeNotReady(t *testing.T) {
+	siteStore := store.NewInMemorySiteStore(0)
+	nodeStore := nodes.NewInMemoryStore(nil)
+	queue := jobs.NewInMemoryRepository(nil)
+	readiness := fakeReadinessChecker{report: nodes.ReadinessReport{IsReady: false, ReasonCodes: []string{nodes.ReasonSudoUnavailable}, Guidance: []string{"configure sudo"}}}
+	svc := NewService(siteStore, nodeStore, queue, readiness)
+	_, _ = nodeStore.Create(context.Background(), nodes.CreateInput{
+		ProviderID: "hetzner",
+		Name:       "provider-node",
+		Hostname:   "192.0.2.22",
+		PublicIP:   "192.0.2.22",
+		SSHPort:    22,
+		SSHUser:    "ubuntu",
+		IsLocal:    false,
+		Now:        time.Now().UTC(),
+	})
+
+	_, err := svc.Create(context.Background(), "Acme", "acme")
+	if !errors.Is(err, ErrNodeNotReady) {
+		t.Fatalf("Create() error = %v, want ErrNodeNotReady", err)
 	}
 }
