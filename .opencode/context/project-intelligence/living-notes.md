@@ -1,114 +1,81 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.0 | Updated: 2025-01-12 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
 
 # Living Notes
 
-> Active issues, technical debt, open questions, and insights that don't fit elsewhere. Keep this alive.
+> Active state, next steps, gotchas, and patterns worth preserving.
 
-## Quick Reference
+## Current State
 
-- **Purpose**: Capture current state, problems, and open questions
-- **Update**: Weekly or when status changes
-- **Archive**: Move resolved items to bottom with status
+The dashboard UI foundation is complete. All infrastructure (Go backend, Nuxt frontend, build pipeline, design system) is working. No real features implemented yet — pages are placeholders ready for content.
 
-## Technical Debt
+**What's built:**
+- Go HTTP server with embedded static assets (`embed.FS`)
+- Nuxt 4 frontend with Tailwind v4 dark theme
+- Full OKLCH design system with surface/accent/semantic color scales
+- 11 reusable UI components, 2 composables
+- 3 pages: Dashboard (placeholder), Settings (placeholder), Components (UI library showcase)
+- Responsive layout with top nav, mobile hamburger menu, footer
+- `make build` produces a single binary, `make dev` runs both servers with hot reload
 
-| Item | Impact | Priority | Mitigation |
-|------|--------|----------|------------|
-| [Debt item] | [What risk it creates] | [High/Med/Low] | [How to manage] |
+## Next Steps
 
-### Technical Debt Details
+| Item | Priority | Notes |
+|------|----------|-------|
+| Dashboard page content | High | Real monitoring/overview widgets |
+| Settings page content | Medium | Configuration UI |
+| API integration | High | Connect frontend to Go `/api` routes |
+| Additional components | Medium | Tables, tabs, toasts/notifications, sidebar panels as needed |
+| Health check widget | Low | Was in old `app.vue`, could be re-integrated into layout or dashboard |
 
-**[Debt Item]**  
-*Priority*: [High/Med/Low]  
-*Impact*: [What happens if not addressed]  
-*Root Cause*: [Why this debt exists]  
-*Proposed Solution*: [How to fix it]  
-*Effort*: [Small/Medium/Large]  
-*Status*: [Acknowledged | Scheduled | In Progress | Deferred]
+## Gotchas for Future Sessions
 
-## Open Questions
+### Tailwind v4 + Nuxt 4
 
-| Question | Stakeholders | Status | Next Action |
-|----------|--------------|--------|-------------|
-| [Question] | [Who needs to decide] | [Open/In Progress] | [What needs to happen] |
+- **DO NOT** install `@nuxtjs/tailwindcss` — it's Tailwind v3 only. Use `@tailwindcss/vite` as a Vite plugin instead.
+- Tailwind v4 has **no `tailwind.config.js`**. All config is CSS-first via `@theme {}` blocks in `main.css`.
+- Import is `@import "tailwindcss"` (not `@import "tailwindcss/base"` etc.)
 
-### Open Question Details
+### Build Pipeline
 
-**[Question]**  
-*Context*: [Why this question matters]  
-*Stakeholders*: [Who needs to be involved]  
-*Options*: [What are the possibilities]  
-*Timeline*: [When does this need resolution]  
-*Status*: [Open/In Progress/Blocked]
+- `nuxt generate` (not `nuxt build`) for static output
+- Output goes to `web/.output/public/` → copied to `internal/server/dist/` → embedded in Go binary
+- The `internal/server/dist/` directory has a `.gitkeep` — actual assets are generated, not committed
 
-## Known Issues
+### Nuxt 4 Specifics
 
-| Issue | Severity | Workaround | Status |
-|-------|----------|------------|--------|
-| [Issue] | [Critical/High/Med/Low] | [Temporary fix] | [Known/In Progress/Fixed] |
+- App directory is `web/app/` (Nuxt 4 default), not `web/` root
+- Pages, components, composables, layouts all live under `web/app/`
+- `app.vue` uses `<NuxtLayout><NuxtPage /></NuxtLayout>` pattern
 
-### Issue Details
+### Dev Proxy
 
-**[Issue Title]**  
-*Severity*: [Critical/High/Med/Low]  
-*Impact*: [Who/what is affected]  
-*Reproduction*: [Steps to reproduce if applicable]  
-*Workaround*: [Temporary solution if exists]  
-*Root Cause*: [If known]  
-*Fix Plan*: [How to properly fix]  
-*Status*: [Known/In Progress/Fixed in vX.X]
+- Nuxt dev server proxies `/api` to Go backend via `nitro.devProxy` in `nuxt.config.ts`
+- Default Go port: 8081, default Nuxt port: 8080
+- Configurable via `DEV_API_PORT` and `DEV_UI_PORT` make variables
 
-## Insights & Lessons Learned
+## Patterns Worth Preserving
 
-### What Works Well
-- [Positive pattern 1] - [Why it works]
-- [Positive pattern 2] - [Why it works]
+### Component Architecture
 
-### What Could Be Better
-- [Area for improvement 1] - [Why it's a problem]
-- [Area for improvement 2] - [Why it's a problem]
+- All UI components in `components/ui/` with `Ui` prefix (auto-imported by Nuxt)
+- Props-driven with TypeScript interfaces
+- Slots for composition (header/body/footer in UiCard, trigger in UiDropdown, label in UiProgressBar)
+- Composables extract reusable logic (useModal, useDropdown)
 
-### Lessons Learned
-- [Lesson 1] - [Context and implication]
-- [Lesson 2] - [Context and implication]
+### Design System
 
-## Patterns & Conventions
+- OKLCH colors defined in `@theme {}` block in `main.css`
+- Surface scale 950→50 for dark theme (950 = background, 50 = brightest text)
+- Semantic colors: success (green), warning (amber), danger (red), info (accent)
+- Custom utilities: `glass` (frosted backdrop), `glow-accent`, `glow-primary`
+- Font stack: Inter (sans), JetBrains Mono (mono) — self-hosted
 
-### Code Patterns Worth Preserving
-- [Pattern 1] - [Where it lives, why it's good]
-- [Pattern 2] - [Where it lives, why it's good]
+### Page Pattern
 
-### Gotchas for Maintainers
-- [Gotcha 1] - [What to watch out for]
-- [Gotcha 2] - [What to watch out for]
-
-## Active Projects
-
-| Project | Goal | Owner | Timeline |
-|---------|------|-------|----------|
-| [Project] | [What we're doing] | [Who owns it] | [When it matters] |
-
-## Archive (Resolved Items)
-
-Moved here for historical reference. Current team should refer to current notes above.
-
-### Resolved: [Item]
-- **Resolved**: [Date]
-- **Resolution**: [What was decided/done]
-- **Learnings**: [What we learned from this]
-
-## Onboarding Checklist
-
-- [ ] Review known technical debt and understand impact
-- [ ] Know what open questions exist and who's involved
-- [ ] Understand current issues and workarounds
-- [ ] Be aware of patterns and gotchas
-- [ ] Know active projects and timelines
-- [ ] Understand the team's priorities
+- Placeholder pages: `<h1>` headline + `<p>` subline, minimal template-only SFC
+- Feature pages: `<script setup>` with composables + reactive state, sections with `<UiCard>` wrappers
 
 ## Related Files
 
-- `decisions-log.md` - Past decisions that inform current state
-- `business-domain.md` - Business context for current priorities
-- `technical-domain.md` - Technical context for current state
-- `business-tech-bridge.md` - Context for current trade-offs
+- `technical-domain.md` — Full stack and architecture details
+- `decisions-log.md` — Why things were done this way

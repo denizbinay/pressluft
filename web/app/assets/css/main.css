@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Pressluft Design System — Premium Dark Theme for DevOps
+   ───────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── Surface palette ── */
+  --color-surface-950: oklch(0.13 0.015 260);
+  --color-surface-900: oklch(0.16 0.015 260);
+  --color-surface-850: oklch(0.19 0.014 260);
+  --color-surface-800: oklch(0.22 0.014 260);
+  --color-surface-700: oklch(0.28 0.012 260);
+  --color-surface-600: oklch(0.35 0.010 260);
+  --color-surface-500: oklch(0.45 0.008 260);
+  --color-surface-400: oklch(0.55 0.006 260);
+  --color-surface-300: oklch(0.65 0.005 260);
+  --color-surface-200: oklch(0.78 0.004 260);
+  --color-surface-100: oklch(0.90 0.002 260);
+  --color-surface-50: oklch(0.97 0.001 260);
+
+  /* ── Accent: Electric cyan ── */
+  --color-accent-500: oklch(0.72 0.19 195);
+  --color-accent-400: oklch(0.78 0.16 195);
+  --color-accent-300: oklch(0.84 0.12 195);
+  --color-accent-600: oklch(0.62 0.19 195);
+  --color-accent-700: oklch(0.52 0.17 195);
+
+  /* ── Primary: Cool blue ── */
+  --color-primary-500: oklch(0.65 0.18 250);
+  --color-primary-400: oklch(0.72 0.15 250);
+  --color-primary-300: oklch(0.80 0.10 250);
+  --color-primary-600: oklch(0.55 0.18 250);
+  --color-primary-700: oklch(0.45 0.16 250);
+
+  /* ── Semantic: Success ── */
+  --color-success-500: oklch(0.70 0.18 155);
+  --color-success-400: oklch(0.76 0.15 155);
+  --color-success-600: oklch(0.60 0.18 155);
+  --color-success-900: oklch(0.22 0.06 155);
+
+  /* ── Semantic: Warning ── */
+  --color-warning-500: oklch(0.78 0.16 80);
+  --color-warning-400: oklch(0.84 0.13 80);
+  --color-warning-600: oklch(0.68 0.16 80);
+  --color-warning-900: oklch(0.25 0.06 80);
+
+  /* ── Semantic: Danger ── */
+  --color-danger-500: oklch(0.63 0.22 25);
+  --color-danger-400: oklch(0.70 0.18 25);
+  --color-danger-600: oklch(0.53 0.22 25);
+  --color-danger-900: oklch(0.22 0.08 25);
+
+  /* ── Border radius ── */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Base layer — global resets and defaults
+   ───────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    background-color: var(--color-surface-950);
+    color: var(--color-surface-100);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-surface-900);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-surface-600);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-surface-500);
+  }
+
+  /* Focus ring */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: oklch(0.72 0.19 195 / 0.3);
+    color: var(--color-surface-50);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Utility layer — reusable patterns
+   ───────────────────────────────────────────────────────────── */
+
+@utility glass {
+  background: oklch(0.16 0.015 260 / 0.6);
+  backdrop-filter: blur(12px) saturate(1.5);
+  border: 1px solid oklch(0.28 0.012 260 / 0.5);
+}
+
+@utility glow-accent {
+  box-shadow: 0 0 20px oklch(0.72 0.19 195 / 0.15),
+              0 0 60px oklch(0.72 0.19 195 / 0.05);
+}
+
+@utility glow-primary {
+  box-shadow: 0 0 20px oklch(0.65 0.18 250 / 0.15),
+              0 0 60px oklch(0.65 0.18 250 / 0.05);
+}

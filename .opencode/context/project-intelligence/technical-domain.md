@@ -1,108 +1,124 @@
-<!-- Context: project-intelligence/technical | Priority: high | Version: 1.0 | Updated: 2025-01-12 -->
+<!-- Context: project-intelligence/technical | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
 
 # Technical Domain
 
-> Document the technical foundation, architecture, and key decisions.
-
-## Quick Reference
-
-- **Purpose**: Understand how the project works technically
-- **Update When**: New features, refactoring, tech stack changes
-- **Audience**: Developers, DevOps, technical stakeholders
+> Pressluft is a single-binary Go service that serves an embedded Nuxt 4 dashboard via `embed.FS`.
 
 ## Primary Stack
 
 | Layer | Technology | Version | Rationale |
 |-------|-----------|---------|-----------|
-| Language | [e.g., TypeScript] | [Version] | [Why this language] |
-| Framework | [e.g., Node.js] | [Version] | [Why this framework] |
-| Database | [e.g., PostgreSQL] | [Version] | [Why this database] |
-| Infrastructure | [e.g., AWS, Vercel] | [N/A] | [Why this infra] |
-| Key Libraries | [List important ones] | [Versions] | [Why each matters] |
+| Backend | Go | 1.22 | Single-binary deployment, embed.FS for static assets |
+| Frontend | Nuxt 4 | ^4.3.1 | Vue 3 meta-framework, static generation for Go embedding |
+| UI Framework | Vue 3 | ^3.5.28 | Composition API, reactivity, SFC components |
+| CSS | Tailwind CSS v4 | ^4.2.0 | Utility-first, CSS-first config via `@theme {}` blocks |
+| Fonts | Inter + JetBrains Mono | Variable | Self-hosted via `@nuxtjs/google-fonts` with `download: true` |
+| Build | Make | — | Orchestrates npm generate → copy to embed dir → go build |
 
 ## Architecture Pattern
 
 ```
-Type: [Monolith | Microservices | Serverless | Agent-based | Hybrid]
-Pattern: [Brief description]
-Diagram: [Link to architecture diagram if exists]
+Type: Monolith (single binary)
+Pattern: Go HTTP server + embedded static Nuxt SPA
+Flow: make build → nuxt generate → cp .output/public → internal/server/dist/ → go build → single binary
 ```
 
 ### Why This Architecture?
 
-[Explain the business and technical reasons for this architecture choice. What problem does this architecture solve? What were alternatives considered?]
+Single-binary deployment to VPS. No Node runtime needed in production. Go serves the static dashboard and exposes `/api` routes. During development, Nuxt dev server proxies `/api` to the Go backend.
 
 ## Project Structure
 
 ```
-[Project Root]
-├── src/                    # Source code
-├── tests/                  # Test files
-├── docs/                   # Documentation
-├── scripts/                # Build/deploy scripts
-└── [Other key directories]
+pressluft/
+├── cmd/main.go                    # Go entrypoint, HTTP server
+├── internal/server/
+│   ├── handler.go                 # Route handlers
+│   ├── handler_test.go
+│   ├── logging.go                 # Request logging middleware
+│   ├── logging_test.go
+│   └── dist/                      # Embedded static assets (generated, gitkeep)
+├── web/                           # Nuxt 4 frontend
+│   ├── nuxt.config.ts             # Tailwind v4 vite plugin, Google Fonts, API proxy
+│   ├── package.json
+│   ├── app/
+│   │   ├── app.vue                # Root: <NuxtLayout><NuxtPage /></NuxtLayout>
+│   │   ├── assets/css/main.css    # Design system: OKLCH theme, custom utilities
+│   │   ├── layouts/default.vue    # Top nav, content area, footer, mobile menu
+│   │   ├── composables/           # useModal, useDropdown
+│   │   ├── components/ui/         # 11 reusable UI components (UiButton, UiCard, etc.)
+│   │   └── pages/                 # index (dashboard), settings, components (UI library)
+│   └── .output/public/            # Generated static output (not committed)
+├── Makefile                       # build, dev, run, format, lint, test, check, clean
+├── go.mod
+└── README.md
 ```
 
-**Key Directories**:
-- `src/` - Contains all application logic organized by [module/feature/domain]
-- `tests/` - [How tests are organized]
-- `docs/` - [What documentation lives here]
+## Key Commands
 
-## Key Technical Decisions
+| Command | What It Does |
+|---------|-------------|
+| `make dev` | Starts Go backend (port 8081) + Nuxt dev server (port 8080) with API proxy |
+| `make build` | Full pipeline: npm install → nuxt generate → copy to dist → go build → `bin/pressluft` |
+| `make run` | Build + run the binary |
+| `make check` | format → lint → test → build (full validation) |
+| `make test` | Go tests only |
+| `make clean` | Remove binary |
 
-| Decision | Rationale | Impact |
-|----------|-----------|--------|
-| [Decision 1] | [Why this choice] | [What it enables] |
-| [Decision 2] | [Why this choice] | [What it enables] |
+## Frontend Configuration
 
-See `decisions-log.md` for full decision history with alternatives.
+### Tailwind CSS v4
 
-## Integration Points
+- **NOT** using `@nuxtjs/tailwindcss` module (still on Tailwind v3)
+- Using `@tailwindcss/vite` as a Vite plugin in `nuxt.config.ts` → `vite.plugins`
+- CSS-first configuration: `@import "tailwindcss"` + `@theme {}` blocks in `main.css`
+- No `tailwind.config.js` file
 
-| System | Purpose | Protocol | Direction |
-|--------|---------|----------|-----------|
-| [API 1] | [What it does] | [REST/GraphQL/gRPC] | [Inbound/Outbound] |
-| [Database] | [What it stores] | [PostgreSQL/Mongo/etc] | [Internal] |
-| [Service] | [What it provides] | [HTTP/gRPC] | [Outbound] |
+### Design System (main.css)
 
-## Technical Constraints
+- OKLCH color format for all colors
+- Surface scale: 950 (darkest) → 50 (lightest)
+- Accent: cyan tones
+- Primary: blue tones
+- Semantic: success (green), warning (amber), danger (red)
+- Custom utilities: `glass`, `glow-accent`, `glow-primary`
+- Fonts: `--font-sans: 'Inter'`, `--font-mono: 'JetBrains Mono'`
 
-| Constraint | Origin | Impact |
-|------------|--------|--------|
-| [Legacy systems] | [Business/Tech] | [What limitation it creates] |
-| [Compliance] | [Regulation] | [What must be followed] |
-| [Performance] | [SLAs] | [What must be met] |
+### Pages (3 routes)
+
+| Route | Page | Status |
+|-------|------|--------|
+| `/` | Dashboard | Placeholder (headline + subline) |
+| `/settings` | Settings | Placeholder (headline + subline) |
+| `/components` | UI Components | Kitchen-sink showcase of all UI components |
+
+### UI Components (11)
+
+UiButton (5 variants, 3 sizes, loading/disabled), UiCard (slots, hoverable), UiBadge (5 variants), UiProgressBar (4 colors, 3 sizes), UiInput, UiSelect, UiTextarea, UiToggle, UiModal (teleported, animated), UiDropdown (click-outside, escape), UiDropdownItem (normal/danger/disabled)
+
+### Composables (2)
+
+`useModal()` — open/close/toggle reactive state
+`useDropdown()` — click-outside and escape key handling
+
+### Nuxt Config Highlights
+
+- `css: ['~/assets/css/main.css']`
+- `modules: ['@nuxtjs/google-fonts']` with `download: true`, `inject: true`
+- `vite.plugins: [tailwindcss()]` from `@tailwindcss/vite`
+- `nitro.devProxy: { '/api': { target: 'http://localhost:8081/api' } }`
 
 ## Development Environment
 
 ```
-Setup: [Quick setup command or link]
-Requirements: [What developers need installed]
-Local Dev: [How to run locally]
-Testing: [How to run tests]
+Requirements: Go 1.22+, Node.js (for Nuxt), npm
+Local Dev: make dev (starts both Go + Nuxt with hot reload)
+Full Build: make build (produces bin/pressluft)
+Testing: make test (Go tests), make check (full validation)
 ```
-
-## Deployment
-
-```
-Environment: [Production/Staging/Development]
-Platform: [Where it deploys]
-CI/CD: [Pipeline used]
-Monitoring: [Tools for observability]
-```
-
-## Onboarding Checklist
-
-- [ ] Know the primary tech stack
-- [ ] Understand the architecture pattern and why it was chosen
-- [ ] Know the key project directories and their purpose
-- [ ] Understand major technical decisions and rationale
-- [ ] Know integration points and dependencies
-- [ ] Be able to set up local development environment
-- [ ] Know how to run tests and deploy
 
 ## Related Files
 
-- `business-domain.md` - Why this technical foundation exists
-- `business-tech-bridge.md` - How business needs map to technical solutions
-- `decisions-log.md` - Full decision history with context
+- `business-domain.md` — Why this project exists
+- `decisions-log.md` — Key technical decisions with rationale
+- `living-notes.md` — Current state, next steps, gotchas
