@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -101,5 +102,35 @@ func TestRequeueClearsLockAndSchedulesRunAfter(t *testing.T) {
 	}
 	if updated.RunAfter == nil || !updated.RunAfter.Equal(runAfter) {
 		t.Fatalf("run_after = %v, want %v", updated.RunAfter, runAfter)
+	}
+}
+
+func TestEnqueueBlocksConflictingQueuedOrRunningMutations(t *testing.T) {
+	now := time.Date(2026, 2, 22, 0, 7, 0, 0, time.UTC)
+	siteID := "site-a"
+	nodeID := "node-a"
+
+	repo := NewInMemoryRepository([]Job{{
+		ID:           "job-running",
+		JobType:      "site_create",
+		Status:       StatusRunning,
+		SiteID:       &siteID,
+		NodeID:       &nodeID,
+		AttemptCount: 1,
+		MaxAttempts:  3,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}})
+
+	_, err := repo.Enqueue(context.Background(), EnqueueInput{
+		ID:          "job-new",
+		JobType:     "env_create",
+		SiteID:      &siteID,
+		NodeID:      &nodeID,
+		MaxAttempts: 3,
+		CreatedAt:   now,
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("Enqueue() error = %v, want ErrConflict", err)
 	}
 }

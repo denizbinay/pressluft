@@ -38,7 +38,8 @@ A wave is complete only when all are true:
 - Wave 2: auth + jobs/metrics visibility dashboard.
 - Wave 3: mutation engine + node provisioning + audit visibility.
 - Wave 4: site/environment create + clone flows in dashboard.
-- Wave 5: backup create/list + retention visibility.
+- Wave 5: backup create/list + retention visibility + dashboard IA overhaul.
+- Wave 5.5: WordPress-first runtime vertical slice (self-node support + reachable preview URL).
 - Wave 6: deploy/update + health checks + automatic rollback.
 - Wave 7: restore + promotion with drift guardrails.
 - Wave 8: domains/TLS + settings domain config control surface.
@@ -47,6 +48,7 @@ A wave is complete only when all are true:
 Merge points:
 
 - MP1: end of Wave 3 before site/env lifecycle expansion.
+- MP1.5: end of Wave 5.5 before deploy/update safety automation.
 - MP2: end of Wave 6 before advanced operator and routing controls.
 - MP3: end of Wave 9 before MVP release hardening.
 
@@ -116,15 +118,16 @@ Wave 3 manual test contract:
 
 ### Wave 4 - Site and Environment Creation Flows
 
-- [ ] W4-T1: Implement site create/read/list contract and storage mapping.
+- [x] W4-T1: Implement site create/read/list contract and storage mapping.
   - Depends on: MP1
   - Feature spec: `docs/features/feature-site-create.md`
-- [ ] W4-T2: Implement environment create/clone contract and state transitions.
+- [x] W4-T2: Implement environment create/clone contract and state transitions.
   - Depends on: W4-T1
   - Feature spec: `docs/features/feature-environment-create-clone.md`
-- [ ] W4-T3: Add dashboard create flows for site/environment and state display.
+- [x] W4-T3: Add dashboard create flows for site/environment and state display.
   - Depends on: W4-T1, W4-T2
   - Feature specs:
+    - `docs/features/feature-wave4-dashboard-create-flows.md`
     - `docs/features/feature-site-create.md`
     - `docs/features/feature-environment-create-clone.md`
 
@@ -134,25 +137,69 @@ Wave 4 manual test contract:
 - Browser: create site + env/clone and view resulting records/status
 - Logs: request validation, job enqueue/execution, final state transitions
 
-### Wave 5 - Backups and Recovery Foundations
+### Wave 5 - Backups and Dashboard Information Hierarchy
 
-- [ ] W5-T1: Implement backup create/list contract and lifecycle.
+- [x] W5-T1: Implement backup create/list contract and lifecycle.
   - Depends on: W4-T2
   - Feature spec: `docs/features/feature-backups.md`
-- [ ] W5-T2: Add dashboard backups surface with retention metadata.
+- [x] W5-T2: Add dashboard backups surface with retention metadata.
   - Depends on: W5-T1
   - Feature spec: `docs/features/feature-backups.md`
+- [x] W5-T3: Define dashboard IA overhaul spec and major-change packet.
+  - Depends on: W5-T2
+  - Feature specs:
+    - `docs/features/feature-dashboard-ia-overhaul.md`
+- [x] W5-T4: Implement route-level dashboard subsites and navigation shell.
+  - Depends on: W5-T3
+  - Feature specs:
+    - `docs/features/feature-dashboard-ia-overhaul.md`
+- [x] W5-T5: Refactor dashboard state/data flow with clear concern boundaries.
+  - Depends on: W5-T4
+  - Feature specs:
+    - `docs/features/feature-dashboard-ia-overhaul.md`
+- [x] W5-T6: Migrate existing site/environment/backup/jobs flows into subsite hierarchy.
+  - Depends on: W5-T5
+  - Feature specs:
+    - `docs/features/feature-dashboard-ia-overhaul.md`
+- [x] W5-T7: Expand dashboard tests for subsite routing and concern markers.
+  - Depends on: W5-T6
+  - Feature specs:
+    - `docs/features/feature-dashboard-ia-overhaul.md`
 
 Wave 5 manual test contract:
 
 - CLI: `pressluft dev`
-- Browser: trigger backup and observe entry/state in backups UI
-- Logs: backup enqueue/start/complete or failure with error code
+- Browser: navigate `/`, `/sites`, `/environments`, `/backups`, `/jobs` and verify each surface is concern-scoped and functional
+- Logs: backup enqueue/start/complete or failure with error code, plus request logs for subsite routes
+
+### Wave 5.5 - WordPress-First Runtime Vertical Slice
+
+- [x] W5.5-T1: Author major-change packet for runtime pivot.
+  - Depends on: W5-T7
+  - Feature spec: `docs/features/feature-wp-first-runtime.md`
+- [ ] W5.5-T2: Define and validate self-node runtime target for local/WSL2 execution.
+  - Depends on: W5.5-T1
+  - Feature spec: `docs/features/feature-wp-first-runtime.md`
+- [ ] W5.5-T3: Wire site/environment mutation execution to provision runnable WordPress runtime.
+  - Depends on: W5.5-T2
+  - Feature spec: `docs/features/feature-wp-first-runtime.md`
+- [ ] W5.5-T4: Enforce lifecycle semantics where job success implies reachable runtime.
+  - Depends on: W5.5-T3
+  - Feature spec: `docs/features/feature-wp-first-runtime.md`
+- [ ] W5.5-T5: Add end-to-end smoke verification for create-site to reachable preview URL.
+  - Depends on: W5.5-T4
+  - Feature spec: `docs/features/feature-wp-first-runtime.md`
+
+Wave 5.5 manual test contract:
+
+- CLI: `pressluft dev`
+- Browser: create a site and load the returned preview URL (self-node local/WSL2 baseline)
+- Logs: enqueue, lock acquire/release, ansible runtime provisioning, WordPress reachability validation, final state transition
 
 ### Wave 6 - Deploy/Update Safety with Health and Rollback
 
 - [ ] W6-T1: Implement deploy/update mutation contracts.
-  - Depends on: W5-T1
+  - Depends on: MP1.5
   - Feature spec: `docs/features/feature-environment-deploy-updates.md`
 - [ ] W6-T2: Implement health checks and rollback orchestration.
   - Depends on: W6-T1

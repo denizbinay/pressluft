@@ -75,6 +75,35 @@ const dashboardHTML = `<!doctype html>
       margin-bottom: 18px;
     }
 
+    .subsite-nav {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .subsite-link {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      color: var(--ink);
+      text-decoration: none;
+      background: #0f1a27;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .subsite-link:hover {
+      border-color: #3d5b75;
+      background: #122235;
+    }
+
+    .subsite-link.active {
+      border-color: #2f8ec9;
+      background: linear-gradient(125deg, #163149, #183043);
+    }
+
     h1 {
       margin: 0;
       font-size: 1.25rem;
@@ -127,12 +156,12 @@ const dashboardHTML = `<!doctype html>
     form {
       display: grid;
       gap: 10px;
-      max-width: 380px;
+      max-width: 520px;
     }
 
     label { display: grid; gap: 6px; font-weight: 600; }
 
-    input {
+    input, select {
       width: 100%;
       border-radius: 10px;
       border: 1px solid var(--line);
@@ -142,9 +171,29 @@ const dashboardHTML = `<!doctype html>
       background: #0f1925;
     }
 
-    input:focus-visible, .btn:focus-visible {
+    input:focus-visible, select:focus-visible, .btn:focus-visible {
       outline: 2px solid #59b6ff;
       outline-offset: 2px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .inline {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .success {
+      color: var(--ok);
+      font-weight: 600;
+      min-height: 1.2em;
+      margin-top: 4px;
     }
 
     table {
@@ -178,8 +227,11 @@ const dashboardHTML = `<!doctype html>
     .status { font-weight: 700; text-transform: capitalize; }
     .status.running { color: var(--brand-2); }
     .status.queued { color: #f0bc53; }
+    .status.pending { color: #f0bc53; }
     .status.succeeded { color: var(--ok); }
+    .status.completed { color: var(--ok); }
     .status.failed { color: var(--danger); }
+    .status.expired { color: var(--ink-soft); }
 
     .error {
       color: var(--danger);
@@ -226,7 +278,7 @@ const dashboardHTML = `<!doctype html>
       <div class="head">
         <div>
           <h1>Pressluft Operator Console</h1>
-          <p class="muted">Wave 2 dashboard with authentication, jobs, and metrics visibility.</p>
+          <p class="muted">Wave 5 dashboard IA overhaul in progress with route-level subsites.</p>
         </div>
         <button id="logout" class="btn ghost hidden" type="button">Logout</button>
       </div>
@@ -243,8 +295,151 @@ const dashboardHTML = `<!doctype html>
       </section>
 
       <section id="dashboard" class="hidden">
-        <div class="grid" id="metrics"></div>
-        <section class="panel">
+        <nav id="subsite-nav" class="subsite-nav" aria-label="Dashboard sections">
+          <a class="subsite-link" data-nav="overview" href="/">Overview</a>
+          <a class="subsite-link" data-nav="sites" href="/sites">Sites</a>
+          <a class="subsite-link" data-nav="environments" href="/environments">Environments</a>
+          <a class="subsite-link" data-nav="backups" href="/backups">Backups</a>
+          <a class="subsite-link" data-nav="jobs" href="/jobs">Jobs</a>
+        </nav>
+
+        <section class="panel" data-subsite="overview" id="subsite-overview" style="margin-bottom: 14px;">
+          <h2>Overview</h2>
+          <p class="muted">Operational metrics across jobs, nodes, and sites.</p>
+          <div class="grid" id="metrics"></div>
+        </section>
+
+        <section class="split" data-subsite="sites" id="subsite-sites">
+          <article class="panel">
+            <h2>Create Site</h2>
+            <form id="site-form">
+              <label>Name <input id="site-name" name="name" required placeholder="Acme Store"></label>
+              <label>Slug <input id="site-slug" name="slug" required placeholder="acme-store"></label>
+              <button class="btn" type="submit">Create Site</button>
+              <p id="site-success" class="success" aria-live="polite"></p>
+              <p id="site-error" class="error" aria-live="polite"></p>
+            </form>
+          </article>
+        </section>
+
+        <section class="panel" data-subsite="sites" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Sites</h2>
+            <p id="site-count" class="muted">0 sites</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Slug</th>
+                <th>Status</th>
+                <th>Primary Env</th>
+              </tr>
+            </thead>
+            <tbody id="sites-body"></tbody>
+          </table>
+        </section>
+
+        <section data-subsite="environments" id="subsite-environments">
+          <article class="panel">
+            <h2>Create Environment</h2>
+            <form id="environment-form">
+              <label>Site
+                <select id="environment-site" required>
+                  <option value="">Select a site</option>
+                </select>
+              </label>
+              <label>Name <input id="environment-name" name="name" required placeholder="Staging"></label>
+              <div class="inline">
+                <label>Slug <input id="environment-slug" name="slug" required placeholder="staging"></label>
+                <label>Type
+                  <select id="environment-type">
+                    <option value="staging">staging</option>
+                    <option value="clone">clone</option>
+                  </select>
+                </label>
+              </div>
+              <label>Source Environment
+                <select id="environment-source" required>
+                  <option value="">Select source environment</option>
+                </select>
+              </label>
+              <label>Promotion Preset
+                <select id="environment-preset">
+                  <option value="content-protect">content-protect</option>
+                  <option value="commerce-protect">commerce-protect</option>
+                </select>
+              </label>
+              <button class="btn" type="submit">Create Environment</button>
+              <p id="environment-success" class="success" aria-live="polite"></p>
+              <p id="environment-error" class="error" aria-live="polite"></p>
+            </form>
+          </article>
+        </section>
+
+        <section class="panel" data-subsite="environments" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Environments</h2>
+            <p id="environment-title" class="muted">Select a site to view environments.</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Slug</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Preview URL</th>
+              </tr>
+            </thead>
+            <tbody id="environments-body"></tbody>
+          </table>
+        </section>
+
+        <section class="panel" data-subsite="backups" id="subsite-backups" style="margin-bottom: 14px;">
+          <div class="head">
+            <h2>Backups</h2>
+            <p id="backup-title" class="muted">Select a site and environment to create and view backups.</p>
+          </div>
+          <form id="backup-form">
+            <label>Site
+              <select id="backup-site" required>
+                <option value="">Select site</option>
+              </select>
+            </label>
+            <div class="inline">
+              <label>Environment
+                <select id="backup-environment" required>
+                  <option value="">Select environment</option>
+                </select>
+              </label>
+              <label>Scope
+                <select id="backup-scope">
+                  <option value="full">full</option>
+                  <option value="db">db</option>
+                  <option value="files">files</option>
+                </select>
+              </label>
+            </div>
+            <button class="btn" type="submit">Create Backup</button>
+            <p id="backup-success" class="success" aria-live="polite"></p>
+            <p id="backup-error" class="error" aria-live="polite"></p>
+          </form>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Scope</th>
+                <th>Status</th>
+                <th>Retention Until</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody id="backups-body"></tbody>
+          </table>
+        </section>
+
+        <section class="panel" data-subsite="jobs" id="subsite-jobs">
           <div class="head">
             <h2>Recent Jobs</h2>
             <button id="refresh" class="btn ghost" type="button">Refresh</button>
@@ -263,7 +458,7 @@ const dashboardHTML = `<!doctype html>
           </table>
         </section>
 
-        <section class="panel" style="margin-top: 14px;">
+        <section class="panel" data-subsite="jobs" style="margin-top: 14px;">
           <div class="head">
             <h2>Job Timeline</h2>
             <p id="job-detail-title" class="muted">Select a job from the table.</p>
@@ -278,18 +473,48 @@ const dashboardHTML = `<!doctype html>
   </main>
 
   <script>
-    const authPanel = document.getElementById('auth-panel');
-    const dashboard = document.getElementById('dashboard');
-    const authError = document.getElementById('auth-error');
-    const loginForm = document.getElementById('login-form');
-    const logoutButton = document.getElementById('logout');
-    const refreshButton = document.getElementById('refresh');
-    const metricsEl = document.getElementById('metrics');
-    const jobsBody = document.getElementById('jobs-body');
-    const jobDetailTitle = document.getElementById('job-detail-title');
-    const jobTimeline = document.getElementById('job-timeline');
-    const jobDetailError = document.getElementById('job-detail-error');
-    let selectedJobID = '';
+    const dom = {
+      authPanel: document.getElementById('auth-panel'),
+      dashboard: document.getElementById('dashboard'),
+      authError: document.getElementById('auth-error'),
+      loginForm: document.getElementById('login-form'),
+      logoutButton: document.getElementById('logout'),
+      refreshButton: document.getElementById('refresh'),
+      metricsEl: document.getElementById('metrics'),
+      subsiteNav: document.getElementById('subsite-nav'),
+      subsiteLinks: Array.from(document.querySelectorAll('[data-nav]')),
+      subsiteSections: Array.from(document.querySelectorAll('[data-subsite]')),
+      siteForm: document.getElementById('site-form'),
+      siteNameInput: document.getElementById('site-name'),
+      siteSlugInput: document.getElementById('site-slug'),
+      siteError: document.getElementById('site-error'),
+      siteSuccess: document.getElementById('site-success'),
+      sitesBody: document.getElementById('sites-body'),
+      siteCount: document.getElementById('site-count'),
+      environmentForm: document.getElementById('environment-form'),
+      environmentSite: document.getElementById('environment-site'),
+      environmentNameInput: document.getElementById('environment-name'),
+      environmentSlugInput: document.getElementById('environment-slug'),
+      environmentType: document.getElementById('environment-type'),
+      environmentSource: document.getElementById('environment-source'),
+      environmentPreset: document.getElementById('environment-preset'),
+      environmentError: document.getElementById('environment-error'),
+      environmentSuccess: document.getElementById('environment-success'),
+      environmentsBody: document.getElementById('environments-body'),
+      environmentTitle: document.getElementById('environment-title'),
+      backupForm: document.getElementById('backup-form'),
+      backupSite: document.getElementById('backup-site'),
+      backupEnvironment: document.getElementById('backup-environment'),
+      backupScope: document.getElementById('backup-scope'),
+      backupTitle: document.getElementById('backup-title'),
+      backupSuccess: document.getElementById('backup-success'),
+      backupError: document.getElementById('backup-error'),
+      backupsBody: document.getElementById('backups-body'),
+      jobsBody: document.getElementById('jobs-body'),
+      jobDetailTitle: document.getElementById('job-detail-title'),
+      jobTimeline: document.getElementById('job-timeline'),
+      jobDetailError: document.getElementById('job-detail-error'),
+    };
 
     const metricCards = [
       { key: 'jobs_running', label: 'Jobs Running' },
@@ -298,260 +523,707 @@ const dashboardHTML = `<!doctype html>
       { key: 'sites_total', label: 'Sites Total' },
     ];
 
-    async function request(path, options = {}) {
-      const response = await fetch('/api' + path, {
-        ...options,
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(options.headers || {}),
-        },
-      });
+    const state = {
+      selectedJobID: '',
+      selectedSiteID: '',
+      selectedBackupEnvironmentID: '',
+      activeSubsite: 'overview',
+      siteEnvironmentsBySite: {},
+      backupsByEnvironment: {},
+    };
 
-      let body = null;
-      try { body = await response.json(); } catch (_) {}
-
-      if (!response.ok) {
-        const err = new Error((body && body.message) || ('request failed: ' + response.status));
-        err.status = response.status;
-        throw err;
-      }
-
-      return body;
-    }
-
-    function setAuthed(authed) {
-      authPanel.classList.toggle('hidden', authed);
-      dashboard.classList.toggle('hidden', !authed);
-      logoutButton.classList.toggle('hidden', !authed);
-    }
-
-    function renderMetrics(metrics) {
-      metricsEl.innerHTML = metricCards.map((item) => {
-        const value = Number.isFinite(metrics[item.key]) ? metrics[item.key] : 0;
-        return '<article class="metric"><b>' + value + '</b><span class="muted">' + item.label + '</span></article>';
-      }).join('');
-    }
-
-    function renderJobs(jobs) {
-      if (!Array.isArray(jobs) || jobs.length === 0) {
-        jobsBody.innerHTML = '<tr><td colspan="5" class="muted">No jobs available.</td></tr>';
-        selectedJobID = '';
-        clearJobDetail('No job selected.');
-        return;
-      }
-
-      jobsBody.innerHTML = jobs.map((job) => {
-        const status = String(job.status || 'unknown');
-        const attempts = String(job.attempt_count || 0) + '/' + String(job.max_attempts || 0);
-        const err = job.error_code || '-';
-        return [
-          '<tr>',
-          '<td><button class="job-link" type="button" data-job-id="' + (job.id || '') + '">' + (job.id || '-') + '</button></td>',
-          '<td>' + (job.job_type || '-') + '</td>',
-          '<td><span class="status ' + status + '">' + status + '</span></td>',
-          '<td>' + attempts + '</td>',
-          '<td>' + err + '</td>',
-          '</tr>',
-        ].join('');
-      }).join('');
-
-      if (selectedJobID) {
-        const exists = jobs.some((job) => job.id === selectedJobID);
-        if (!exists) {
-          selectedJobID = '';
-          clearJobDetail('Selected job is no longer available.');
-        }
-      }
-    }
-
-    function clearJobDetail(message) {
-      jobDetailTitle.textContent = message;
-      jobTimeline.innerHTML = '<li class="muted">' + message + '</li>';
-      jobDetailError.textContent = '';
-    }
-
-    function formatTimestamp(value) {
-      if (!value) {
-        return 'pending';
-      }
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) {
-        return 'pending';
-      }
-      return date.toLocaleString();
-    }
-
-    function buildTimeline(job) {
-      const events = [];
-
-      events.push({
-        state: 'queued',
-        at: job.created_at,
-        detail: 'Job created and waiting for worker pickup.',
-      });
-
-      if (job.attempt_count > 0 && job.started_at) {
-        events.push({
-          state: 'running',
-          at: job.started_at,
-          detail: 'Attempt ' + String(job.attempt_count) + ' of ' + String(job.max_attempts || 0) + ' started.',
+    const api = {
+      async request(path, options = {}) {
+        const response = await fetch('/api' + path, {
+          ...options,
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {}),
+          },
         });
-      }
 
-      if (job.status === 'queued' && job.attempt_count > 0 && job.run_after) {
-        events.push({
-          state: 'queued',
-          at: job.run_after,
-          detail: 'Retry scheduled after previous failure.',
-        });
-      }
-
-      if (job.status === 'running') {
-        events.push({
-          state: 'running',
-          at: job.started_at || job.updated_at,
-          detail: 'Worker currently executing this job.',
-        });
-      }
-
-      if (job.status === 'succeeded') {
-        events.push({
-          state: 'succeeded',
-          at: job.finished_at || job.updated_at,
-          detail: 'Mutation completed successfully.',
-        });
-      }
-
-      if (job.status === 'failed') {
-        const detail = job.error_code ? ('Execution failed (' + job.error_code + ').') : 'Execution failed.';
-        events.push({
-          state: 'failed',
-          at: job.finished_at || job.updated_at,
-          detail,
-        });
-      }
-
-      return events;
-    }
-
-    function renderJobDetail(job) {
-      jobDetailTitle.textContent = 'Job ' + (job.id || '-') + ' timeline';
-      const timeline = buildTimeline(job);
-      jobTimeline.innerHTML = timeline.map((event) => [
-        '<li>',
-        '<strong class="status ' + event.state + '">' + event.state + '</strong>',
-        '<time>' + formatTimestamp(event.at) + '</time>',
-        '<div class="muted">' + event.detail + '</div>',
-        '</li>',
-      ].join('')).join('');
-      jobDetailError.textContent = '';
-    }
-
-    async function loadJobDetail(jobID) {
-      if (!jobID) {
-        clearJobDetail('No job selected.');
-        return;
-      }
-
-      const job = await request('/jobs/' + encodeURIComponent(jobID));
-      selectedJobID = jobID;
-      renderJobDetail(job);
-    }
-
-    async function loadDashboard() {
-      const [metrics, jobs] = await Promise.all([
-        request('/metrics'),
-        request('/jobs'),
-      ]);
-      renderMetrics(metrics);
-      renderJobs(jobs);
-
-      if (selectedJobID) {
+        let body = null;
         try {
-          await loadJobDetail(selectedJobID);
-        } catch (err) {
-          jobDetailError.textContent = err.message || 'Failed to load selected job';
+          body = await response.json();
+        } catch (_) {}
+
+        if (!response.ok) {
+          const statusPrefix = response.status === 400 || response.status === 404 || response.status === 409
+            ? String(response.status) + ' '
+            : '';
+          const err = new Error(statusPrefix + ((body && body.message) || ('request failed: ' + response.status)));
+          err.status = response.status;
+          err.code = body && body.code;
+          throw err;
         }
-      } else {
-        clearJobDetail('Select a job from the table.');
-      }
 
-      setAuthed(true);
-    }
+        return body;
+      },
+    };
 
-    loginForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      authError.textContent = '';
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
+    const util = {
+      escapeHTML(value) {
+        return String(value || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      },
+      formatDisplayTimestamp(value) {
+        if (!value) {
+          return '-';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return '-';
+        }
+        return date.toLocaleString();
+      },
+      formatTimelineTimestamp(value) {
+        if (!value) {
+          return 'pending';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return 'pending';
+        }
+        return date.toLocaleString();
+      },
+      resetMap(mapRef) {
+        Object.keys(mapRef).forEach((key) => delete mapRef[key]);
+      },
+    };
 
-      try {
-        await request('/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password }),
+    const shell = {
+      normalizeSubsite(pathname) {
+        switch (pathname) {
+          case '/':
+            return 'overview';
+          case '/sites':
+            return 'sites';
+          case '/environments':
+            return 'environments';
+          case '/backups':
+            return 'backups';
+          case '/jobs':
+            return 'jobs';
+          default:
+            return 'overview';
+        }
+      },
+      applySubsite(pathname) {
+        state.activeSubsite = shell.normalizeSubsite(pathname);
+
+        dom.subsiteSections.forEach((section) => {
+          const sectionName = section.getAttribute('data-subsite') || '';
+          section.classList.toggle('hidden', sectionName !== state.activeSubsite);
         });
-        await loadDashboard();
-      } catch (err) {
-        authError.textContent = err.message || 'Login failed';
-      }
-    });
 
-    logoutButton.addEventListener('click', async () => {
-      try {
-        await request('/logout', { method: 'POST' });
-      } catch (_) {}
-      setAuthed(false);
-      jobsBody.innerHTML = '';
-      metricsEl.innerHTML = '';
-      selectedJobID = '';
-      clearJobDetail('No job selected.');
-    });
+        dom.subsiteLinks.forEach((link) => {
+          const linkName = link.getAttribute('data-nav') || '';
+          const isActive = linkName === state.activeSubsite;
+          link.classList.toggle('active', isActive);
+          if (isActive) {
+            link.setAttribute('aria-current', 'page');
+            return;
+          }
+          link.removeAttribute('aria-current');
+        });
+      },
+      setAuthed(authed) {
+        dom.authPanel.classList.toggle('hidden', authed);
+        dom.dashboard.classList.toggle('hidden', !authed);
+        dom.logoutButton.classList.toggle('hidden', !authed);
+        if (authed) {
+          shell.applySubsite(window.location.pathname);
+        }
+      },
+      bindNavigation() {
+        dom.subsiteNav.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
 
-    jobsBody.addEventListener('click', async (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-      const button = target.closest('button[data-job-id]');
-      if (!button) {
-        return;
-      }
+          const link = target.closest('a[data-nav]');
+          if (!(link instanceof HTMLAnchorElement)) {
+            return;
+          }
 
-      const jobID = button.getAttribute('data-job-id') || '';
-      jobDetailError.textContent = '';
-      try {
-        await loadJobDetail(jobID);
-      } catch (err) {
-        jobDetailError.textContent = err.message || 'Failed to load job detail';
-      }
-    });
+          event.preventDefault();
+          const nextPath = link.getAttribute('href') || '/';
+          if (window.location.pathname !== nextPath) {
+            window.history.pushState({}, '', nextPath);
+          }
+          shell.applySubsite(nextPath);
+        });
 
-    refreshButton.addEventListener('click', async () => {
-      try {
-        await loadDashboard();
-      } catch (err) {
-        if (err.status === 401) {
-          setAuthed(false);
-          authError.textContent = 'Session expired. Please login again.';
+        window.addEventListener('popstate', () => {
+          shell.applySubsite(window.location.pathname);
+        });
+      },
+    };
+
+    const overviewView = {
+      renderMetrics(metrics) {
+        dom.metricsEl.innerHTML = metricCards.map((item) => {
+          const value = Number.isFinite(metrics[item.key]) ? metrics[item.key] : 0;
+          return '<article class="metric"><b>' + value + '</b><span class="muted">' + item.label + '</span></article>';
+        }).join('');
+      },
+      clear() {
+        dom.metricsEl.innerHTML = '';
+      },
+    };
+
+    const sitesView = {
+      renderSiteOptions(sites) {
+        const options = ['<option value="">Select a site</option>'].concat(
+          sites.map((site) => '<option value="' + util.escapeHTML(site.id) + '">' + util.escapeHTML(site.name) + ' (' + util.escapeHTML(site.slug) + ')</option>')
+        ).join('');
+        dom.environmentSite.innerHTML = options;
+        dom.backupSite.innerHTML = options;
+
+        if (!state.selectedSiteID && sites.length > 0) {
+          state.selectedSiteID = sites[0].id || '';
+        }
+        if (state.selectedSiteID) {
+          const exists = sites.some((site) => site.id === state.selectedSiteID);
+          if (!exists) {
+            state.selectedSiteID = sites.length > 0 ? (sites[0].id || '') : '';
+          }
+        }
+        dom.environmentSite.value = state.selectedSiteID || '';
+        dom.backupSite.value = state.selectedSiteID || '';
+      },
+      renderSitesTable(sites) {
+        if (sites.length === 0) {
+          dom.sitesBody.innerHTML = '<tr><td colspan="4" class="muted">No sites available.</td></tr>';
           return;
         }
-        authError.textContent = err.message || 'Refresh failed';
-      }
-    });
 
-    (async function init() {
-      try {
-        await loadDashboard();
-      } catch (err) {
-        if (err.status === 401) {
-          setAuthed(false);
+        dom.sitesBody.innerHTML = sites.map((site) => {
+          const status = String(site.status || 'unknown');
+          const primary = site.primary_environment_id || '-';
+          return [
+            '<tr>',
+            '<td>' + util.escapeHTML(site.name || '-') + '</td>',
+            '<td>' + util.escapeHTML(site.slug || '-') + '</td>',
+            '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
+            '<td>' + util.escapeHTML(primary) + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+      },
+      render(sites) {
+        const list = Array.isArray(sites) ? sites : [];
+        dom.siteCount.textContent = String(list.length) + (list.length === 1 ? ' site' : ' sites');
+        sitesView.renderSiteOptions(list);
+        sitesView.renderSitesTable(list);
+      },
+      clearMessages() {
+        dom.siteError.textContent = '';
+        dom.siteSuccess.textContent = '';
+      },
+      clear() {
+        dom.sitesBody.innerHTML = '';
+        dom.siteCount.textContent = '0 sites';
+        dom.environmentSite.innerHTML = '<option value="">Select a site</option>';
+        dom.backupSite.innerHTML = '<option value="">Select site</option>';
+        sitesView.clearMessages();
+      },
+      bind() {
+        dom.siteForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          sitesView.clearMessages();
+
+          try {
+            await api.request('/sites', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: dom.siteNameInput.value,
+                slug: dom.siteSlugInput.value,
+              }),
+            });
+            dom.siteSuccess.textContent = 'Site create accepted.';
+            await dashboardData.loadSiteEnvironmentBackupData();
+          } catch (err) {
+            dom.siteError.textContent = err.message || 'Site create failed';
+          }
+        });
+      },
+    };
+
+    const environmentsView = {
+      renderSourceOptions() {
+        const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        dom.environmentSource.innerHTML = ['<option value="">Select source environment</option>'].concat(
+          envs.map((environment) => '<option value="' + util.escapeHTML(environment.id) + '">' + util.escapeHTML(environment.name) + ' (' + util.escapeHTML(environment.slug) + ')</option>')
+        ).join('');
+      },
+      renderTable() {
+        const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        if (!state.selectedSiteID) {
+          dom.environmentsBody.innerHTML = '<tr><td colspan="5" class="muted">Create or select a site to view environments.</td></tr>';
+          dom.environmentTitle.textContent = 'Select a site to view environments.';
+          environmentsView.renderSourceOptions();
           return;
         }
-        authError.textContent = err.message || 'Initialization failed';
-        setAuthed(false);
-      }
-    })();
+
+        dom.environmentTitle.textContent = 'Showing environments for selected site.';
+        if (envs.length === 0) {
+          dom.environmentsBody.innerHTML = '<tr><td colspan="5" class="muted">No environments available for selected site.</td></tr>';
+          environmentsView.renderSourceOptions();
+          return;
+        }
+
+        dom.environmentsBody.innerHTML = envs.map((environment) => {
+          const status = String(environment.status || 'unknown');
+          const preview = environment.preview_url || '-';
+          return [
+            '<tr>',
+            '<td>' + util.escapeHTML(environment.name || '-') + '</td>',
+            '<td>' + util.escapeHTML(environment.slug || '-') + '</td>',
+            '<td>' + util.escapeHTML(environment.environment_type || '-') + '</td>',
+            '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
+            '<td>' + util.escapeHTML(preview) + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+
+        environmentsView.renderSourceOptions();
+      },
+      clearMessages() {
+        dom.environmentError.textContent = '';
+        dom.environmentSuccess.textContent = '';
+      },
+      clear() {
+        dom.environmentsBody.innerHTML = '';
+        dom.environmentTitle.textContent = 'Select a site to view environments.';
+        dom.environmentSource.innerHTML = '<option value="">Select source environment</option>';
+        environmentsView.clearMessages();
+      },
+      bind() {
+        dom.environmentSite.addEventListener('change', () => {
+          state.selectedSiteID = dom.environmentSite.value;
+          dom.backupSite.value = state.selectedSiteID;
+          state.selectedBackupEnvironmentID = '';
+          environmentsView.renderTable();
+          backupsView.renderTable();
+        });
+
+        dom.environmentForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          environmentsView.clearMessages();
+
+          const siteID = dom.environmentSite.value;
+          if (!siteID) {
+            dom.environmentError.textContent = '400 site is required';
+            return;
+          }
+
+          try {
+            await api.request('/sites/' + encodeURIComponent(siteID) + '/environments', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: dom.environmentNameInput.value,
+                slug: dom.environmentSlugInput.value,
+                type: dom.environmentType.value,
+                source_environment_id: dom.environmentSource.value || null,
+                promotion_preset: dom.environmentPreset.value,
+              }),
+            });
+            dom.environmentSuccess.textContent = 'Environment create accepted.';
+            state.selectedSiteID = siteID;
+            await dashboardData.loadSiteEnvironmentBackupData();
+          } catch (err) {
+            dom.environmentError.textContent = err.message || 'Environment create failed';
+          }
+        });
+      },
+    };
+
+    const backupsView = {
+      renderEnvironmentOptions() {
+        const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        dom.backupEnvironment.innerHTML = ['<option value="">Select environment</option>'].concat(
+          envs.map((environment) => '<option value="' + util.escapeHTML(environment.id) + '">' + util.escapeHTML(environment.name) + ' (' + util.escapeHTML(environment.slug) + ')</option>')
+        ).join('');
+
+        if (!state.selectedBackupEnvironmentID && envs.length > 0) {
+          state.selectedBackupEnvironmentID = envs[0].id || '';
+        }
+        if (state.selectedBackupEnvironmentID) {
+          const exists = envs.some((environment) => environment.id === state.selectedBackupEnvironmentID);
+          if (!exists) {
+            state.selectedBackupEnvironmentID = envs.length > 0 ? (envs[0].id || '') : '';
+          }
+        }
+
+        dom.backupEnvironment.value = state.selectedBackupEnvironmentID || '';
+      },
+      renderTable() {
+        const envs = state.siteEnvironmentsBySite[state.selectedSiteID] || [];
+        if (!state.selectedSiteID) {
+          dom.backupTitle.textContent = 'Select a site and environment to create and view backups.';
+          dom.backupsBody.innerHTML = '<tr><td colspan="5" class="muted">Select a site and environment to view backups.</td></tr>';
+          backupsView.renderEnvironmentOptions();
+          return;
+        }
+
+        backupsView.renderEnvironmentOptions();
+        if (!state.selectedBackupEnvironmentID) {
+          dom.backupTitle.textContent = 'Select an environment to create and view backups.';
+          dom.backupsBody.innerHTML = '<tr><td colspan="5" class="muted">No environments available for selected site.</td></tr>';
+          return;
+        }
+
+        const selectedEnvironment = envs.find((environment) => environment.id === state.selectedBackupEnvironmentID);
+        const selectedLabel = selectedEnvironment ? selectedEnvironment.name : state.selectedBackupEnvironmentID;
+        dom.backupTitle.textContent = 'Showing backups for ' + selectedLabel + '.';
+
+        const backups = state.backupsByEnvironment[state.selectedBackupEnvironmentID] || [];
+        if (backups.length === 0) {
+          dom.backupsBody.innerHTML = '<tr><td colspan="5" class="muted">No backups available for selected environment.</td></tr>';
+          return;
+        }
+
+        dom.backupsBody.innerHTML = backups.map((backup) => {
+          const status = String(backup.status || 'unknown');
+          return [
+            '<tr>',
+            '<td>' + util.escapeHTML(backup.id || '-') + '</td>',
+            '<td>' + util.escapeHTML(backup.backup_scope || '-') + '</td>',
+            '<td><span class="status ' + util.escapeHTML(status) + '">' + util.escapeHTML(status) + '</span></td>',
+            '<td>' + util.escapeHTML(util.formatDisplayTimestamp(backup.retention_until)) + '</td>',
+            '<td>' + util.escapeHTML(util.formatDisplayTimestamp(backup.created_at)) + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+      },
+      clearMessages() {
+        dom.backupError.textContent = '';
+        dom.backupSuccess.textContent = '';
+      },
+      clear() {
+        dom.backupsBody.innerHTML = '';
+        dom.backupTitle.textContent = 'Select a site and environment to create and view backups.';
+        dom.backupSite.innerHTML = '<option value="">Select site</option>';
+        dom.backupEnvironment.innerHTML = '<option value="">Select environment</option>';
+        backupsView.clearMessages();
+      },
+      bind() {
+        dom.backupSite.addEventListener('change', () => {
+          state.selectedSiteID = dom.backupSite.value;
+          dom.environmentSite.value = state.selectedSiteID;
+          state.selectedBackupEnvironmentID = '';
+          environmentsView.renderTable();
+          backupsView.renderTable();
+        });
+
+        dom.backupEnvironment.addEventListener('change', () => {
+          state.selectedBackupEnvironmentID = dom.backupEnvironment.value;
+          backupsView.renderTable();
+        });
+
+        dom.backupForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          backupsView.clearMessages();
+
+          const environmentID = dom.backupEnvironment.value;
+          if (!environmentID) {
+            dom.backupError.textContent = '400 environment is required';
+            return;
+          }
+
+          try {
+            await api.request('/environments/' + encodeURIComponent(environmentID) + '/backups', {
+              method: 'POST',
+              body: JSON.stringify({ backup_scope: dom.backupScope.value }),
+            });
+            dom.backupSuccess.textContent = 'Backup create accepted.';
+            state.selectedBackupEnvironmentID = environmentID;
+            await dashboardData.loadSiteEnvironmentBackupData();
+          } catch (err) {
+            dom.backupError.textContent = err.message || 'Backup create failed';
+          }
+        });
+      },
+    };
+
+    const jobsView = {
+      clearDetail(message) {
+        dom.jobDetailTitle.textContent = message;
+        dom.jobTimeline.innerHTML = '<li class="muted">' + message + '</li>';
+        dom.jobDetailError.textContent = '';
+      },
+      buildTimeline(job) {
+        const events = [{
+          state: 'queued',
+          at: job.created_at,
+          detail: 'Job created and waiting for worker pickup.',
+        }];
+
+        if (job.attempt_count > 0 && job.started_at) {
+          events.push({
+            state: 'running',
+            at: job.started_at,
+            detail: 'Attempt ' + String(job.attempt_count) + ' of ' + String(job.max_attempts || 0) + ' started.',
+          });
+        }
+        if (job.status === 'queued' && job.attempt_count > 0 && job.run_after) {
+          events.push({
+            state: 'queued',
+            at: job.run_after,
+            detail: 'Retry scheduled after previous failure.',
+          });
+        }
+        if (job.status === 'running') {
+          events.push({
+            state: 'running',
+            at: job.started_at || job.updated_at,
+            detail: 'Worker currently executing this job.',
+          });
+        }
+        if (job.status === 'succeeded') {
+          events.push({
+            state: 'succeeded',
+            at: job.finished_at || job.updated_at,
+            detail: 'Mutation completed successfully.',
+          });
+        }
+        if (job.status === 'failed') {
+          events.push({
+            state: 'failed',
+            at: job.finished_at || job.updated_at,
+            detail: job.error_code ? 'Execution failed (' + job.error_code + ').' : 'Execution failed.',
+          });
+        }
+
+        return events;
+      },
+      renderDetail(job) {
+        dom.jobDetailTitle.textContent = 'Job ' + (job.id || '-') + ' timeline';
+        dom.jobTimeline.innerHTML = jobsView.buildTimeline(job).map((event) => [
+          '<li>',
+          '<strong class="status ' + event.state + '">' + event.state + '</strong>',
+          '<time>' + util.formatTimelineTimestamp(event.at) + '</time>',
+          '<div class="muted">' + event.detail + '</div>',
+          '</li>',
+        ].join('')).join('');
+        dom.jobDetailError.textContent = '';
+      },
+      async loadDetail(jobID) {
+        if (!jobID) {
+          jobsView.clearDetail('No job selected.');
+          return;
+        }
+        const job = await api.request('/jobs/' + encodeURIComponent(jobID));
+        state.selectedJobID = jobID;
+        jobsView.renderDetail(job);
+      },
+      renderJobsTable(jobs) {
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+          dom.jobsBody.innerHTML = '<tr><td colspan="5" class="muted">No jobs available.</td></tr>';
+          state.selectedJobID = '';
+          jobsView.clearDetail('No job selected.');
+          return;
+        }
+
+        dom.jobsBody.innerHTML = jobs.map((job) => {
+          const status = String(job.status || 'unknown');
+          const attempts = String(job.attempt_count || 0) + '/' + String(job.max_attempts || 0);
+          const err = job.error_code || '-';
+          return [
+            '<tr>',
+            '<td><button class="job-link" type="button" data-job-id="' + (job.id || '') + '">' + (job.id || '-') + '</button></td>',
+            '<td>' + (job.job_type || '-') + '</td>',
+            '<td><span class="status ' + status + '">' + status + '</span></td>',
+            '<td>' + attempts + '</td>',
+            '<td>' + err + '</td>',
+            '</tr>',
+          ].join('');
+        }).join('');
+
+        if (state.selectedJobID) {
+          const exists = jobs.some((job) => job.id === state.selectedJobID);
+          if (!exists) {
+            state.selectedJobID = '';
+            jobsView.clearDetail('Selected job is no longer available.');
+          }
+        }
+      },
+      clear() {
+        dom.jobsBody.innerHTML = '';
+        jobsView.clearDetail('No job selected.');
+      },
+      bind() {
+        dom.jobsBody.addEventListener('click', async (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return;
+          }
+
+          const button = target.closest('button[data-job-id]');
+          if (!button) {
+            return;
+          }
+
+          const jobID = button.getAttribute('data-job-id') || '';
+          dom.jobDetailError.textContent = '';
+          try {
+            await jobsView.loadDetail(jobID);
+          } catch (err) {
+            dom.jobDetailError.textContent = err.message || 'Failed to load job detail';
+          }
+        });
+
+        dom.refreshButton.addEventListener('click', async () => {
+          try {
+            await dashboardController.load();
+          } catch (err) {
+            if (err.status === 401) {
+              shell.setAuthed(false);
+              dom.authError.textContent = 'Session expired. Please login again.';
+              return;
+            }
+            dom.authError.textContent = err.message || 'Refresh failed';
+          }
+        });
+      },
+    };
+
+    const dashboardData = {
+      async loadSiteEnvironmentBackupData() {
+        const sites = await api.request('/sites');
+        sitesView.render(sites);
+
+        const environmentBySite = await Promise.all((Array.isArray(sites) ? sites : []).map((site) => {
+          return api.request('/sites/' + encodeURIComponent(site.id) + '/environments')
+            .then((environments) => ({ siteID: site.id, environments }))
+            .catch(() => ({ siteID: site.id, environments: [] }));
+        }));
+
+        util.resetMap(state.siteEnvironmentsBySite);
+        environmentBySite.forEach((entry) => {
+          state.siteEnvironmentsBySite[entry.siteID] = Array.isArray(entry.environments) ? entry.environments : [];
+        });
+
+        environmentsView.renderTable();
+
+        const environmentIDs = environmentBySite.flatMap((entry) => {
+          const envs = Array.isArray(entry.environments) ? entry.environments : [];
+          return envs.map((environment) => environment.id).filter(Boolean);
+        });
+
+        const backupsByEnvironment = await Promise.all(environmentIDs.map((environmentID) => {
+          return api.request('/environments/' + encodeURIComponent(environmentID) + '/backups')
+            .then((backups) => ({ environmentID, backups }))
+            .catch(() => ({ environmentID, backups: [] }));
+        }));
+
+        util.resetMap(state.backupsByEnvironment);
+        backupsByEnvironment.forEach((entry) => {
+          state.backupsByEnvironment[entry.environmentID] = Array.isArray(entry.backups) ? entry.backups : [];
+        });
+
+        backupsView.renderTable();
+      },
+    };
+
+    const authController = {
+      bind() {
+        dom.loginForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          dom.authError.textContent = '';
+
+          try {
+            await api.request('/login', {
+              method: 'POST',
+              body: JSON.stringify({
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+              }),
+            });
+            await dashboardController.load();
+          } catch (err) {
+            dom.authError.textContent = err.message || 'Login failed';
+          }
+        });
+
+        dom.logoutButton.addEventListener('click', async () => {
+          try {
+            await api.request('/logout', { method: 'POST' });
+          } catch (_) {}
+          dashboardController.reset();
+          shell.setAuthed(false);
+        });
+      },
+    };
+
+    const dashboardController = {
+      async load() {
+        const [metrics, jobs] = await Promise.all([
+          api.request('/metrics'),
+          api.request('/jobs'),
+        ]);
+
+        overviewView.renderMetrics(metrics);
+        jobsView.renderJobsTable(jobs);
+        await dashboardData.loadSiteEnvironmentBackupData();
+
+        if (state.selectedJobID) {
+          try {
+            await jobsView.loadDetail(state.selectedJobID);
+          } catch (err) {
+            dom.jobDetailError.textContent = err.message || 'Failed to load selected job';
+          }
+        } else {
+          jobsView.clearDetail('Select a job from the table.');
+        }
+
+        shell.setAuthed(true);
+      },
+      reset() {
+        overviewView.clear();
+        sitesView.clear();
+        environmentsView.clear();
+        backupsView.clear();
+        jobsView.clear();
+
+        util.resetMap(state.siteEnvironmentsBySite);
+        util.resetMap(state.backupsByEnvironment);
+        state.selectedJobID = '';
+        state.selectedSiteID = '';
+        state.selectedBackupEnvironmentID = '';
+        dom.authError.textContent = '';
+      },
+      bind() {
+        shell.bindNavigation();
+        authController.bind();
+        sitesView.bind();
+        environmentsView.bind();
+        backupsView.bind();
+        jobsView.bind();
+      },
+      async init() {
+        dashboardController.bind();
+        try {
+          await dashboardController.load();
+        } catch (err) {
+          if (err.status === 401) {
+            shell.setAuthed(false);
+            return;
+          }
+          dom.authError.textContent = err.message || 'Initialization failed';
+          shell.setAuthed(false);
+        }
+      },
+    };
+
+    dashboardController.init();
   </script>
 </body>
 </html>`
@@ -576,6 +1248,10 @@ func New(addr string, logger *log.Logger) *Server {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiHandler))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !isDashboardRoute(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(dashboardHTML))
@@ -590,6 +1266,15 @@ func New(addr string, logger *log.Logger) *Server {
 		},
 		logger: logger,
 		addr:   addr,
+	}
+}
+
+func isDashboardRoute(path string) bool {
+	switch path {
+	case "/", "/sites", "/environments", "/backups", "/jobs":
+		return true
+	default:
+		return false
 	}
 }
 

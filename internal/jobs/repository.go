@@ -10,6 +10,7 @@ import (
 
 var ErrNotFound = errors.New("job not found")
 var ErrInvalidTransition = errors.New("invalid job state transition")
+var ErrConflict = errors.New("conflicting mutation job exists")
 
 type Status string
 
@@ -49,10 +50,22 @@ type Reader interface {
 
 type QueueStore interface {
 	Reader
+	Enqueue(ctx context.Context, input EnqueueInput) (Job, error)
 	ClaimNextRunnable(ctx context.Context, workerID string, now time.Time) (Job, bool, error)
 	CompleteSuccess(ctx context.Context, id string, now time.Time) (Job, error)
 	CompleteFailure(ctx context.Context, id string, errorCode string, errorMessage string, now time.Time) (Job, error)
 	Requeue(ctx context.Context, id string, runAfter time.Time, errorCode string, errorMessage string, now time.Time) (Job, error)
+}
+
+type EnqueueInput struct {
+	ID            string
+	JobType       string
+	SiteID        *string
+	EnvironmentID *string
+	NodeID        *string
+	MaxAttempts   int
+	CreatedAt     time.Time
+	RunAfter      *time.Time
 }
 
 type InMemoryRepository struct {
@@ -110,6 +123,51 @@ func (r *InMemoryRepository) CountByStatus(_ context.Context, status Status) (in
 	}
 
 	return count, nil
+}
+
+func (r *InMemoryRepository) Enqueue(_ context.Context, input EnqueueInput) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := input.CreatedAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	id := input.ID
+	if id == "" {
+		id = fmt.Sprintf("job-%d", now.UnixNano())
+	}
+	if _, exists := r.byID[id]; exists {
+		return Job{}, fmt.Errorf("enqueue duplicate id: %w", ErrConflict)
+	}
+
+	if hasEnqueueConflict(input.SiteID, input.NodeID, r.byID, r.order) {
+		return Job{}, ErrConflict
+	}
+
+	maxAttempts := input.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 3
+	}
+
+	job := Job{
+		ID:            id,
+		JobType:       input.JobType,
+		Status:        StatusQueued,
+		SiteID:        input.SiteID,
+		EnvironmentID: input.EnvironmentID,
+		NodeID:        input.NodeID,
+		AttemptCount:  0,
+		MaxAttempts:   maxAttempts,
+		RunAfter:      input.RunAfter,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	r.order = append(r.order, id)
+	r.byID[id] = job
+	return job, nil
 }
 
 func (r *InMemoryRepository) ClaimNextRunnable(_ context.Context, workerID string, now time.Time) (Job, bool, error) {
@@ -235,6 +293,25 @@ func (r *InMemoryRepository) canRunConcurrently(job Job) bool {
 	}
 
 	return true
+}
+
+func hasEnqueueConflict(siteID *string, nodeID *string, byID map[string]Job, order []string) bool {
+	for _, otherID := range order {
+		other := byID[otherID]
+		if other.Status != StatusRunning && other.Status != StatusQueued {
+			continue
+		}
+
+		if siteID != nil && other.SiteID != nil && *siteID == *other.SiteID {
+			return true
+		}
+
+		if nodeID != nil && other.NodeID != nil && *nodeID == *other.NodeID {
+			return true
+		}
+	}
+
+	return false
 }
 
 func timePtr(v time.Time) *time.Time {

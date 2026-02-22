@@ -15,7 +15,8 @@ This directory contains proposal-based change packets for major changes.
 
 ### Active
 
-- (none)
+- `changes/dashboard-ia-overhaul/`
+- `changes/wp-first-runtime/`
 
 ### Archived
 

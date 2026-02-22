@@ -15,15 +15,3 @@ func NewInMemoryNodeStore(activeCount int) *InMemoryNodeStore {
 func (s *InMemoryNodeStore) CountActiveNodes(context.Context) (int, error) {
 	return s.activeCount, nil
 }
-
-type InMemorySiteStore struct {
-	totalCount int
-}
-
-func NewInMemorySiteStore(totalCount int) *InMemorySiteStore {
-	return &InMemorySiteStore{totalCount: totalCount}
-}
-
-func (s *InMemorySiteStore) CountSites(context.Context) (int, error) {
-	return s.totalCount, nil
-}

@@ -15,6 +15,7 @@ Operators need reliable backup creation and visibility before risky operations.
 - In scope:
   - Implement `POST /api/environments/{id}/backups` and `GET /api/environments/{id}/backups`.
   - Enqueue `backup_create` jobs and reflect backup lifecycle states.
+  - Add dashboard backup create/list surface with retention metadata visibility.
 - Out of scope:
   - Cross-project backup federation.
   - Non-S3 backup providers for MVP.
@@ -25,6 +26,7 @@ Operators need reliable backup creation and visibility before risky operations.
 - `internal/backups/**`
 - `internal/jobs/**`
 - `internal/store/**`
+- `internal/devserver/**`
 - `ansible/playbooks/backup-create.yml`
 - `contracts/openapi.yaml`
 - `docs/api-contract.md`
@@ -47,6 +49,7 @@ Contract/spec files:
 2. Backup list endpoint returns stateful records with retention metadata.
 3. Backup status transitions follow `pending -> running -> completed|failed|expired`.
 4. Backup failures surface structured job errors.
+5. Dashboard shows backup create controls and retention metadata for selected environment.
 
 ## Verification
 
@@ -58,6 +61,7 @@ Contract/spec files:
 - Required tests:
   - Backup create/list handler tests.
   - Backup lifecycle transition tests.
+  - Dashboard shell marker tests for backups UI.
 
 ## Risks and Rollback
 

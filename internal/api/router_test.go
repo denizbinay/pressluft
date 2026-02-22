@@ -136,7 +136,7 @@ func TestLoginReturnsInternalErrorWhenAuditWriteFails(t *testing.T) {
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", 24*time.Hour)
 	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
 	nodeStore := store.NewInMemoryNodeStore(2)
-	siteStore := store.NewInMemorySiteStore(5)
+	siteStore := store.NewInMemorySiteStore(0)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
 	router := NewRouter(logger, authService, jobStore, metricsService, failingAuditRecorder{})
 
@@ -294,6 +294,300 @@ func TestJobsAndMetricsRequireAuth(t *testing.T) {
 	}
 }
 
+func TestCreateSiteReturnsAcceptedJobAndPersistsSite(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"Acme Co","slug":"acme"}`))
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusAccepted)
+	}
+
+	var accepted map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &accepted); err != nil {
+		t.Fatalf("decode create site response: %v", err)
+	}
+	if accepted["job_id"] == "" {
+		t.Fatal("job_id empty")
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/sites", nil)
+	listReq.AddCookie(sessionCookie)
+	listRR := httptest.NewRecorder()
+	router.ServeHTTP(listRR, listReq)
+
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRR.Code, http.StatusOK)
+	}
+
+	var payload []map[string]any
+	if err := json.Unmarshal(listRR.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode list sites: %v", err)
+	}
+	if len(payload) < 1 {
+		t.Fatal("sites list is empty")
+	}
+
+	id, _ := payload[0]["id"].(string)
+	if id == "" {
+		t.Fatal("site id missing")
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/sites/"+id, nil)
+	detailReq.AddCookie(sessionCookie)
+	detailRR := httptest.NewRecorder()
+	router.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want %d", detailRR.Code, http.StatusOK)
+	}
+}
+
+func TestCreateSiteValidationAndConflict(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	invalidReq := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"","slug":""}`))
+	invalidReq.AddCookie(sessionCookie)
+	invalidRR := httptest.NewRecorder()
+	router.ServeHTTP(invalidRR, invalidReq)
+
+	if invalidRR.Code != http.StatusBadRequest {
+		t.Fatalf("invalid status = %d, want %d", invalidRR.Code, http.StatusBadRequest)
+	}
+	assertErrorShape(t, invalidRR.Body.Bytes(), "bad_request")
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"Acme Co","slug":"acme"}`))
+	firstReq.AddCookie(sessionCookie)
+	firstRR := httptest.NewRecorder()
+	router.ServeHTTP(firstRR, firstReq)
+	if firstRR.Code != http.StatusAccepted {
+		t.Fatalf("first create status = %d, want %d", firstRR.Code, http.StatusAccepted)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/sites", strings.NewReader(`{"name":"Acme Co","slug":"acme"}`))
+	secondReq.AddCookie(sessionCookie)
+	secondRR := httptest.NewRecorder()
+	router.ServeHTTP(secondRR, secondReq)
+
+	if secondRR.Code != http.StatusConflict {
+		t.Fatalf("second create status = %d, want %d", secondRR.Code, http.StatusConflict)
+	}
+	assertErrorShape(t, secondRR.Body.Bytes(), "conflict")
+}
+
+func TestGetSiteByIDReturnsNotFoundForUnknownSite(t *testing.T) {
+	router := newTestRouter(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/sites/00000000-0000-0000-0000-000000000000", nil)
+	req.AddCookie(sessionCookie)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "not_found")
+}
+
+func TestCreateEnvironmentReturnsAcceptedAndSupportsListAndGet(t *testing.T) {
+	router, siteID, primaryEnvironmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Staging","slug":"staging","type":"staging","source_environment_id":"`+primaryEnvironmentID+`","promotion_preset":"content-protect"}`))
+	createReq.AddCookie(sessionCookie)
+	createRR := httptest.NewRecorder()
+	router.ServeHTTP(createRR, createReq)
+
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("create status = %d, want %d", createRR.Code, http.StatusAccepted)
+	}
+
+	var accepted map[string]string
+	if err := json.Unmarshal(createRR.Body.Bytes(), &accepted); err != nil {
+		t.Fatalf("decode create environment response: %v", err)
+	}
+	if accepted["job_id"] == "" {
+		t.Fatal("job_id empty")
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/sites/"+siteID+"/environments", nil)
+	listReq.AddCookie(sessionCookie)
+	listRR := httptest.NewRecorder()
+	router.ServeHTTP(listRR, listReq)
+
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRR.Code, http.StatusOK)
+	}
+
+	var environmentsPayload []map[string]any
+	if err := json.Unmarshal(listRR.Body.Bytes(), &environmentsPayload); err != nil {
+		t.Fatalf("decode list environments: %v", err)
+	}
+	if len(environmentsPayload) != 2 {
+		t.Fatalf("environments count = %d, want 2", len(environmentsPayload))
+	}
+
+	createdID, _ := environmentsPayload[1]["id"].(string)
+	if createdID == "" {
+		t.Fatal("created environment id missing")
+	}
+	if environmentsPayload[1]["status"] != "cloning" {
+		t.Fatalf("created status = %v, want cloning", environmentsPayload[1]["status"])
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/environments/"+createdID, nil)
+	detailReq.AddCookie(sessionCookie)
+	detailRR := httptest.NewRecorder()
+	router.ServeHTTP(detailRR, detailReq)
+
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, want %d", detailRR.Code, http.StatusOK)
+	}
+}
+
+func TestCreateEnvironmentValidationConflictAndNotFound(t *testing.T) {
+	router, siteID, primaryEnvironmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	invalidTypeReq := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Bad","slug":"bad","type":"production","source_environment_id":"`+primaryEnvironmentID+`","promotion_preset":"content-protect"}`))
+	invalidTypeReq.AddCookie(sessionCookie)
+	invalidTypeRR := httptest.NewRecorder()
+	router.ServeHTTP(invalidTypeRR, invalidTypeReq)
+	if invalidTypeRR.Code != http.StatusBadRequest {
+		t.Fatalf("invalid type status = %d, want %d", invalidTypeRR.Code, http.StatusBadRequest)
+	}
+
+	missingSourceReq := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Bad","slug":"bad","type":"clone","promotion_preset":"content-protect"}`))
+	missingSourceReq.AddCookie(sessionCookie)
+	missingSourceRR := httptest.NewRecorder()
+	router.ServeHTTP(missingSourceRR, missingSourceReq)
+	if missingSourceRR.Code != http.StatusBadRequest {
+		t.Fatalf("missing source status = %d, want %d", missingSourceRR.Code, http.StatusBadRequest)
+	}
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Staging","slug":"staging","type":"staging","source_environment_id":"`+primaryEnvironmentID+`","promotion_preset":"content-protect"}`))
+	firstReq.AddCookie(sessionCookie)
+	firstRR := httptest.NewRecorder()
+	router.ServeHTTP(firstRR, firstReq)
+	if firstRR.Code != http.StatusAccepted {
+		t.Fatalf("first create status = %d, want %d", firstRR.Code, http.StatusAccepted)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/sites/"+siteID+"/environments", strings.NewReader(`{"name":"Clone","slug":"clone-1","type":"clone","source_environment_id":"`+primaryEnvironmentID+`","promotion_preset":"content-protect"}`))
+	secondReq.AddCookie(sessionCookie)
+	secondRR := httptest.NewRecorder()
+	router.ServeHTTP(secondRR, secondReq)
+	if secondRR.Code != http.StatusConflict {
+		t.Fatalf("second create status = %d, want %d", secondRR.Code, http.StatusConflict)
+	}
+
+	notFoundSiteReq := httptest.NewRequest(http.MethodGet, "/sites/00000000-0000-0000-0000-000000000000/environments", nil)
+	notFoundSiteReq.AddCookie(sessionCookie)
+	notFoundSiteRR := httptest.NewRecorder()
+	router.ServeHTTP(notFoundSiteRR, notFoundSiteReq)
+	if notFoundSiteRR.Code != http.StatusNotFound {
+		t.Fatalf("site env list status = %d, want %d", notFoundSiteRR.Code, http.StatusNotFound)
+	}
+
+	notFoundEnvironmentReq := httptest.NewRequest(http.MethodGet, "/environments/00000000-0000-0000-0000-000000000000", nil)
+	notFoundEnvironmentReq.AddCookie(sessionCookie)
+	notFoundEnvironmentRR := httptest.NewRecorder()
+	router.ServeHTTP(notFoundEnvironmentRR, notFoundEnvironmentReq)
+	if notFoundEnvironmentRR.Code != http.StatusNotFound {
+		t.Fatalf("environment detail status = %d, want %d", notFoundEnvironmentRR.Code, http.StatusNotFound)
+	}
+}
+
+func TestCreateAndListEnvironmentBackups(t *testing.T) {
+	router, _, environmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/environments/"+environmentID+"/backups", strings.NewReader(`{"backup_scope":"full"}`))
+	createReq.AddCookie(sessionCookie)
+	createRR := httptest.NewRecorder()
+	router.ServeHTTP(createRR, createReq)
+
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("create status = %d, want %d", createRR.Code, http.StatusAccepted)
+	}
+
+	var accepted map[string]string
+	if err := json.Unmarshal(createRR.Body.Bytes(), &accepted); err != nil {
+		t.Fatalf("decode create backup response: %v", err)
+	}
+	if accepted["job_id"] == "" {
+		t.Fatal("job_id empty")
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/environments/"+environmentID+"/backups", nil)
+	listReq.AddCookie(sessionCookie)
+	listRR := httptest.NewRecorder()
+	router.ServeHTTP(listRR, listReq)
+
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listRR.Code, http.StatusOK)
+	}
+
+	var payload []map[string]any
+	if err := json.Unmarshal(listRR.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode list backups: %v", err)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("backups count = %d, want 1", len(payload))
+	}
+	if payload[0]["status"] != "pending" {
+		t.Fatalf("backup status = %v, want pending", payload[0]["status"])
+	}
+	if payload[0]["backup_scope"] != "full" {
+		t.Fatalf("backup_scope = %v, want full", payload[0]["backup_scope"])
+	}
+	if payload[0]["retention_until"] == "" {
+		t.Fatal("retention_until is empty")
+	}
+}
+
+func TestCreateEnvironmentBackupValidationNotFoundAndConflict(t *testing.T) {
+	router, _, environmentID := newTestRouterWithSeedSite(t, 24*time.Hour)
+	sessionCookie := loginAndGetCookie(t, router)
+
+	invalidReq := httptest.NewRequest(http.MethodPost, "/environments/"+environmentID+"/backups", strings.NewReader(`{"backup_scope":"invalid"}`))
+	invalidReq.AddCookie(sessionCookie)
+	invalidRR := httptest.NewRecorder()
+	router.ServeHTTP(invalidRR, invalidReq)
+	if invalidRR.Code != http.StatusBadRequest {
+		t.Fatalf("invalid status = %d, want %d", invalidRR.Code, http.StatusBadRequest)
+	}
+
+	notFoundReq := httptest.NewRequest(http.MethodPost, "/environments/00000000-0000-0000-0000-000000000000/backups", strings.NewReader(`{"backup_scope":"full"}`))
+	notFoundReq.AddCookie(sessionCookie)
+	notFoundRR := httptest.NewRecorder()
+	router.ServeHTTP(notFoundRR, notFoundReq)
+	if notFoundRR.Code != http.StatusNotFound {
+		t.Fatalf("not found status = %d, want %d", notFoundRR.Code, http.StatusNotFound)
+	}
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/environments/"+environmentID+"/backups", strings.NewReader(`{"backup_scope":"full"}`))
+	firstReq.AddCookie(sessionCookie)
+	firstRR := httptest.NewRecorder()
+	router.ServeHTTP(firstRR, firstReq)
+	if firstRR.Code != http.StatusAccepted {
+		t.Fatalf("first create status = %d, want %d", firstRR.Code, http.StatusAccepted)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/environments/"+environmentID+"/backups", strings.NewReader(`{"backup_scope":"db"}`))
+	secondReq.AddCookie(sessionCookie)
+	secondRR := httptest.NewRecorder()
+	router.ServeHTTP(secondRR, secondReq)
+	if secondRR.Code != http.StatusConflict {
+		t.Fatalf("second create status = %d, want %d", secondRR.Code, http.StatusConflict)
+	}
+}
+
 func newTestRouter(t *testing.T, sessionTTL time.Duration) http.Handler {
 	t.Helper()
 	router, _ := newTestRouterWithAudit(t, sessionTTL)
@@ -307,11 +601,38 @@ func newTestRouterWithAudit(t *testing.T, sessionTTL time.Duration) (http.Handle
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
 	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
 	nodeStore := store.NewInMemoryNodeStore(2)
-	siteStore := store.NewInMemorySiteStore(5)
+	siteStore := store.NewInMemorySiteStore(0)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
 	auditStore := audit.NewInMemoryStore()
 	auditService := audit.NewService(auditStore)
 	return NewRouter(logger, authService, jobStore, metricsService, auditService), auditStore
+}
+
+func newTestRouterWithSeedSite(t *testing.T, sessionTTL time.Duration) (http.Handler, string, string) {
+	t.Helper()
+	logger := log.New(&bytes.Buffer{}, "", 0)
+	sessionStore := store.NewInMemorySessionStore()
+	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
+	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
+	nodeStore := store.NewInMemoryNodeStore(2)
+	siteStore := store.NewInMemorySiteStore(0)
+	now := time.Date(2026, 2, 22, 0, 0, 0, 0, time.UTC)
+	site, environment, err := siteStore.CreateSiteWithProductionEnvironment(context.Background(), store.CreateSiteInput{
+		Name:       "Acme Co",
+		Slug:       "acme",
+		NodeID:     "44444444-4444-4444-4444-444444444444",
+		NodePublic: "127.0.0.1",
+		Now:        now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSiteWithProductionEnvironment() error = %v", err)
+	}
+
+	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	router := NewRouter(logger, authService, jobStore, metricsService, auditService)
+	return router, site.ID, environment.ID
 }
 
 type failingAuditRecorder struct{}

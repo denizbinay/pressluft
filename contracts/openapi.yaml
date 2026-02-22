@@ -781,7 +781,7 @@ components:
           minLength: 1
         type:
           type: string
-          enum: [production, staging, clone]
+          enum: [staging, clone]
         source_environment_id:
           type: [string, 'null']
           format: uuid

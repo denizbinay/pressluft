@@ -35,9 +35,12 @@ This directory contains implementation-bound feature specs.
 - `docs/features/feature-cache-controls.md`
 - `docs/features/feature-magic-login.md`
 - `docs/features/feature-jobs-and-metrics.md`
+- `docs/features/feature-wave4-dashboard-create-flows.md`
+- `docs/features/feature-dashboard-ia-overhaul.md`
 - `docs/features/feature-health-checks-and-rollback.md`
 - `docs/features/feature-audit-logging.md`
 - `docs/features/feature-job-control.md`
+- `docs/features/feature-wp-first-runtime.md`
 
 ## How to Create
 

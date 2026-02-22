@@ -1,0 +1,19 @@
+---
+- name: Backup create
+  hosts: target
+  gather_facts: false
+  tasks:
+    - name: Validate required backup vars
+      ansible.builtin.assert:
+        that:
+          - backup_id is string
+          - backup_id | length > 0
+          - environment_id is string
+          - environment_id | length > 0
+          - backup_scope in ['db', 'files', 'full']
+          - storage_path is string
+          - storage_path | length > 0
+
+    - name: Backup lifecycle placeholder
+      ansible.builtin.debug:
+        msg: "backup_create placeholder backup_id={{ backup_id }} environment_id={{ environment_id }} scope={{ backup_scope }} path={{ storage_path }}"

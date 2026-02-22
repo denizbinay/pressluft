@@ -62,6 +62,24 @@ Rule: no task acceptance criterion may require a capability that is first delive
 | W5-T3 backup-retention-cleanup | backup record production | W2-T3 | PASS |
 | W5-T4 job-control | observable job/resource states for control operations | W5-T1 | PASS |
 
+## Wave 5.5
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W5.5-T1 runtime pivot packet | completed Wave 5 dashboard and queue baseline | W5-T7 | PASS |
+| W5.5-T2 self-node target definition | approved runtime pivot packet and acceptance scope | W5.5-T1 | PASS |
+| W5.5-T3 runnable runtime provisioning path | self-node execution model + existing queue/ansible wiring | W5.5-T2, W3-T2, W4-T2 | PASS |
+| W5.5-T4 reachability-gated success semantics | runnable runtime provisioning + mutation lifecycle | W5.5-T3 | PASS |
+| W5.5-T5 end-to-end smoke verification | reachability-gated success semantics | W5.5-T4 | PASS |
+
+## Wave 6
+
+| Task | Capability Required by AC | Provider Task(s) | Forward Dependency Check |
+|---|---|---|---|
+| W6-T1 deploy-updates | proven runnable runtime baseline + preview reachability validation gate | MP1.5 | PASS |
+| W6-T2 health-check/rollback | deploy/update mutation contracts and release transition hooks | W6-T1 | PASS |
+| W6-T3 release timeline visibility | health and rollback event surfaces from Wave 6 orchestration | W6-T1, W6-T2 | PASS |
+
 ## Known Explicit Non-Dependencies
 
 - Clone expiration metadata is removed from MVP ACs and therefore does not require schema additions in this plan.

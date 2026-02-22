@@ -74,6 +74,8 @@ This document is explanatory and must stay aligned with OpenAPI.
 
 - `POST /api/sites/{id}/environments`
   - Body: `{ name, slug, type, source_environment_id, promotion_preset }`
+  - type: `staging | clone`
+  - source_environment_id: required for staging/clone creation and must reference an environment on the same site
   - Response: `{ job_id }`
 
 - `GET /api/environments/{id}`

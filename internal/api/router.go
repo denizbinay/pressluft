@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,8 +12,12 @@ import (
 
 	"pressluft/internal/audit"
 	"pressluft/internal/auth"
+	"pressluft/internal/backups"
+	"pressluft/internal/environments"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
+	"pressluft/internal/sites"
+	"pressluft/internal/store"
 )
 
 type contextKey string
@@ -21,23 +26,311 @@ const sessionTokenContextKey contextKey = "session_token"
 const userIDContextKey contextKey = "user_id"
 
 type Router struct {
-	logger      *log.Logger
-	authService *auth.Service
-	jobs        jobs.Reader
-	metrics     *metrics.Service
-	auditor     audit.Recorder
+	logger       *log.Logger
+	authService  *auth.Service
+	jobs         jobs.Reader
+	metrics      *metrics.Service
+	auditor      audit.Recorder
+	sites        *sites.Service
+	environments *environments.Service
+	backups      *backups.Service
 }
 
 func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Reader, metricsService *metrics.Service, auditRecorder audit.Recorder) http.Handler {
-	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService, auditor: auditRecorder}
+	var siteService *sites.Service
+	var environmentService *environments.Service
+	var backupService *backups.Service
+	queue, ok := jobsReader.(sites.JobQueue)
+	if ok {
+		siteStore := store.DefaultSiteStore()
+		siteService = sites.NewService(siteStore, queue)
+		environmentService = environments.NewService(siteStore, queue)
+		backupService = backups.NewService(siteStore, store.DefaultBackupStore(), queue)
+	}
+
+	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService, auditor: auditRecorder, sites: siteService, environments: environmentService, backups: backupService}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", router.handleLogin)
 	mux.HandleFunc("/logout", router.handleLogout)
 	mux.HandleFunc("/jobs", router.handleJobsList)
 	mux.HandleFunc("/jobs/", router.handleJobDetail)
 	mux.HandleFunc("/metrics", router.handleMetrics)
+	mux.HandleFunc("/sites", router.handleSites)
+	mux.HandleFunc("/sites/", router.handleSiteByID)
+	mux.HandleFunc("/environments/", router.handleEnvironmentByID)
 
 	return router.withAuth(mux)
+}
+
+func (r *Router) handleSites(w http.ResponseWriter, req *http.Request) {
+	if r.sites == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "sites service unavailable")
+		return
+	}
+
+	switch req.Method {
+	case http.MethodGet:
+		sitesList, err := r.sites.List(req.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list sites")
+			return
+		}
+		writeJSON(w, http.StatusOK, sitesList)
+	case http.MethodPost:
+		var payload struct {
+			Name string `json:"name"`
+			Slug string `json:"slug"`
+		}
+
+		decoder := json.NewDecoder(req.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+			return
+		}
+
+		if strings.TrimSpace(payload.Name) == "" || strings.TrimSpace(payload.Slug) == "" {
+			writeError(w, http.StatusBadRequest, "bad_request", "name and slug are required")
+			return
+		}
+
+		jobID, err := r.sites.Create(req.Context(), payload.Name, payload.Slug)
+		if err != nil {
+			if errors.Is(err, store.ErrSiteSlugConflict) || errors.Is(err, sites.ErrMutationConflict) {
+				writeError(w, http.StatusConflict, "conflict", "conflicting site mutation")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create site")
+			return
+		}
+
+		writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+	}
+}
+
+func (r *Router) handleSiteByID(w http.ResponseWriter, req *http.Request) {
+	if r.sites == nil || r.environments == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "sites service unavailable")
+		return
+	}
+
+	trimmed := strings.TrimPrefix(req.URL.Path, "/sites/")
+	if trimmed == "" {
+		writeError(w, http.StatusNotFound, "not_found", "site not found")
+		return
+	}
+	parts := strings.Split(trimmed, "/")
+	siteID := parts[0]
+	if siteID == "" {
+		writeError(w, http.StatusNotFound, "not_found", "site not found")
+		return
+	}
+
+	if len(parts) == 1 {
+		if req.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+			return
+		}
+		r.handleSiteDetail(w, req, siteID)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "environments" {
+		r.handleSiteEnvironments(w, req, siteID)
+		return
+	}
+
+	writeError(w, http.StatusNotFound, "not_found", "site not found")
+}
+
+func (r *Router) handleSiteDetail(w http.ResponseWriter, req *http.Request, id string) {
+	site, err := r.sites.GetByID(req.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrSiteNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "site not found")
+			return
+		}
+		r.logger.Printf("event=site_lookup_failed id=%s err=%v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal_error", fmt.Sprintf("failed to load site %s", id))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, site)
+}
+
+func (r *Router) handleSiteEnvironments(w http.ResponseWriter, req *http.Request, siteID string) {
+	switch req.Method {
+	case http.MethodGet:
+		environmentsList, err := r.environments.ListBySiteID(req.Context(), siteID)
+		if err != nil {
+			if errors.Is(err, store.ErrSiteNotFound) {
+				writeError(w, http.StatusNotFound, "not_found", "site not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list site environments")
+			return
+		}
+		writeJSON(w, http.StatusOK, environmentsList)
+	case http.MethodPost:
+		var payload struct {
+			Name                string  `json:"name"`
+			Slug                string  `json:"slug"`
+			Type                string  `json:"type"`
+			SourceEnvironmentID *string `json:"source_environment_id"`
+			PromotionPreset     string  `json:"promotion_preset"`
+		}
+
+		decoder := json.NewDecoder(req.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+			return
+		}
+
+		if strings.TrimSpace(payload.Name) == "" || strings.TrimSpace(payload.Slug) == "" {
+			writeError(w, http.StatusBadRequest, "bad_request", "name and slug are required")
+			return
+		}
+
+		if payload.Type != "staging" && payload.Type != "clone" {
+			writeError(w, http.StatusBadRequest, "bad_request", "type must be staging or clone")
+			return
+		}
+
+		if payload.PromotionPreset != "content-protect" && payload.PromotionPreset != "commerce-protect" {
+			writeError(w, http.StatusBadRequest, "bad_request", "promotion_preset is invalid")
+			return
+		}
+
+		jobID, err := r.environments.Create(req.Context(), environments.CreateInput{
+			SiteID:              siteID,
+			Name:                payload.Name,
+			Slug:                payload.Slug,
+			EnvironmentType:     payload.Type,
+			SourceEnvironmentID: payload.SourceEnvironmentID,
+			PromotionPreset:     payload.PromotionPreset,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrSiteNotFound):
+				writeError(w, http.StatusNotFound, "not_found", "site not found")
+			case errors.Is(err, environments.ErrMutationConflict) || errors.Is(err, store.ErrEnvironmentSlugConflict):
+				writeError(w, http.StatusConflict, "conflict", "conflicting environment mutation")
+			case errors.Is(err, store.ErrInvalidEnvironmentCreate):
+				writeError(w, http.StatusBadRequest, "bad_request", "invalid environment create request")
+			default:
+				writeError(w, http.StatusInternalServerError, "internal_error", "failed to create environment")
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+	}
+}
+
+func (r *Router) handleEnvironmentByID(w http.ResponseWriter, req *http.Request) {
+	if r.environments == nil || r.backups == nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "environments service unavailable")
+		return
+	}
+
+	trimmed := strings.TrimPrefix(req.URL.Path, "/environments/")
+	if trimmed == "" {
+		writeError(w, http.StatusNotFound, "not_found", "environment not found")
+		return
+	}
+	parts := strings.Split(trimmed, "/")
+	id := parts[0]
+	if id == "" {
+		writeError(w, http.StatusNotFound, "not_found", "environment not found")
+		return
+	}
+
+	if len(parts) == 1 {
+		if req.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+			return
+		}
+		r.handleEnvironmentDetail(w, req, id)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "backups" {
+		r.handleEnvironmentBackups(w, req, id)
+		return
+	}
+
+	writeError(w, http.StatusNotFound, "not_found", "environment not found")
+}
+
+func (r *Router) handleEnvironmentDetail(w http.ResponseWriter, req *http.Request, id string) {
+	environment, err := r.environments.GetByID(req.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrEnvironmentNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "environment not found")
+			return
+		}
+		r.logger.Printf("event=environment_lookup_failed id=%s err=%v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal_error", fmt.Sprintf("failed to load environment %s", id))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, environment)
+}
+
+func (r *Router) handleEnvironmentBackups(w http.ResponseWriter, req *http.Request, environmentID string) {
+	switch req.Method {
+	case http.MethodGet:
+		backupList, err := r.backups.ListByEnvironmentID(req.Context(), environmentID)
+		if err != nil {
+			if errors.Is(err, store.ErrEnvironmentNotFound) {
+				writeError(w, http.StatusNotFound, "not_found", "environment not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list environment backups")
+			return
+		}
+		writeJSON(w, http.StatusOK, backupList)
+	case http.MethodPost:
+		var payload struct {
+			BackupScope string `json:"backup_scope"`
+		}
+
+		decoder := json.NewDecoder(req.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+			return
+		}
+
+		if payload.BackupScope != "db" && payload.BackupScope != "files" && payload.BackupScope != "full" {
+			writeError(w, http.StatusBadRequest, "bad_request", "backup_scope must be db, files, or full")
+			return
+		}
+
+		jobID, err := r.backups.Create(req.Context(), backups.CreateInput{EnvironmentID: environmentID, BackupScope: payload.BackupScope})
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrEnvironmentNotFound):
+				writeError(w, http.StatusNotFound, "not_found", "environment not found")
+			case errors.Is(err, backups.ErrMutationConflict):
+				writeError(w, http.StatusConflict, "conflict", "conflicting backup mutation")
+			case errors.Is(err, store.ErrInvalidBackupScope):
+				writeError(w, http.StatusBadRequest, "bad_request", "backup_scope must be db, files, or full")
+			default:
+				writeError(w, http.StatusInternalServerError, "internal_error", "failed to create environment backup")
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "bad_request", "method not allowed")
+	}
 }
 
 func (r *Router) withAuth(next http.Handler) http.Handler {
