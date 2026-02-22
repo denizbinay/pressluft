@@ -95,16 +95,16 @@ Wave 2 manual test contract:
 
 ### Wave 3 - Mutation Engine, Node Provision, and Audit Trail
 
-- [ ] W3-T1: Implement transactional mutation queue worker with concurrency invariants.
+- [x] W3-T1: Implement transactional mutation queue worker with concurrency invariants.
   - Depends on: W2-T2
   - Feature spec: `docs/features/feature-node-provision.md`
-- [ ] W3-T2: Implement node provision mutation path via Ansible execution contract.
+- [x] W3-T2: Implement node provision mutation path via Ansible execution contract.
   - Depends on: W3-T1
   - Feature spec: `docs/features/feature-node-provision.md`
-- [ ] W3-T3: Implement baseline audit logging for mutating actions.
+- [x] W3-T3: Implement baseline audit logging for mutating actions.
   - Depends on: W3-T2
   - Feature spec: `docs/features/feature-audit-logging.md`
-- [ ] W3-T4: Add dashboard job detail timeline for queued/running/succeeded/failed states.
+- [x] W3-T4: Add dashboard job detail timeline for queued/running/succeeded/failed states.
   - Depends on: W3-T1
   - Feature spec: `docs/features/feature-jobs-and-metrics.md`
 

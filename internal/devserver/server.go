@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"pressluft/internal/api"
+	"pressluft/internal/audit"
 	"pressluft/internal/auth"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
+	"pressluft/internal/nodes"
 	"pressluft/internal/store"
 )
 
@@ -158,6 +160,19 @@ const dashboardHTML = `<!doctype html>
       text-align: left;
     }
 
+    .job-link {
+      border: 0;
+      padding: 0;
+      margin: 0;
+      background: transparent;
+      color: var(--brand-2);
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .job-link:hover { color: #63b9ff; }
+
     th { color: var(--ink-soft); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
     .status { font-weight: 700; text-transform: capitalize; }
@@ -171,6 +186,32 @@ const dashboardHTML = `<!doctype html>
       font-weight: 600;
       min-height: 1.2em;
       margin-top: 4px;
+    }
+
+    .timeline {
+      list-style: none;
+      margin: 6px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .timeline li {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0d1824;
+      padding: 10px;
+    }
+
+    .timeline strong {
+      display: inline-block;
+      margin-right: 8px;
+      text-transform: capitalize;
+    }
+
+    .timeline time {
+      color: var(--ink-soft);
+      font-size: 0.88rem;
     }
 
     @keyframes rise {
@@ -221,6 +262,17 @@ const dashboardHTML = `<!doctype html>
             <tbody id="jobs-body"></tbody>
           </table>
         </section>
+
+        <section class="panel" style="margin-top: 14px;">
+          <div class="head">
+            <h2>Job Timeline</h2>
+            <p id="job-detail-title" class="muted">Select a job from the table.</p>
+          </div>
+          <ul id="job-timeline" class="timeline">
+            <li class="muted">No job selected.</li>
+          </ul>
+          <p id="job-detail-error" class="error" aria-live="polite"></p>
+        </section>
       </section>
     </section>
   </main>
@@ -234,6 +286,10 @@ const dashboardHTML = `<!doctype html>
     const refreshButton = document.getElementById('refresh');
     const metricsEl = document.getElementById('metrics');
     const jobsBody = document.getElementById('jobs-body');
+    const jobDetailTitle = document.getElementById('job-detail-title');
+    const jobTimeline = document.getElementById('job-timeline');
+    const jobDetailError = document.getElementById('job-detail-error');
+    let selectedJobID = '';
 
     const metricCards = [
       { key: 'jobs_running', label: 'Jobs Running' },
@@ -280,6 +336,8 @@ const dashboardHTML = `<!doctype html>
     function renderJobs(jobs) {
       if (!Array.isArray(jobs) || jobs.length === 0) {
         jobsBody.innerHTML = '<tr><td colspan="5" class="muted">No jobs available.</td></tr>';
+        selectedJobID = '';
+        clearJobDetail('No job selected.');
         return;
       }
 
@@ -289,7 +347,7 @@ const dashboardHTML = `<!doctype html>
         const err = job.error_code || '-';
         return [
           '<tr>',
-          '<td>' + (job.id || '-') + '</td>',
+          '<td><button class="job-link" type="button" data-job-id="' + (job.id || '') + '">' + (job.id || '-') + '</button></td>',
           '<td>' + (job.job_type || '-') + '</td>',
           '<td><span class="status ' + status + '">' + status + '</span></td>',
           '<td>' + attempts + '</td>',
@@ -297,6 +355,108 @@ const dashboardHTML = `<!doctype html>
           '</tr>',
         ].join('');
       }).join('');
+
+      if (selectedJobID) {
+        const exists = jobs.some((job) => job.id === selectedJobID);
+        if (!exists) {
+          selectedJobID = '';
+          clearJobDetail('Selected job is no longer available.');
+        }
+      }
+    }
+
+    function clearJobDetail(message) {
+      jobDetailTitle.textContent = message;
+      jobTimeline.innerHTML = '<li class="muted">' + message + '</li>';
+      jobDetailError.textContent = '';
+    }
+
+    function formatTimestamp(value) {
+      if (!value) {
+        return 'pending';
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return 'pending';
+      }
+      return date.toLocaleString();
+    }
+
+    function buildTimeline(job) {
+      const events = [];
+
+      events.push({
+        state: 'queued',
+        at: job.created_at,
+        detail: 'Job created and waiting for worker pickup.',
+      });
+
+      if (job.attempt_count > 0 && job.started_at) {
+        events.push({
+          state: 'running',
+          at: job.started_at,
+          detail: 'Attempt ' + String(job.attempt_count) + ' of ' + String(job.max_attempts || 0) + ' started.',
+        });
+      }
+
+      if (job.status === 'queued' && job.attempt_count > 0 && job.run_after) {
+        events.push({
+          state: 'queued',
+          at: job.run_after,
+          detail: 'Retry scheduled after previous failure.',
+        });
+      }
+
+      if (job.status === 'running') {
+        events.push({
+          state: 'running',
+          at: job.started_at || job.updated_at,
+          detail: 'Worker currently executing this job.',
+        });
+      }
+
+      if (job.status === 'succeeded') {
+        events.push({
+          state: 'succeeded',
+          at: job.finished_at || job.updated_at,
+          detail: 'Mutation completed successfully.',
+        });
+      }
+
+      if (job.status === 'failed') {
+        const detail = job.error_code ? ('Execution failed (' + job.error_code + ').') : 'Execution failed.';
+        events.push({
+          state: 'failed',
+          at: job.finished_at || job.updated_at,
+          detail,
+        });
+      }
+
+      return events;
+    }
+
+    function renderJobDetail(job) {
+      jobDetailTitle.textContent = 'Job ' + (job.id || '-') + ' timeline';
+      const timeline = buildTimeline(job);
+      jobTimeline.innerHTML = timeline.map((event) => [
+        '<li>',
+        '<strong class="status ' + event.state + '">' + event.state + '</strong>',
+        '<time>' + formatTimestamp(event.at) + '</time>',
+        '<div class="muted">' + event.detail + '</div>',
+        '</li>',
+      ].join('')).join('');
+      jobDetailError.textContent = '';
+    }
+
+    async function loadJobDetail(jobID) {
+      if (!jobID) {
+        clearJobDetail('No job selected.');
+        return;
+      }
+
+      const job = await request('/jobs/' + encodeURIComponent(jobID));
+      selectedJobID = jobID;
+      renderJobDetail(job);
     }
 
     async function loadDashboard() {
@@ -306,6 +466,17 @@ const dashboardHTML = `<!doctype html>
       ]);
       renderMetrics(metrics);
       renderJobs(jobs);
+
+      if (selectedJobID) {
+        try {
+          await loadJobDetail(selectedJobID);
+        } catch (err) {
+          jobDetailError.textContent = err.message || 'Failed to load selected job';
+        }
+      } else {
+        clearJobDetail('Select a job from the table.');
+      }
+
       setAuthed(true);
     }
 
@@ -333,6 +504,27 @@ const dashboardHTML = `<!doctype html>
       setAuthed(false);
       jobsBody.innerHTML = '';
       metricsEl.innerHTML = '';
+      selectedJobID = '';
+      clearJobDetail('No job selected.');
+    });
+
+    jobsBody.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const button = target.closest('button[data-job-id]');
+      if (!button) {
+        return;
+      }
+
+      const jobID = button.getAttribute('data-job-id') || '';
+      jobDetailError.textContent = '';
+      try {
+        await loadJobDetail(jobID);
+      } catch (err) {
+        jobDetailError.textContent = err.message || 'Failed to load job detail';
+      }
     });
 
     refreshButton.addEventListener('click', async () => {
@@ -374,10 +566,12 @@ func New(addr string, logger *log.Logger) *Server {
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "", "", 24*time.Hour)
 	jobStore := jobs.NewInMemoryRepository(seedJobs())
-	nodeStore := store.NewInMemoryNodeStore(1)
+	nodeStore := nodes.NewInMemoryStore(seedNodes())
 	siteStore := store.NewInMemorySiteStore(1)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
-	apiHandler := api.NewRouter(logger, authService, jobStore, metricsService)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	apiHandler := api.NewRouter(logger, authService, jobStore, metricsService, auditService)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiHandler))
@@ -469,6 +663,24 @@ func seedJobs() []jobs.Job {
 			ErrorMessage:  &errorMessage,
 			CreatedAt:     fiveMinutesAgo,
 			UpdatedAt:     twoMinutesAgo,
+		},
+	}
+}
+
+func seedNodes() []nodes.Node {
+	now := time.Now().UTC()
+
+	return []nodes.Node{
+		{
+			ID:                "33333333-3333-3333-3333-333333333333",
+			Hostname:          "127.0.0.1",
+			PublicIP:          "127.0.0.1",
+			SSHPort:           22,
+			SSHUser:           "ubuntu",
+			SSHPrivateKeyPath: "/var/lib/pressluft/secrets/node-33333333-3333-3333-3333-333333333333.pem",
+			Status:            nodes.StatusActive,
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		},
 	}
 }

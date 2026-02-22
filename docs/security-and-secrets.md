@@ -30,7 +30,7 @@ This document defines MVP security assumptions and secret handling.
 
 ## Audit Logging
 
-- All mutating actions are logged with: user_id, action, resource_id, timestamp, result.
+- All mutating actions are logged with: user_id, action, resource_type, resource_id, timestamp, result.
 
 ## Node Security Hardening
 

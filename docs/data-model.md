@@ -223,6 +223,10 @@ Rules:
 - result TEXT NOT NULL
 - created_at TEXT NOT NULL
 
+Rules:
+- `result` uses stable semantics: `accepted`, `retrying`, `succeeded`, or `failed`.
+- Async mutation audit rows are created at request acceptance and updated in-place as job completion result changes.
+
 ### settings
 
 - key TEXT PRIMARY KEY

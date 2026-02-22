@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/audit"
 	"pressluft/internal/auth"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
@@ -17,16 +18,18 @@ import (
 type contextKey string
 
 const sessionTokenContextKey contextKey = "session_token"
+const userIDContextKey contextKey = "user_id"
 
 type Router struct {
 	logger      *log.Logger
 	authService *auth.Service
 	jobs        jobs.Reader
 	metrics     *metrics.Service
+	auditor     audit.Recorder
 }
 
-func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Reader, metricsService *metrics.Service) http.Handler {
-	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService}
+func NewRouter(logger *log.Logger, authService *auth.Service, jobsReader jobs.Reader, metricsService *metrics.Service, auditRecorder audit.Recorder) http.Handler {
+	router := &Router{logger: logger, authService: authService, jobs: jobsReader, metrics: metricsService, auditor: auditRecorder}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", router.handleLogin)
 	mux.HandleFunc("/logout", router.handleLogout)
@@ -50,12 +53,14 @@ func (r *Router) withAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		if _, err := r.authService.Validate(tokenCookie.Value, time.Now().UTC()); err != nil {
+		session, err := r.authService.Validate(tokenCookie.Value, time.Now().UTC())
+		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
 
 		ctx := context.WithValue(req.Context(), sessionTokenContextKey, tokenCookie.Value)
+		ctx = context.WithValue(ctx, userIDContextKey, session.UserID)
 		next.ServeHTTP(w, req.WithContext(ctx))
 	})
 }
@@ -86,12 +91,25 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	session, err := r.authService.Login(payload.Email, payload.Password, time.Now().UTC())
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			if !r.recordAudit(req.Context(), auth.DefaultUserID, "auth_login", "session", auth.DefaultUserID, "failed") {
+				writeError(w, http.StatusInternalServerError, "internal_error", "request could not be audited")
+				return
+			}
 			r.logger.Printf("event=auth_login result=failure email=%s reason=invalid_credentials", payload.Email)
 			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid credentials")
 			return
 		}
+		if !r.recordAudit(req.Context(), auth.DefaultUserID, "auth_login", "session", auth.DefaultUserID, "failed") {
+			writeError(w, http.StatusInternalServerError, "internal_error", "request could not be audited")
+			return
+		}
 		r.logger.Printf("event=auth_login result=failure email=%s reason=auth_system_error", payload.Email)
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication failed")
+		return
+	}
+
+	if !r.recordAudit(req.Context(), session.UserID, "auth_login", "session", session.UserID, "succeeded") {
+		writeError(w, http.StatusInternalServerError, "internal_error", "request could not be audited")
 		return
 	}
 
@@ -116,13 +134,23 @@ func (r *Router) handleLogout(w http.ResponseWriter, req *http.Request) {
 	}
 
 	token, _ := req.Context().Value(sessionTokenContextKey).(string)
+	userID, _ := req.Context().Value(userIDContextKey).(string)
+	if userID == "" {
+		userID = auth.DefaultUserID
+	}
 	if token == "" {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 
 	if err := r.authService.Revoke(token, time.Now().UTC()); err != nil {
+		_ = r.recordAudit(req.Context(), userID, "auth_logout", "session", userID, "failed")
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	if !r.recordAudit(req.Context(), userID, "auth_logout", "session", userID, "succeeded") {
+		writeError(w, http.StatusInternalServerError, "internal_error", "request could not be audited")
 		return
 	}
 
@@ -220,4 +248,24 @@ func writeError(w http.ResponseWriter, status int, code string, message string) 
 		"code":    code,
 		"message": message,
 	})
+}
+
+func (r *Router) recordAudit(ctx context.Context, userID string, action string, resourceType string, resourceID string, result string) bool {
+	if r.auditor == nil {
+		return true
+	}
+
+	err := r.auditor.Record(ctx, audit.Entry{
+		UserID:       userID,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Result:       result,
+	})
+	if err != nil {
+		r.logger.Printf("event=audit_write_failed action=%s resource_type=%s", action, resourceType)
+		return false
+	}
+
+	return true
 }

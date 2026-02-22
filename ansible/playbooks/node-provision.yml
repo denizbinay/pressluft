@@ -1,0 +1,44 @@
+---
+- name: Provision Pressluft node baseline
+  hosts: target
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Ensure required system packages are installed
+      ansible.builtin.package:
+        name:
+          - nginx
+          - php-fpm
+          - php-redis
+          - mariadb-server
+          - redis-server
+          - fail2ban
+          - rsync
+          - unzip
+          - curl
+          - certbot
+        state: present
+
+    - name: Ensure nginx service is enabled and started
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Ensure mariadb service is enabled and started
+      ansible.builtin.service:
+        name: mariadb
+        state: started
+        enabled: true
+
+    - name: Ensure redis service is enabled and started
+      ansible.builtin.service:
+        name: redis-server
+        state: started
+        enabled: true
+
+    - name: Ensure fail2ban service is enabled and started
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true

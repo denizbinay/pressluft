@@ -30,6 +30,14 @@ func TestDashboardShellServedAtRoot(t *testing.T) {
 	if !strings.Contains(body, "id=\"login-form\"") {
 		t.Fatalf("dashboard HTML missing login form")
 	}
+
+	if !strings.Contains(body, "Job Timeline") {
+		t.Fatalf("dashboard HTML missing job timeline panel")
+	}
+
+	if !strings.Contains(body, "id=\"job-timeline\"") {
+		t.Fatalf("dashboard HTML missing job timeline target")
+	}
 }
 
 func TestRequestLogIncludesDeterministicFields(t *testing.T) {

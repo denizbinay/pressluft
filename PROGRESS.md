@@ -6,7 +6,7 @@ Last Updated: 2026-02-22
 
 ## Current Stage
 
-- Stage: Wave 2 complete (W2-T1, W2-T2, W2-T3); ready to begin Wave 3 mutation engine work (W3-T1).
+- Stage: Wave 3 complete; W3-T1 through W3-T4 completed.
 - Blocker: none.
 
 ## Completed
@@ -32,16 +32,20 @@ Last Updated: 2026-02-22
 - Unattended OpenCode command presets added (`/run-plan`, `/resume-run`, `/triage-failures`).
 - W2-T1 completed: login/logout cookie session lifecycle with session creation, expiry/revocation checks, and auth API tests.
 - Repo-local developer command workflow added with `Makefile` (`make dev`, `make build`, `make vet`, `make test`, `make backend-gates`) and documented in `README.md`.
+- W3-T1 completed: transactional in-memory mutation queue worker with atomic claim semantics, site/node concurrency guards, retry backoff scheduling (1m/5m/15m), and job error truncation.
+- W3-T2 completed: node provisioning mutation path wired to Ansible execution contract with dynamic inventory/extra-vars generation, exit-code classification, node status transitions, and syntax-checked `ansible/playbooks/node-provision.yml`.
+- W3-T3 completed: baseline audit logging added for mutating auth actions and async job lifecycle semantics with acceptance-time/result-update coverage, including audit failure-path tests.
+- W3-T4 completed: dashboard now includes job detail timeline panel that renders queued/running/succeeded/failed progression from `/api/jobs/{id}` and keeps selected job detail fresh on refresh.
 
 ## In Progress
 
-- Planning W3-T1 transactional mutation queue worker scope.
+- Preparing MP1/Wave 4 kickoff with W4-T1 site create/read/list storage mapping.
 
 ## Next Up
 
-1. Implement W3-T1 transactional mutation queue worker with concurrency invariants.
-2. Implement W3-T2 node provision mutation path via Ansible execution contract.
-3. Implement W3-T3 baseline audit logging for mutating actions.
+1. Begin Wave 4 with W4-T1 site create/read/list storage mapping after MP1 readiness.
+2. Begin Wave 4 with W4-T2 environment create/clone state transitions after W4-T1.
+3. Add dashboard create flows for site/environment and state display (W4-T3).
 
 ## Open Risks
 
@@ -60,6 +64,18 @@ Last Updated: 2026-02-22
 - `go run ./cmd/pressluft dev --port 18080` + login/metrics/jobs curl smoke: pass (`/` 200, `/api/jobs` 200 with session cookie, `/api/metrics` returned non-negative counters).
 - `make build`, `make vet`, `make test`: pass.
 - `make dev PORT=18080` + `curl http://127.0.0.1:18080/`: pass (HTTP 200 dashboard response + request log line).
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new `internal/jobs` queue worker + retry/concurrency tests).
+- `ansible-playbook --syntax-check ansible/playbooks/node-provision.yml`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes new `internal/audit` tests, auth audit write/failure-path coverage, and async job audit lifecycle test).
+- `bash scripts/check-readiness.sh`: pass.
+- `go build -o ./bin/pressluft ./cmd/pressluft`: pass.
+- `go vet ./...`: pass.
+- `go test ./internal/... -v`: pass (includes updated dashboard shell test coverage for job timeline panel).
+- `go run ./cmd/pressluft dev --port 18123` + `curl http://127.0.0.1:18123/`: pass (HTML contains `Job Timeline` panel and request served).
 
 ## Session Handoff (2026-02-22)
 

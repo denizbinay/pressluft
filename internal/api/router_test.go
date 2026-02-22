@@ -2,7 +2,9 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"pressluft/internal/audit"
 	"pressluft/internal/auth"
 	"pressluft/internal/jobs"
 	"pressluft/internal/metrics"
@@ -87,6 +90,68 @@ func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	}
 
 	assertErrorShape(t, reuseRR.Body.Bytes(), "unauthorized")
+}
+
+func TestMutatingAuthEndpointsWriteAuditEntries(t *testing.T) {
+	router, auditStore := newTestRouterWithAudit(t, 24*time.Hour)
+
+	loginBody := strings.NewReader(`{"email":"admin@pressluft.local","password":"pressluft-dev-password"}`)
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", loginBody)
+	loginRR := httptest.NewRecorder()
+	router.ServeHTTP(loginRR, loginReq)
+
+	if loginRR.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want %d", loginRR.Code, http.StatusOK)
+	}
+
+	cookie := loginRR.Result().Cookies()[0]
+	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	logoutReq.AddCookie(cookie)
+	logoutRR := httptest.NewRecorder()
+	router.ServeHTTP(logoutRR, logoutReq)
+
+	if logoutRR.Code != http.StatusOK {
+		t.Fatalf("logout status = %d, want %d", logoutRR.Code, http.StatusOK)
+	}
+
+	entries, err := auditStore.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("audit entries len = %d, want 2", len(entries))
+	}
+
+	if entries[0].Action != "auth_login" || entries[0].Result != "succeeded" {
+		t.Fatalf("login audit entry = %#v", entries[0])
+	}
+	if entries[1].Action != "auth_logout" || entries[1].Result != "succeeded" {
+		t.Fatalf("logout audit entry = %#v", entries[1])
+	}
+}
+
+func TestLoginReturnsInternalErrorWhenAuditWriteFails(t *testing.T) {
+	logger := log.New(&bytes.Buffer{}, "", 0)
+	sessionStore := store.NewInMemorySessionStore()
+	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", 24*time.Hour)
+	jobStore := jobs.NewInMemoryRepository(seedTestJobs())
+	nodeStore := store.NewInMemoryNodeStore(2)
+	siteStore := store.NewInMemorySiteStore(5)
+	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
+	router := NewRouter(logger, authService, jobStore, metricsService, failingAuditRecorder{})
+
+	body := strings.NewReader(`{"email":"admin@pressluft.local","password":"pressluft-dev-password"}`)
+	req := httptest.NewRequest(http.MethodPost, "/login", body)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+	assertErrorShape(t, rr.Body.Bytes(), "internal_error")
+	if got := rr.Header().Get("Set-Cookie"); strings.Contains(got, "session_token=") {
+		t.Fatalf("Set-Cookie = %q, expected no session cookie", got)
+	}
 }
 
 func TestExpiredSessionRejectedOnProtectedEndpoint(t *testing.T) {
@@ -231,6 +296,12 @@ func TestJobsAndMetricsRequireAuth(t *testing.T) {
 
 func newTestRouter(t *testing.T, sessionTTL time.Duration) http.Handler {
 	t.Helper()
+	router, _ := newTestRouterWithAudit(t, sessionTTL)
+	return router
+}
+
+func newTestRouterWithAudit(t *testing.T, sessionTTL time.Duration) (http.Handler, *audit.InMemoryStore) {
+	t.Helper()
 	logger := log.New(&bytes.Buffer{}, "", 0)
 	sessionStore := store.NewInMemorySessionStore()
 	authService := auth.NewService(sessionStore, "admin@pressluft.local", "pressluft-dev-password", sessionTTL)
@@ -238,7 +309,23 @@ func newTestRouter(t *testing.T, sessionTTL time.Duration) http.Handler {
 	nodeStore := store.NewInMemoryNodeStore(2)
 	siteStore := store.NewInMemorySiteStore(5)
 	metricsService := metrics.NewService(jobStore, nodeStore, siteStore)
-	return NewRouter(logger, authService, jobStore, metricsService)
+	auditStore := audit.NewInMemoryStore()
+	auditService := audit.NewService(auditStore)
+	return NewRouter(logger, authService, jobStore, metricsService, auditService), auditStore
+}
+
+type failingAuditRecorder struct{}
+
+func (failingAuditRecorder) Record(context.Context, audit.Entry) error {
+	return errors.New("audit unavailable")
+}
+
+func (failingAuditRecorder) RecordAsyncAccepted(context.Context, audit.Entry) error {
+	return errors.New("audit unavailable")
+}
+
+func (failingAuditRecorder) UpdateAsyncResult(context.Context, string, string, string, string) error {
+	return errors.New("audit unavailable")
 }
 
 func loginAndGetCookie(t *testing.T, router http.Handler) *http.Cookie {

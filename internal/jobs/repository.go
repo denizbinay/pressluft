@@ -3,11 +3,13 @@ package jobs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
 
 var ErrNotFound = errors.New("job not found")
+var ErrInvalidTransition = errors.New("invalid job state transition")
 
 type Status string
 
@@ -43,6 +45,14 @@ type Reader interface {
 	List(ctx context.Context) ([]Job, error)
 	GetByID(ctx context.Context, id string) (Job, error)
 	CountByStatus(ctx context.Context, status Status) (int, error)
+}
+
+type QueueStore interface {
+	Reader
+	ClaimNextRunnable(ctx context.Context, workerID string, now time.Time) (Job, bool, error)
+	CompleteSuccess(ctx context.Context, id string, now time.Time) (Job, error)
+	CompleteFailure(ctx context.Context, id string, errorCode string, errorMessage string, now time.Time) (Job, error)
+	Requeue(ctx context.Context, id string, runAfter time.Time, errorCode string, errorMessage string, now time.Time) (Job, error)
 }
 
 type InMemoryRepository struct {
@@ -100,4 +110,139 @@ func (r *InMemoryRepository) CountByStatus(_ context.Context, status Status) (in
 	}
 
 	return count, nil
+}
+
+func (r *InMemoryRepository) ClaimNextRunnable(_ context.Context, workerID string, now time.Time) (Job, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, id := range r.order {
+		job := r.byID[id]
+		if !isRunnable(job, now) {
+			continue
+		}
+		if !r.canRunConcurrently(job) {
+			continue
+		}
+
+		job.Status = StatusRunning
+		job.AttemptCount++
+		job.LockedAt = timePtr(now)
+		job.LockedBy = stringPtr(workerID)
+		job.StartedAt = timePtr(now)
+		job.FinishedAt = nil
+		job.UpdatedAt = now
+		r.byID[id] = job
+
+		return job, true, nil
+	}
+
+	return Job{}, false, nil
+}
+
+func (r *InMemoryRepository) CompleteSuccess(_ context.Context, id string, now time.Time) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	job, ok := r.byID[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	if job.Status != StatusRunning {
+		return Job{}, fmt.Errorf("complete success: %w", ErrInvalidTransition)
+	}
+
+	job.Status = StatusSucceeded
+	job.FinishedAt = timePtr(now)
+	job.UpdatedAt = now
+	r.byID[id] = job
+
+	return job, nil
+}
+
+func (r *InMemoryRepository) CompleteFailure(_ context.Context, id string, errorCode string, errorMessage string, now time.Time) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	job, ok := r.byID[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	if job.Status != StatusRunning {
+		return Job{}, fmt.Errorf("complete failure: %w", ErrInvalidTransition)
+	}
+
+	job.Status = StatusFailed
+	job.ErrorCode = stringPtr(errorCode)
+	job.ErrorMessage = stringPtr(errorMessage)
+	job.FinishedAt = timePtr(now)
+	job.UpdatedAt = now
+	r.byID[id] = job
+
+	return job, nil
+}
+
+func (r *InMemoryRepository) Requeue(_ context.Context, id string, runAfter time.Time, errorCode string, errorMessage string, now time.Time) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	job, ok := r.byID[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	if job.Status != StatusRunning {
+		return Job{}, fmt.Errorf("requeue: %w", ErrInvalidTransition)
+	}
+
+	job.Status = StatusQueued
+	job.RunAfter = timePtr(runAfter)
+	job.LockedAt = nil
+	job.LockedBy = nil
+	job.StartedAt = nil
+	job.FinishedAt = nil
+	job.ErrorCode = stringPtr(errorCode)
+	job.ErrorMessage = stringPtr(errorMessage)
+	job.UpdatedAt = now
+	r.byID[id] = job
+
+	return job, nil
+}
+
+func isRunnable(job Job, now time.Time) bool {
+	if job.Status != StatusQueued {
+		return false
+	}
+	if job.RunAfter == nil {
+		return true
+	}
+	return !job.RunAfter.After(now)
+}
+
+func (r *InMemoryRepository) canRunConcurrently(job Job) bool {
+	for _, otherID := range r.order {
+		other := r.byID[otherID]
+		if other.Status != StatusRunning {
+			continue
+		}
+
+		if job.SiteID != nil && other.SiteID != nil && *job.SiteID == *other.SiteID {
+			return false
+		}
+
+		if job.NodeID != nil && other.NodeID != nil && *job.NodeID == *other.NodeID {
+			return false
+		}
+	}
+
+	return true
+}
+
+func timePtr(v time.Time) *time.Time {
+	t := v
+	return &t
+}
+
+func stringPtr(v string) *string {
+	s := v
+	return &s
 }
