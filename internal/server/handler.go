@@ -1,11 +1,14 @@
 package server
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"io/fs"
 	"net/http"
 	"strings"
+
+	"pressluft/internal/provider"
 )
 
 const assetDir = "dist"
@@ -13,15 +16,27 @@ const assetDir = "dist"
 //go:embed all:dist
 var embeddedDist embed.FS
 
-func NewHandler() http.Handler {
-	h := handler{}
+// NewHandler creates the root HTTP handler. When db is nil the provider
+// endpoints are not registered (useful for tests that only need static assets).
+func NewHandler(db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/health", h.handleHealth)
+
+	// Health
+	mux.HandleFunc("/api/health", handleHealth)
+
+	// Provider endpoints (only when database is available)
+	if db != nil {
+		ph := &providerHandler{store: provider.NewStore(db)}
+		mux.HandleFunc("/api/providers", ph.route)
+		mux.HandleFunc("/api/providers/", ph.routeWithID)
+		mux.HandleFunc("/api/providers/validate", ph.handleValidate)
+		mux.HandleFunc("/api/providers/types", ph.handleTypes)
+	}
+
+	// Dashboard SPA (catch-all)
 	mux.Handle("/", newDashboardHandler())
 	return mux
 }
-
-type handler struct{}
 
 func newDashboardHandler() http.Handler {
 	distFS, err := fs.Sub(embeddedDist, assetDir)
@@ -65,7 +80,7 @@ func missingDashboardHandler() http.Handler {
 	})
 }
 
-func (h handler) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
 }
 
@@ -75,4 +90,8 @@ func respondJSON(w http.ResponseWriter, status int, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
+}
+
+func respondError(w http.ResponseWriter, status int, message string) {
+	respondJSON(w, status, map[string]string{"error": message})
 }

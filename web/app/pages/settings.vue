@@ -191,11 +191,7 @@ const selectSection = (key: string) => {
 
             <!-- Providers -->
             <div v-if="activeSection === 'providers'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
-                  Cloud provider integrations (AWS, DigitalOcean, Hetzner, etc.) and connection management will go here.
-                </p>
-              </div>
+              <SettingsProviders />
             </div>
 
             <!-- Servers -->

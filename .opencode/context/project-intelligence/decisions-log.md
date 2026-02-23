@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.3 | Updated: 2026-02-23 -->
 
 # Decisions Log
 
@@ -38,109 +38,14 @@ Tailwind v4 uses a fundamentally different configuration model (CSS-first with `
 
 ---
 
-## Decision: OKLCH Color Format for Design System
+## Earlier Decisions (2026-02-22 — 2026-02-23)
 
-**Date**: 2026-02-22
-**Status**: Decided
-
-### Context
-
-Needed a color system for the dark-themed dashboard. Traditional hex/HSL colors have perceptual uniformity issues.
-
-### Decision
-
-Use OKLCH color format for all design system colors defined in `main.css` `@theme {}` blocks.
-
-### Rationale
-
-OKLCH provides perceptually uniform lightness, making it easier to create consistent color scales. Tailwind v4 has native OKLCH support. Modern browsers support it well.
-
-### Impact
-
-- **Positive**: Perceptually uniform color scales, consistent contrast ratios
-- **Negative**: Less familiar to developers used to hex/HSL
-- **Risk**: Minimal — fallback is automatic in modern browsers
-
----
-
-## Decision: Self-Hosted Google Fonts
-
-**Date**: 2026-02-22
-**Status**: Decided
-
-### Context
-
-Using Inter (UI) and JetBrains Mono (code) fonts. Could load from Google CDN or self-host.
-
-### Decision
-
-Self-host via `@nuxtjs/google-fonts` module with `download: true` and `inject: true`.
-
-### Rationale
-
-Single-binary deployment means the dashboard may run on internal networks without internet access. Self-hosting eliminates external CDN dependency and improves privacy (no Google tracking). Also better for performance (no DNS lookup, no CORS).
-
-### Impact
-
-- **Positive**: Works offline, no external dependencies, better privacy
-- **Negative**: Slightly larger build output
-- **Risk**: None significant
-
----
-
-## Decision: Static Generation (not SSR) for Go Embedding
-
-**Date**: 2026-02-22
-**Status**: Decided
-
-### Context
-
-Nuxt supports SSR (requires Node runtime) and static generation (pure HTML/JS/CSS). The dashboard is embedded in a Go binary.
-
-### Decision
-
-Use `nuxt generate` for static output. Go serves the files via `embed.FS`.
-
-### Rationale
-
-No Node runtime needed in production. Single binary deployment. The dashboard is an admin/monitoring UI — no SEO or dynamic server rendering needed.
-
-### Alternatives Considered
-
-| Alternative | Pros | Cons | Why Rejected? |
-|-------------|------|------|---------------|
-| SSR mode | Dynamic rendering, better SEO | Requires Node runtime alongside Go | Unnecessary complexity for admin dashboard |
-| SPA mode | Simpler | No prerendering benefits | Static gen gives both |
-
-### Impact
-
-- **Positive**: Single binary, no Node in production, simpler deployment
-- **Negative**: No server-side rendering (acceptable for admin UI)
-
----
-
-## Decision: Three-Page Navigation Structure
-
-**Date**: 2026-02-23
-**Status**: Decided
-
-### Context
-
-Initially had 4 pages (Dashboard, Pipelines, Services, Settings). The kitchen-sink component showcase was on the Dashboard page. Pipelines and Services were premature placeholders.
-
-### Decision
-
-Restructured to 3 pages: Dashboard (empty placeholder), Settings (empty placeholder), Components (UI library showcase). Removed Pipelines and Services pages.
-
-### Rationale
-
-Don't create feature pages until features exist. The component showcase is useful as a living reference but shouldn't be the dashboard. Keep navigation clean and add pages when real features are implemented.
-
-### Impact
-
-- **Positive**: Cleaner navigation, component library preserved as reference
-- **Negative**: None
-- **Risk**: None — pages can be added back when features are built
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| OKLCH colors | OKLCH for all design system colors in `@theme {}` | Perceptually uniform lightness, native Tailwind v4 support |
+| Self-hosted fonts | `@nuxtjs/google-fonts` with `download: true` | Works offline (single-binary may run without internet), no CDN dependency |
+| Static generation | `nuxt generate` (not SSR) | No Node runtime in production, single binary, admin UI doesn't need SSR |
+| Three-page nav | Dashboard, Settings, Components | Don't create feature pages until features exist; add pages when real features are built |
 
 ---
 
@@ -175,6 +80,117 @@ All settings sections share the same layout (sidebar + content card). Nested rou
 - **Risk**: If sections grow very large, can extract each section's content into its own component and lazy-import. The pattern still holds.
 
 ---
+
+## Decision: SQLite via modernc.org/sqlite (Pure Go, No CGo)
+
+**Date**: 2026-02-23
+**Status**: Decided
+
+### Context
+
+Needed local persistence for provider credentials. Options: SQLite (via CGo or pure Go), BoltDB, or flat files.
+
+### Decision
+
+Use `modernc.org/sqlite` — a pure Go SQLite implementation with no CGo dependency.
+
+### Rationale
+
+Single-binary deployment is a core constraint. CGo-based SQLite (`mattn/go-sqlite3`) requires a C compiler and complicates cross-compilation. `modernc.org/sqlite` is a transpiled pure Go implementation that works with `database/sql` and requires no external toolchain. Performance is sufficient for a local app with low write volume.
+
+### Alternatives Considered
+
+| Alternative | Pros | Cons | Why Rejected? |
+|-------------|------|------|---------------|
+| `mattn/go-sqlite3` (CGo) | Battle-tested, faster | Requires C compiler, breaks cross-compile | Conflicts with single-binary goal |
+| BoltDB/bbolt | Pure Go, embedded | Key-value only, no SQL, no migrations | Too low-level for relational data |
+| Flat files (JSON/YAML) | Simplest | No queries, no transactions, no schema | Doesn't scale past trivial use |
+
+### Impact
+
+- **Positive**: Zero external dependencies, cross-compiles cleanly, `database/sql` compatible
+- **Negative**: Slightly slower than CGo SQLite (acceptable for local app)
+- **Config**: `MaxOpenConns(1)`, WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`
+
+---
+
+## Decision: Goose v3 for Embedded SQL Migrations
+
+**Date**: 2026-02-23
+**Status**: Decided
+
+### Context
+
+Need schema migrations for the SQLite database. Migrations should be embedded in the binary (no external files at runtime).
+
+### Decision
+
+Use `pressly/goose/v3` with `//go:embed migrations/*.sql` and `goose.NewProvider()`.
+
+### Rationale
+
+Goose supports embedded filesystems natively via `NewProvider()`. SQL-based migrations are readable and auditable. The provider API runs migrations on startup automatically.
+
+### Impact
+
+- **Positive**: Migrations embedded in binary, runs on startup, SQL-based (readable)
+- **Gotcha**: Must use `fs.Sub(embedMigrations, "migrations")` to strip the directory prefix — otherwise goose reports "no migrations found"
+
+---
+
+## Decision: hcloud-go v2.19.0 (Pinned for Go 1.22 Compatibility)
+
+**Date**: 2026-02-23
+**Status**: Decided
+
+### Context
+
+Need the official Hetzner Cloud Go SDK. Latest versions (v2.20+) require Go 1.23+, but the project uses Go 1.22.
+
+### Decision
+
+Pin to `hcloud-go v2.19.0` (requires go 1.21, compatible with 1.22). The API surface is identical to newer versions for our use case.
+
+### Impact
+
+- **Positive**: Works with Go 1.22, full API coverage for validation and server management
+- **Risk**: When upgrading to Go 1.23+, can unpin to latest. No breaking changes expected.
+
+---
+
+## Decision: Provider Abstraction with Interface + Registry + init() Auto-Registration
+
+**Date**: 2026-02-23
+**Status**: Decided
+
+### Context
+
+Need an extensible architecture for cloud providers. Only Hetzner for MVP, but must be obvious how to add more.
+
+### Decision
+
+`Provider` interface (`Info()` + `Validate()`) with a global registry (`Register()`/`Get()`/`All()`). Providers self-register via `init()` and are activated by blank import in `cmd/main.go` (`_ "pressluft/internal/provider/hetzner"`).
+
+### Rationale
+
+Adding a new provider = implement the interface + add a blank import. No factory switches, no config files. The `init()` pattern is idiomatic Go for plugin-style registration (used by `database/sql` drivers, image codecs, etc.).
+
+### Impact
+
+- **Positive**: Adding a provider is 1 file + 1 import line. Zero changes to existing code.
+- **Negative**: Global mutable state (registry map) — acceptable for a single-binary app.
+
+---
+
+## 📂 Codebase References
+
+- `web/nuxt.config.ts` - Tailwind v4 Vite plugin, Google Fonts, API dev proxy
+- `web/app/assets/css/main.css` - OKLCH color tokens and theme utilities
+- `web/app/pages/settings.vue` - Query-param section routing pattern
+- `internal/database/database.go` - SQLite setup and embedded goose provider
+- `internal/database/migrations/00001_create_providers.sql` - Migration source for providers table
+- `internal/provider/provider.go` - Registry design and provider contract
+- `internal/provider/hetzner/hetzner.go` - hcloud-go usage and validation checks
 
 ## Related Files
 

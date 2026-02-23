@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/nav | Priority: high | Version: 1.0 | Updated: 2025-01-12 -->
+<!-- Context: project-intelligence/nav | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
 
 # Project Intelligence
 
@@ -25,6 +25,7 @@
 | See the connection | `business-tech-bridge.md` | Business → technical mapping |
 | Know the context | `decisions-log.md` | Why decisions were made |
 | Current state | `living-notes.md` | Active issues and open questions |
+| Provider architecture | `technical-domain.md` + `decisions-log.md` | SQLite persistence, provider interface, Hetzner integration |
 | All of the above | Read all files in order | Full project intelligence |
 
 ## Usage
@@ -63,3 +64,10 @@ Keep this folder current:
 - Governance and ownership
 
 See `.opencode/context/core/standards/project-intelligence.md` for the standard itself.
+
+## 📂 Codebase References
+
+- `internal/database/` - Persistence and migration implementation details
+- `internal/provider/` - Provider abstractions and concrete adapters
+- `internal/server/handler_providers.go` - Provider API routing and handlers
+- `web/app/components/SettingsProviders.vue` - Providers settings UX implementation
