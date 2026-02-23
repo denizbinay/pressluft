@@ -1,0 +1,27 @@
+key: woocommerce-optimized
+name: WooCommerce Optimized
+version: 0.1.0
+description: >
+  Commerce-oriented profile with defaults tuned for WooCommerce checkout and
+  catalog performance.
+
+base_image: ubuntu-24.04
+services:
+  - nginx
+  - php-fpm
+  - redis-server
+  - rabbitmq-server
+
+hardening:
+  fail2ban: enabled
+  ufw: baseline
+  automatic_security_updates: enabled
+
+performance:
+  php_worker_model: dynamic
+  opcache: aggressive
+  object_cache: redis
+
+artifacts:
+  bootstrap_script: scripts/bootstrap.sh
+  playbook: playbooks/main.yml

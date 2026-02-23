@@ -31,6 +31,13 @@ func NewHandler(db *sql.DB) http.Handler {
 		mux.HandleFunc("/api/providers/", ph.routeWithID)
 		mux.HandleFunc("/api/providers/validate", ph.handleValidate)
 		mux.HandleFunc("/api/providers/types", ph.handleTypes)
+
+		sh := &serversHandler{
+			providerStore: provider.NewStore(db),
+			serverStore:   NewServerStore(db),
+		}
+		mux.HandleFunc("/api/servers", sh.route)
+		mux.HandleFunc("/api/servers/", sh.routeWithPath)
 	}
 
 	// Dashboard SPA (catch-all)

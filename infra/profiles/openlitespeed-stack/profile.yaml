@@ -1,0 +1,21 @@
+key: openlitespeed-stack
+name: OpenLiteSpeed Stack
+version: 0.1.0
+description: >
+  OpenLiteSpeed-first profile for cache-heavy WordPress sites managed by agencies.
+
+base_image: ubuntu-24.04
+services:
+  - openlitespeed
+  - lsphp
+  - mariadb-client
+  - redis-server
+
+hardening:
+  fail2ban: enabled
+  ufw: baseline
+  automatic_security_updates: enabled
+
+artifacts:
+  bootstrap_script: scripts/bootstrap.sh
+  playbook: playbooks/main.yml

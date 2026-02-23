@@ -76,3 +76,23 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	}
 	return nil
 }
+
+// GetByID returns a provider row by ID including the API token.
+func (s *Store) GetByID(ctx context.Context, id int64) (*StoredProvider, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, type, name, api_token, status, created_at, updated_at
+		 FROM providers
+		 WHERE id = ?`,
+		id,
+	)
+
+	var p StoredProvider
+	if err := row.Scan(&p.ID, &p.Type, &p.Name, &p.APIToken, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("provider %d not found", id)
+		}
+		return nil, fmt.Errorf("get provider: %w", err)
+	}
+
+	return &p, nil
+}

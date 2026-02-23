@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/nav | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/nav | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
 
 # Project Intelligence
 
@@ -26,6 +26,7 @@
 | Know the context | `decisions-log.md` | Why decisions were made |
 | Current state | `living-notes.md` | Active issues and open questions |
 | Provider architecture | `technical-domain.md` + `decisions-log.md` | SQLite persistence, provider interface, Hetzner integration |
+| Server provisioning architecture | `technical-domain.md` + `decisions-log.md` | Provider-agnostic server contracts, profiles, and Hetzner create flow |
 | All of the above | Read all files in order | Full project intelligence |
 
 ## Usage
@@ -70,4 +71,8 @@ See `.opencode/context/core/standards/project-intelligence.md` for the standard 
 - `internal/database/` - Persistence and migration implementation details
 - `internal/provider/` - Provider abstractions and concrete adapters
 - `internal/server/handler_providers.go` - Provider API routing and handlers
+- `internal/server/handler_servers.go` - Server provisioning API routing and handlers
+- `internal/server/store_servers.go` - Server persistence and provisioning state
 - `web/app/components/SettingsProviders.vue` - Providers settings UX implementation
+- `web/app/components/SettingsServers.vue` - Servers settings UX implementation
+- `web/app/composables/useServers.ts` - Servers frontend API client

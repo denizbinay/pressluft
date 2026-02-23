@@ -3,6 +3,7 @@ const mobileMenuOpen = ref(false)
 
 const navLinks = [
   { label: 'Dashboard', to: '/' },
+  { label: 'Servers', to: '/servers' },
   { label: 'Settings', to: '/settings' },
   { label: 'Components', to: '/components' },
 ]

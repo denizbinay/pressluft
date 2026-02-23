@@ -1,0 +1,22 @@
+key: nginx-stack
+name: NGINX Stack
+version: 0.1.0
+description: >
+  Managed WordPress baseline using NGINX + PHP-FPM with practical defaults
+  for agency workloads.
+
+base_image: ubuntu-24.04
+services:
+  - nginx
+  - php-fpm
+  - mariadb-client
+  - redis-server
+
+hardening:
+  fail2ban: enabled
+  ufw: baseline
+  automatic_security_updates: enabled
+
+artifacts:
+  bootstrap_script: scripts/bootstrap.sh
+  playbook: playbooks/main.yml

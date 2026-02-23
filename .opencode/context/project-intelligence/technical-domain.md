@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.3 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.4 | Updated: 2026-02-23 -->
 
 # Technical Domain
 
@@ -16,6 +16,7 @@
 | Database | SQLite | — | Local persistence via `modernc.org/sqlite` (pure Go, no CGo) |
 | Migrations | Goose | v3.24.1 | Embedded SQL migrations via `pressly/goose/v3` |
 | Cloud SDK | hcloud-go | v2.19.0 | Hetzner Cloud API (pinned for Go 1.22 compat) |
+| Infra Profiles | YAML profiles | — | Auditable server profile metadata under `infra/profiles/` |
 | Build | Make | — | Orchestrates npm generate → copy to embed dir → go build |
 
 ## Architecture Pattern
@@ -39,19 +40,26 @@ pressluft/
 │   ├── database/
 │   │   ├── database.go            # SQLite open, pragmas, migration runner
 │   │   └── migrations/            # Embedded SQL migrations (goose)
-│   │       └── 00001_create_providers.sql
+│   │       ├── 00001_create_providers.sql
+│   │       └── 00002_create_servers.sql
 │   ├── provider/
 │   │   ├── provider.go            # Provider interface, Info, ValidationResult, registry
+│   │   ├── provider_servers.go    # Provider-agnostic server catalog/provision contracts
 │   │   ├── store.go               # StoredProvider type, Store (Create/List/Delete)
 │   │   └── hetzner/
-│   │       └── hetzner.go         # Hetzner Cloud implementation (hcloud-go)
+│   │       ├── hetzner.go         # Hetzner token validation implementation
+│   │       └── servers.go         # Hetzner server catalog + create adapter
 │   └── server/
 │       ├── handler.go             # Route setup, SPA handler, JSON helpers
 │       ├── handler_providers.go   # Provider CRUD + validate + types endpoints
-│       ├── handler_test.go
-│       ├── logging.go             # Request logging middleware
-│       ├── logging_test.go
+│       ├── handler_servers.go     # Servers API endpoints (list/catalog/profiles/create)
+│       ├── store_servers.go       # Servers persistence + provisioning status updates
+│       └── profiles/registry.go   # Server profile registry returned by API
 │       └── dist/                  # Embedded static assets (generated, gitkeep)
+├── infra/profiles/                # Auditable profile manifests (YAML)
+│   ├── nginx-stack/profile.yaml
+│   ├── openlitespeed-stack/profile.yaml
+│   └── woocommerce-optimized/profile.yaml
 ├── web/                           # Nuxt 4 frontend
 │   ├── nuxt.config.ts             # Tailwind v4 vite plugin, Google Fonts, API proxy
 │   ├── package.json
@@ -59,9 +67,9 @@ pressluft/
 │   │   ├── app.vue                # Root: <NuxtLayout><NuxtPage /></NuxtLayout>
 │   │   ├── assets/css/main.css    # Design system: OKLCH theme, custom utilities
 │   │   ├── layouts/default.vue    # Top nav, content area, footer, mobile menu
-│   │   ├── composables/           # useModal, useDropdown, useProviders
-│   │   ├── components/            # SettingsProviders + ui/ (11 reusable components)
-│   │   └── pages/                 # index (dashboard), settings, components (UI library)
+│   │   ├── composables/           # useModal, useDropdown, useProviders, useServers
+│   │   ├── components/            # SettingsProviders, SettingsServers + ui/
+│   │   └── pages/                 # index, servers, settings, components
 │   └── .output/public/            # Generated static output (not committed)
 ├── Makefile                       # build, dev, run, format, lint, test, check, clean
 ├── go.mod
@@ -106,6 +114,10 @@ Extensible cloud provider abstraction. Only Hetzner implemented for MVP.
 | DELETE | `/api/providers/{id}` | Delete provider by ID |
 | POST | `/api/providers/validate` | Standalone token validation |
 | GET | `/api/providers/types` | List registered provider types |
+| GET | `/api/servers` | List provisioned servers |
+| GET | `/api/servers/catalog?provider_id=...` | Provider server catalog (regions/sizes/images) |
+| GET | `/api/servers/profiles` | Available platform server profiles |
+| POST | `/api/servers` | Create server via provider + selected profile |
 
 All endpoints return JSON. Errors use `{"error": "message"}` format. Provider endpoints only registered when DB is available (`db != nil` guard in `NewHandler`).
 
@@ -128,27 +140,27 @@ All endpoints return JSON. Errors use `{"error": "message"}` format. Provider en
 - Custom utilities: `glass`, `glow-accent`, `glow-primary`
 - Fonts: `--font-sans: 'Inter'`, `--font-mono: 'JetBrains Mono'`
 
-### Pages (3 routes)
+### Pages (4 routes)
 
 | Route | Page | Status |
 |-------|------|--------|
 | `/` | Dashboard | Placeholder (headline + subline) |
+| `/servers` | Servers | Dedicated provisioning and inventory route |
 | `/settings` | Settings | Vertical sidebar sub-nav, 7 sections, query-param routing (`?tab=general`), mobile dropdown fallback. Providers section is functional (add/validate/delete); other sections are placeholder. |
 | `/components` | UI Components | Kitchen-sink showcase of all UI components |
 
-### UI Components (11)
-
-UiButton (5 variants, 3 sizes, loading/disabled), UiCard (slots, hoverable), UiBadge (5 variants), UiProgressBar (4 colors, 3 sizes), UiInput, UiSelect, UiTextarea, UiToggle, UiModal (teleported, animated), UiDropdown (click-outside, escape), UiDropdownItem (normal/danger/disabled)
-
-### Feature Components (1)
+### Feature Components (2)
 
 `SettingsProviders` — Provider management UI: empty state, provider list with status badges, add modal with 2-step flow (validate token → name & save), inline Hetzner tutorial, animated validation feedback (success/warning/error)
 
-### Composables (3)
+`SettingsServers` — Server management UI: inventory list plus guided create modal (provider → server details → profile → review), uses provider catalog data, and submits provisioning requests to `/api/servers`.
+
+### Composables (4)
 
 `useModal()` — open/close/toggle reactive state
 `useDropdown()` — click-outside and escape key handling
 `useProviders()` — Provider API client (fetchProviders, fetchProviderTypes, validateToken, createProvider, deleteProvider)
+`useServers()` — Servers API client (fetchServers, fetchCatalog, fetchProfiles, createServer)
 
 ### Nuxt Config Highlights
 
@@ -169,18 +181,19 @@ Testing: make test (Go tests), make check (full validation)
 ## 📂 Codebase References
 
 - `cmd/main.go` - DB initialization, provider registration import, HTTP server wiring
-- `internal/database/database.go` - SQLite connection config, pragmas, embedded migrations
-- `internal/database/migrations/00001_create_providers.sql` - Providers schema and unique index
-- `internal/provider/provider.go` - Provider interface and registry
-- `internal/provider/store.go` - Provider persistence layer
-- `internal/provider/hetzner/hetzner.go` - Hetzner token validation flow
-- `internal/server/handler.go` - Route registration and JSON response helpers
-- `internal/server/handler_providers.go` - Provider API endpoints
-- `web/app/composables/useProviders.ts` - Frontend provider API client
-- `web/app/components/SettingsProviders.vue` - Provider management UI
+- `internal/database/database.go` - SQLite config, pragmas, embedded migrations
+- `internal/database/migrations/00002_create_servers.sql` - Servers schema
+- `internal/provider/provider_servers.go` - Provider-agnostic server contracts
+- `internal/provider/hetzner/servers.go` - Hetzner catalog and create-server adapter
+- `internal/server/handler_servers.go` - Servers API endpoints
+- `internal/server/store_servers.go` - Servers persistence and provisioning updates
+- `internal/server/profiles/registry.go` - Profile registry backing `/api/servers/profiles`
+- `web/app/composables/useServers.ts` - Servers frontend API client
+- `web/app/components/SettingsServers.vue` - Servers management UI and guided modal
+- `web/app/pages/servers.vue` - Dedicated Servers route
+- `infra/profiles/README.md` - Profile manifest conventions and review guidance
 
 ## Related Files
-
 - `business-domain.md` — Why this project exists
 - `decisions-log.md` — Key technical decisions with rationale
 - `living-notes.md` — Current state, next steps, gotchas
