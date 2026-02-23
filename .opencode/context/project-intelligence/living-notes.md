@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
 
 # Living Notes
 
@@ -6,14 +6,14 @@
 
 ## Current State
 
-The dashboard UI foundation is complete. All infrastructure (Go backend, Nuxt frontend, build pipeline, design system) is working. No real features implemented yet — pages are placeholders ready for content.
+The dashboard UI foundation is complete. All infrastructure (Go backend, Nuxt frontend, build pipeline, design system) is working. Settings page has been scaffolded with full sub-navigation; other pages still placeholders.
 
 **What's built:**
 - Go HTTP server with embedded static assets (`embed.FS`)
 - Nuxt 4 frontend with Tailwind v4 dark theme
 - Full OKLCH design system with surface/accent/semantic color scales
 - 11 reusable UI components, 2 composables
-- 3 pages: Dashboard (placeholder), Settings (placeholder), Components (UI library showcase)
+- 3 pages: Dashboard (placeholder), Settings (sidebar sub-nav, 7 sections — placeholder content), Components (UI library showcase)
 - Responsive layout with top nav, mobile hamburger menu, footer
 - `make build` produces a single binary, `make dev` runs both servers with hot reload
 
@@ -22,9 +22,9 @@ The dashboard UI foundation is complete. All infrastructure (Go backend, Nuxt fr
 | Item | Priority | Notes |
 |------|----------|-------|
 | Dashboard page content | High | Real monitoring/overview widgets |
-| Settings page content | Medium | Configuration UI |
+| Settings section content | Medium | Fill in the 7 settings sections (General, Providers, Servers, Sites, Notifications, Security, API Keys) with real forms |
 | API integration | High | Connect frontend to Go `/api` routes |
-| Additional components | Medium | Tables, tabs, toasts/notifications, sidebar panels as needed |
+| Additional components | Medium | Tables, toasts/notifications as needed |
 | Health check widget | Low | Was in old `app.vue`, could be re-integrated into layout or dashboard |
 
 ## Gotchas for Future Sessions
@@ -70,10 +70,11 @@ The dashboard UI foundation is complete. All infrastructure (Go backend, Nuxt fr
 - Custom utilities: `glass` (frosted backdrop), `glow-accent`, `glow-primary`
 - Font stack: Inter (sans), JetBrains Mono (mono) — self-hosted
 
-### Page Pattern
+### Page Patterns
 
-- Placeholder pages: `<h1>` headline + `<p>` subline, minimal template-only SFC
-- Feature pages: `<script setup>` with composables + reactive state, sections with `<UiCard>` wrappers
+- **Placeholder pages**: `<h1>` headline + `<p>` subline, minimal template-only SFC
+- **Feature pages**: `<script setup>` with composables + reactive state, sections with `<UiCard>` wrappers
+- **Sub-navigated pages**: Query-param routing (`?tab=section`) with vertical sidebar on desktop, collapsible dropdown on mobile. Sections defined as a typed array, active section derived from `useRoute().query`. See `settings.vue` as the reference implementation. Prefer this over nested file-based routes for in-page section switching.
 
 ## Related Files
 

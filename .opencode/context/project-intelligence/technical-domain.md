@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/technical | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/technical | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
 
 # Technical Domain
 
@@ -89,7 +89,7 @@ pressluft/
 | Route | Page | Status |
 |-------|------|--------|
 | `/` | Dashboard | Placeholder (headline + subline) |
-| `/settings` | Settings | Placeholder (headline + subline) |
+| `/settings` | Settings | Vertical sidebar sub-nav, 7 sections (General, Providers, Servers, Sites, Notifications, Security, API Keys), query-param routing (`?tab=general`), mobile dropdown fallback. Section content is placeholder. |
 | `/components` | UI Components | Kitchen-sink showcase of all UI components |
 
 ### UI Components (11)

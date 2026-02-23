@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.1 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
 
 # Decisions Log
 
@@ -141,6 +141,38 @@ Don't create feature pages until features exist. The component showcase is usefu
 - **Positive**: Cleaner navigation, component library preserved as reference
 - **Negative**: None
 - **Risk**: None — pages can be added back when features are built
+
+---
+
+## Decision: Query-Param Sub-Navigation (not Nested Routes)
+
+**Date**: 2026-02-23
+**Status**: Decided
+
+### Context
+
+The Settings page needs multiple sections (General, Providers, Servers, Sites, Notifications, Security, API Keys). Two approaches: nested file-based routes (`pages/settings/general.vue`, `pages/settings/providers.vue`, etc.) or a single page with query-param switching (`/settings?tab=general`).
+
+### Decision
+
+Use a single `settings.vue` page with query-param routing (`?tab=general`). Sections defined as a typed array. Active section derived from `useRoute().query` with a computed property. Desktop shows a vertical sidebar; mobile collapses to a dropdown selector.
+
+### Rationale
+
+All settings sections share the same layout (sidebar + content card). Nested routes would duplicate this layout or require a settings-specific layout file. Query params keep it in one file, make the sidebar state trivial (just a computed from the route), and avoid Nuxt's nested route complexity for what is essentially tab switching. The URL is still bookmarkable and shareable.
+
+### Alternatives Considered
+
+| Alternative | Pros | Cons | Why Rejected? |
+|-------------|------|------|---------------|
+| Nested file routes (`pages/settings/*.vue`) | Nuxt-native, code-split per section | Layout duplication, more files, overkill for placeholder sections | Unnecessary complexity at this stage |
+| Component-only tabs (no URL) | Simplest | Not bookmarkable, no URL state | Bad UX — can't link to a specific section |
+
+### Impact
+
+- **Positive**: Single file, bookmarkable URLs, trivial to add new sections (just add to the array), shared sidebar/layout
+- **Negative**: All sections in one file (could get large when content is real)
+- **Risk**: If sections grow very large, can extract each section's content into its own component and lazy-import. The pattern still holds.
 
 ---
 
