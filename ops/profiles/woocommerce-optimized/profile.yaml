@@ -1,11 +1,16 @@
 key: woocommerce-optimized
 name: WooCommerce Optimized
-version: 0.1.0
+version: 0.2.0
 description: >
   Commerce-oriented profile with defaults tuned for WooCommerce checkout and
   catalog performance.
 
 base_image: ubuntu-24.04
+image_policy:
+  allow_override: false
+  allowed:
+    - ubuntu-24.04
+
 services:
   - nginx
   - php-fpm
@@ -22,6 +27,12 @@ performance:
   opcache: aggressive
   object_cache: redis
 
+hooks:
+  - bootstrap
+  - harden
+  - configure
+  - verify
+
 artifacts:
-  bootstrap_script: scripts/bootstrap.sh
-  playbook: playbooks/main.yml
+  playbook: ansible/playbooks/provision.yml
+  role: woocommerce-optimized

@@ -1,0 +1,7 @@
+---
+- name: Pressluft provisioning flow (scaffold)
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: common

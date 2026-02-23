@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 )
 
@@ -38,6 +39,10 @@ func NewHandler(db *sql.DB) http.Handler {
 		}
 		mux.HandleFunc("/api/servers", sh.route)
 		mux.HandleFunc("/api/servers/", sh.routeWithPath)
+
+		jh := &jobsHandler{store: orchestrator.NewStore(db)}
+		mux.HandleFunc("/api/jobs", jh.route)
+		mux.HandleFunc("/api/jobs/", jh.routeWithID)
 	}
 
 	// Dashboard SPA (catch-all)

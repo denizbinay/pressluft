@@ -1,0 +1,4 @@
+---
+- name: Validate bootstrap marker
+  ansible.builtin.debug:
+    msg: "Pressluft common role scaffold executed"

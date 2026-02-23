@@ -177,7 +177,17 @@ const formatMonthlyPrice = (
 ): string => {
   const price = serverType.prices.find((entry) => entry.location_name === location)
   if (!price) return ''
-  return `${price.monthly_gross} ${price.currency}`
+
+  const amount = Number(price.monthly_gross)
+  if (Number.isNaN(amount)) {
+    return `${price.monthly_gross} ${price.currency}`
+  }
+
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+  return `${formattedAmount} ${price.currency}`
 }
 
 const formatDate = (iso: string): string => {

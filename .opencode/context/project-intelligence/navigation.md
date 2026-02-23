@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/nav | Priority: high | Version: 1.2 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/nav | Priority: high | Version: 1.3 | Updated: 2026-02-23 -->
 
 # Project Intelligence
 
@@ -27,6 +27,8 @@
 | Current state | `living-notes.md` | Active issues and open questions |
 | Provider architecture | `technical-domain.md` + `decisions-log.md` | SQLite persistence, provider interface, Hetzner integration |
 | Server provisioning architecture | `technical-domain.md` + `decisions-log.md` | Provider-agnostic server contracts, profiles, and Hetzner create flow |
+| Ops workspace and profile model | `technical-domain.md` | `ops/` structure, profile schema, contributor boundaries |
+| Orchestration lifecycle and events | `technical-domain.md` + `living-notes.md` | Job states, runner boundaries, SSE job events |
 | All of the above | Read all files in order | Full project intelligence |
 
 ## Usage
@@ -72,7 +74,10 @@ See `.opencode/context/core/standards/project-intelligence.md` for the standard 
 - `internal/provider/` - Provider abstractions and concrete adapters
 - `internal/server/handler_providers.go` - Provider API routing and handlers
 - `internal/server/handler_servers.go` - Server provisioning API routing and handlers
+- `internal/server/handler_jobs.go` - Orchestration job API and event stream handlers
 - `internal/server/store_servers.go` - Server persistence and provisioning state
+- `internal/orchestrator/` - Job lifecycle state machine and persistence access
 - `web/app/components/SettingsProviders.vue` - Providers settings UX implementation
 - `web/app/components/SettingsServers.vue` - Servers settings UX implementation
 - `web/app/composables/useServers.ts` - Servers frontend API client
+- `web/app/composables/useJobs.ts` - Jobs frontend API and stream client scaffold

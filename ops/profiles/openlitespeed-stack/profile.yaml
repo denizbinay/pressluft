@@ -1,10 +1,15 @@
 key: openlitespeed-stack
 name: OpenLiteSpeed Stack
-version: 0.1.0
+version: 0.2.0
 description: >
   OpenLiteSpeed-first profile for cache-heavy WordPress sites managed by agencies.
 
 base_image: ubuntu-24.04
+image_policy:
+  allow_override: false
+  allowed:
+    - ubuntu-24.04
+
 services:
   - openlitespeed
   - lsphp
@@ -16,6 +21,12 @@ hardening:
   ufw: baseline
   automatic_security_updates: enabled
 
+hooks:
+  - bootstrap
+  - harden
+  - configure
+  - verify
+
 artifacts:
-  bootstrap_script: scripts/bootstrap.sh
-  playbook: playbooks/main.yml
+  playbook: ansible/playbooks/provision.yml
+  role: openlitespeed-stack

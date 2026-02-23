@@ -7,6 +7,7 @@ Single-binary Go service that serves an embedded Nuxt dashboard and exposes boot
 - `cmd/main.go`: Go entrypoint
 - `internal/`: internal Go packages (`server`)
 - `web/`: Nuxt application source
+- `ops/`: operations workspace (profiles, ansible, schemas, scripts)
 - `internal/server/dist/`: generated static assets embedded into Go
 - `bin/`: compiled binary output
 
@@ -115,3 +116,10 @@ Expected body:
 ```
 
 See `docs/bootstrap-validation.md` for a concise validation checklist and bootstrap safety constraints.
+
+## Ops Foundation
+
+- Profile contracts live under `ops/profiles/`
+- Ansible convergence scaffolding lives under `ops/ansible/`
+- Profile schema lives at `ops/schemas/profile.schema.json`
+- Orchestration lifecycle scaffolding is available via `/api/jobs` and `/api/jobs/{id}/events`

@@ -1,199 +1,145 @@
-<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.4 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.5 | Updated: 2026-02-23 -->
 
 # Technical Domain
 
-> Pressluft is a single-binary Go service that serves an embedded Nuxt 4 dashboard via `embed.FS`.
+Pressluft is a single-binary Go application that embeds a static Nuxt dashboard and exposes provisioning APIs. The architecture now includes an `ops/` workspace plus orchestration scaffolding for job lifecycle, event streaming, and safe execution boundaries.
+
+## Quick Reference
+
+**Type**: Monolith (Go API + embedded Nuxt SPA)
+**Core flow**: `make build` -> `nuxt generate` -> copy to `internal/server/dist/` -> Go build
+**Current focus**: Provider-backed server creation + ops/orchestration foundation
 
 ## Primary Stack
 
 | Layer | Technology | Version | Rationale |
 |-------|-----------|---------|-----------|
-| Backend | Go | 1.22 | Single-binary deployment, embed.FS for static assets |
-| Frontend | Nuxt 4 | ^4.3.1 | Vue 3 meta-framework, static generation for Go embedding |
-| UI Framework | Vue 3 | ^3.5.28 | Composition API, reactivity, SFC components |
-| CSS | Tailwind CSS v4 | ^4.2.0 | Utility-first, CSS-first config via `@theme {}` blocks |
-| Fonts | Inter + JetBrains Mono | Variable | Self-hosted via `@nuxtjs/google-fonts` with `download: true` |
-| Database | SQLite | — | Local persistence via `modernc.org/sqlite` (pure Go, no CGo) |
-| Migrations | Goose | v3.24.1 | Embedded SQL migrations via `pressly/goose/v3` |
-| Cloud SDK | hcloud-go | v2.19.0 | Hetzner Cloud API (pinned for Go 1.22 compat) |
-| Infra Profiles | YAML profiles | — | Auditable server profile metadata under `infra/profiles/` |
-| Build | Make | — | Orchestrates npm generate → copy to embed dir → go build |
+| Backend | Go | 1.22 | Single binary runtime and predictable deployment |
+| Frontend | Nuxt 4 + Vue 3 | ^4.3.1 / ^3.5.28 | Fast dashboard iteration and typed composables |
+| Styling | Tailwind CSS v4 | ^4.2.0 | CSS-first tokens and utility workflows |
+| Data | SQLite + Goose | modernc + v3.24.1 | Embedded, migration-backed local persistence |
+| Cloud SDK | hcloud-go | v2.19.0 | Hetzner API support compatible with Go 1.22 |
+| Ops assets | YAML + Ansible scaffold | internal | Auditable profile intent and convergence path |
 
 ## Architecture Pattern
 
-```
-Type: Monolith (single binary)
-Pattern: Go HTTP server + embedded static Nuxt SPA
-Flow: make build → nuxt generate → cp .output/public → internal/server/dist/ → go build → single binary
-```
+- **API boundary**: `internal/server/*` handlers expose JSON endpoints; stores isolate persistence logic.
+- **Provider model**: interface + registry (`Register/Get/All`) keeps provider extension simple.
+- **Ops model**: `ops/` holds profile intent and convergence artifacts for ops contributors.
+- **Orchestration model**: job state machine + persisted events/checkpoints under `internal/orchestrator`.
+- **Execution boundary**: runner abstraction (`internal/runner`) isolates external tool invocation (Ansible guardrails).
 
-### Why This Architecture?
+## Project Structure (Core)
 
-Single-binary deployment to VPS. No Node runtime needed in production. Go serves the static dashboard and exposes `/api` routes. During development, Nuxt dev server proxies `/api` to the Go backend.
-
-## Project Structure
-
-```
+```text
 pressluft/
-├── cmd/main.go                    # Go entrypoint, DB init, HTTP server
+├── cmd/main.go
 ├── internal/
-│   ├── database/
-│   │   ├── database.go            # SQLite open, pragmas, migration runner
-│   │   └── migrations/            # Embedded SQL migrations (goose)
-│   │       ├── 00001_create_providers.sql
-│   │       └── 00002_create_servers.sql
-│   ├── provider/
-│   │   ├── provider.go            # Provider interface, Info, ValidationResult, registry
-│   │   ├── provider_servers.go    # Provider-agnostic server catalog/provision contracts
-│   │   ├── store.go               # StoredProvider type, Store (Create/List/Delete)
-│   │   └── hetzner/
-│   │       ├── hetzner.go         # Hetzner token validation implementation
-│   │       └── servers.go         # Hetzner server catalog + create adapter
-│   └── server/
-│       ├── handler.go             # Route setup, SPA handler, JSON helpers
-│       ├── handler_providers.go   # Provider CRUD + validate + types endpoints
-│       ├── handler_servers.go     # Servers API endpoints (list/catalog/profiles/create)
-│       ├── store_servers.go       # Servers persistence + provisioning status updates
-│       └── profiles/registry.go   # Server profile registry returned by API
-│       └── dist/                  # Embedded static assets (generated, gitkeep)
-├── infra/profiles/                # Auditable profile manifests (YAML)
-│   ├── nginx-stack/profile.yaml
-│   ├── openlitespeed-stack/profile.yaml
-│   └── woocommerce-optimized/profile.yaml
-├── web/                           # Nuxt 4 frontend
-│   ├── nuxt.config.ts             # Tailwind v4 vite plugin, Google Fonts, API proxy
-│   ├── package.json
-│   ├── app/
-│   │   ├── app.vue                # Root: <NuxtLayout><NuxtPage /></NuxtLayout>
-│   │   ├── assets/css/main.css    # Design system: OKLCH theme, custom utilities
-│   │   ├── layouts/default.vue    # Top nav, content area, footer, mobile menu
-│   │   ├── composables/           # useModal, useDropdown, useProviders, useServers
-│   │   ├── components/            # SettingsProviders, SettingsServers + ui/
-│   │   └── pages/                 # index, servers, settings, components
-│   └── .output/public/            # Generated static output (not committed)
-├── Makefile                       # build, dev, run, format, lint, test, check, clean
-├── go.mod
-└── README.md
+│   ├── database/{database.go,migrations/*.sql}
+│   ├── provider/{provider.go,provider_servers.go,hetzner/*}
+│   ├── server/{handler*.go,store_servers.go,profiles/registry.go,dist/}
+│   ├── orchestrator/{types.go,state_machine.go,store.go}
+│   ├── runner/{runner.go,ansible/adapter.go}
+│   ├── agentproto/types.go
+│   └── events/types.go
+├── ops/
+│   ├── profiles/*/profile.yaml
+│   ├── ansible/{playbooks,roles}
+│   ├── schemas/profile.schema.json
+│   ├── scripts/
+│   └── tests/
+└── web/app/{pages,components,composables}
 ```
 
-## Key Commands
-
-| Command | What It Does |
-|---------|-------------|
-| `make dev` | Starts Go backend (port 8081) + Nuxt dev server (port 8080) with API proxy |
-| `make build` | Full pipeline: npm install → nuxt generate → copy to dist → go build → `bin/pressluft` |
-| `make run` | Build + run the binary |
-| `make check` | format → lint → test → build (full validation) |
-| `make test` | Go tests only |
-| `make clean` | Remove binary |
-
-## Database Layer
-
-SQLite via `modernc.org/sqlite` (pure Go, no CGo). DB location: `~/.local/share/pressluft/pressluft.db` (XDG-compliant), overridable via `PRESSLUFT_DB` env var.
-
-**Pragmas**: WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`, `MaxOpenConns(1)`.
-
-**Migrations**: Embedded SQL files via `pressly/goose/v3`. Files in `internal/database/migrations/`. Use `fs.Sub(embedMigrations, "migrations")` to strip the directory prefix (goose gotcha).
-
-## Provider System
-
-Extensible cloud provider abstraction. Only Hetzner implemented for MVP.
-
-- **Interface**: `Provider` with `Info()` and `Validate(ctx, token)` methods (`internal/provider/provider.go`)
-- **Registry**: Global `Register()`/`Get()`/`All()` — providers self-register via `init()` (blank import in `cmd/main.go`)
-- **Store**: `provider.Store` wraps `*sql.DB` for CRUD on the `providers` table. API tokens excluded from JSON serialization (`json:"-"`)
-- **Hetzner**: Validates via `client.Location.List()` (auth check) + `client.Server.List()` (permission check). Uses `hcloud.IsError(err, hcloud.ErrorCodeUnauthorized)` pattern.
-
-## API Endpoints
+## API Surface
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/providers` | List saved providers (tokens excluded) |
-| POST | `/api/providers` | Create provider (validates token first) |
-| DELETE | `/api/providers/{id}` | Delete provider by ID |
-| POST | `/api/providers/validate` | Standalone token validation |
-| GET | `/api/providers/types` | List registered provider types |
-| GET | `/api/servers` | List provisioned servers |
-| GET | `/api/servers/catalog?provider_id=...` | Provider server catalog (regions/sizes/images) |
-| GET | `/api/servers/profiles` | Available platform server profiles |
-| POST | `/api/servers` | Create server via provider + selected profile |
+| GET | `/api/health` | Service health status |
+| GET/POST/DELETE | `/api/providers*` | Provider CRUD and token validation |
+| GET/POST | `/api/servers*` | Server list/catalog/profile-backed create |
+| POST | `/api/jobs` | Create orchestration job scaffold |
+| GET | `/api/jobs/{id}` | Read orchestration job state |
+| GET | `/api/jobs/{id}/events` | Stream job events (SSE) |
 
-All endpoints return JSON. Errors use `{"error": "message"}` format. Provider endpoints only registered when DB is available (`db != nil` guard in `NewHandler`).
+All APIs return JSON; errors use `{"error":"..."}`.
 
-## Frontend Configuration
+## Provisioning and Ops Patterns
 
-### Tailwind CSS v4
+### Profile Contract
 
-- **NOT** using `@nuxtjs/tailwindcss` module (still on Tailwind v3)
-- Using `@tailwindcss/vite` as a Vite plugin in `nuxt.config.ts` → `vite.plugins`
-- CSS-first configuration: `@import "tailwindcss"` + `@theme {}` blocks in `main.css`
-- No `tailwind.config.js` file
+- Canonical profiles live in `ops/profiles/*/profile.yaml`.
+- `internal/server/profiles/registry.go` exposes API-safe profile metadata.
+- Profiles include `base_image`, `image_policy`, service/hardening intent, hooks, and artifact references.
 
-### Design System (main.css)
+### Job Lifecycle Contract
 
-- OKLCH color format for all colors
-- Surface scale: 950 (darkest) → 50 (lightest)
-- Accent: cyan tones
-- Primary: blue tones
-- Semantic: success (green), warning (amber), danger (red)
-- Custom utilities: `glass`, `glow-accent`, `glow-primary`
-- Fonts: `--font-sans: 'Inter'`, `--font-mono: 'JetBrains Mono'`
+State model (v1):
 
-### Pages (4 routes)
-
-| Route | Page | Status |
-|-------|------|--------|
-| `/` | Dashboard | Placeholder (headline + subline) |
-| `/servers` | Servers | Dedicated provisioning and inventory route |
-| `/settings` | Settings | Vertical sidebar sub-nav, 7 sections, query-param routing (`?tab=general`), mobile dropdown fallback. Providers section is functional (add/validate/delete); other sections are placeholder. |
-| `/components` | UI Components | Kitchen-sink showcase of all UI components |
-
-### Feature Components (2)
-
-`SettingsProviders` — Provider management UI: empty state, provider list with status badges, add modal with 2-step flow (validate token → name & save), inline Hetzner tutorial, animated validation feedback (success/warning/error)
-
-`SettingsServers` — Server management UI: inventory list plus guided create modal (provider → server details → profile → review), uses provider catalog data, and submits provisioning requests to `/api/servers`.
-
-### Composables (4)
-
-`useModal()` — open/close/toggle reactive state
-`useDropdown()` — click-outside and escape key handling
-`useProviders()` — Provider API client (fetchProviders, fetchProviderTypes, validateToken, createProvider, deleteProvider)
-`useServers()` — Servers API client (fetchServers, fetchCatalog, fetchProfiles, createServer)
-
-### Nuxt Config Highlights
-
-- `css: ['~/assets/css/main.css']`
-- `modules: ['@nuxtjs/google-fonts']` with `download: true`, `inject: true`
-- `vite.plugins: [tailwindcss()]` from `@tailwindcss/vite`
-- `nitro.devProxy: { '/api': { target: 'http://localhost:8081/api' } }`
-
-## Development Environment
-
+```text
+queued -> preparing -> running -> waiting_reboot -> resuming -> verifying -> succeeded
+running|resuming -> retrying -> running
+active -> failed|cancelled|timed_out
 ```
-Requirements: Go 1.22+, Node.js (for Nuxt), npm
-Local Dev: make dev (starts both Go + Nuxt with hot reload)
-Full Build: make build (produces bin/pressluft)
-Testing: make test (Go tests), make check (full validation)
-```
+
+### Runner Guardrails
+
+- Use explicit command args (`exec.CommandContext`), never shell strings.
+- Pin working directory and allowlist playbooks.
+- Run syntax-check path before apply path.
+- Emit structured runner events for orchestration persistence.
+
+## Frontend Patterns
+
+- Nuxt 4 app under `web/app/` with composable-first state access.
+- Servers UX uses guided modal, provider catalog, and profile selection.
+- Price labels are normalized to 2 decimal places for readable pricing.
+- Jobs composable (`useJobs`) is scaffolded for live event timelines.
+
+## Naming and Conventions
+
+| Area | Convention | Example |
+|------|------------|---------|
+| Go packages | short lowercase | `provider`, `orchestrator` |
+| API payload fields | snake_case JSON | `provider_id`, `profile_key` |
+| Ops profile keys | kebab-case | `woocommerce-optimized` |
+| Vue composables | `use*` camelCase | `useServers`, `useJobs` |
+
+## Security and Reliability Baselines
+
+- Provider API tokens are not serialized in API responses.
+- Input validation is enforced at handler and store boundaries.
+- SQLite uses WAL, foreign keys, and bounded connections.
+- Orchestration state and events are persisted for auditability.
+- Runner design enforces command safety boundaries.
+
+## Development Commands
+
+| Command | Purpose |
+|---------|---------|
+| `make dev` | Run Go API + Nuxt dev UI with proxy |
+| `make test` | Run Go tests |
+| `make build` | Generate UI + embed + build binary |
+| `make check` | format + lint + test + build |
 
 ## 📂 Codebase References
 
-- `cmd/main.go` - DB initialization, provider registration import, HTTP server wiring
-- `internal/database/database.go` - SQLite config, pragmas, embedded migrations
-- `internal/database/migrations/00002_create_servers.sql` - Servers schema
-- `internal/provider/provider_servers.go` - Provider-agnostic server contracts
-- `internal/provider/hetzner/servers.go` - Hetzner catalog and create-server adapter
-- `internal/server/handler_servers.go` - Servers API endpoints
-- `internal/server/store_servers.go` - Servers persistence and provisioning updates
-- `internal/server/profiles/registry.go` - Profile registry backing `/api/servers/profiles`
-- `web/app/composables/useServers.ts` - Servers frontend API client
-- `web/app/components/SettingsServers.vue` - Servers management UI and guided modal
-- `web/app/pages/servers.vue` - Dedicated Servers route
-- `infra/profiles/README.md` - Profile manifest conventions and review guidance
+- `internal/server/handler.go` - API route registration including jobs routes
+- `internal/server/handler_servers.go` - server catalog/profile/create behavior
+- `internal/server/handler_jobs.go` - orchestration job create/read/SSE handlers
+- `internal/server/profiles/registry.go` - profile metadata exposed to API clients
+- `internal/orchestrator/state_machine.go` - lifecycle transition rules
+- `internal/orchestrator/store.go` - jobs/events persistence access
+- `internal/runner/ansible/adapter.go` - guardrailed Ansible execution scaffold
+- `internal/database/migrations/00003_create_jobs.sql` - orchestration tables
+- `ops/profiles/README.md` - profile authoring conventions
+- `ops/schemas/profile.schema.json` - profile contract schema
+- `web/app/components/SettingsServers.vue` - server create UX and price formatting
+- `web/app/composables/useJobs.ts` - job API + event stream client scaffold
 
 ## Related Files
-- `business-domain.md` — Why this project exists
-- `decisions-log.md` — Key technical decisions with rationale
-- `living-notes.md` — Current state, next steps, gotchas
+
+- `business-domain.md` - product purpose and user value
+- `business-tech-bridge.md` - business-to-technical mapping
+- `decisions-log.md` - architectural decision rationale
+- `living-notes.md` - active priorities and known constraints
