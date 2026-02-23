@@ -153,6 +153,18 @@ func (t *testServerProvider) CreateServer(_ context.Context, token string, _ pro
 	}, nil
 }
 
+func (t *testServerProvider) CreateSSHKey(_ context.Context, _ string, name, _ string) (*provider.SSHKeyResult, error) {
+	return &provider.SSHKeyResult{
+		ID:          1,
+		Name:        name,
+		Fingerprint: "test-fingerprint",
+	}, nil
+}
+
+func (t *testServerProvider) DeleteSSHKey(_ context.Context, _ string, _ int64) error {
+	return nil
+}
+
 func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	t.Helper()
 

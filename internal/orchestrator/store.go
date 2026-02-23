@@ -176,6 +176,160 @@ func (s *Store) AppendEvent(ctx context.Context, jobID int64, in CreateEventInpu
 	}, nil
 }
 
+// ClaimNextJob atomically claims the oldest queued job by transitioning it to "preparing".
+// Returns nil, nil if no jobs are available (not an error).
+// Uses SQLite-compatible atomic UPDATE with subquery to prevent race conditions.
+func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Atomic claim: UPDATE with subquery selects oldest queued job and transitions to preparing.
+	// SQLite executes this atomically, preventing race conditions between workers.
+	var (
+		job      Job
+		serverID sql.NullInt64
+		lastErr  sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx,
+		`UPDATE jobs 
+		 SET status = ?, updated_at = ?
+		 WHERE id = (
+		   SELECT id FROM jobs 
+		   WHERE status = ? 
+		   ORDER BY created_at ASC 
+		   LIMIT 1
+		 )
+		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at`,
+		JobStatusPreparing,
+		now,
+		JobStatusQueued,
+	).Scan(
+		&job.ID,
+		&serverID,
+		&job.Kind,
+		&job.Status,
+		&job.CurrentStep,
+		&job.RetryCount,
+		&lastErr,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No queued jobs available - not an error
+			return nil, nil
+		}
+		return nil, fmt.Errorf("claim next job: %w", err)
+	}
+
+	if serverID.Valid {
+		job.ServerID = serverID.Int64
+	}
+	if lastErr.Valid {
+		job.LastError = lastErr.String
+	}
+
+	return &job, nil
+}
+
+// ListJobsByServer returns all jobs for a given server, ordered by created_at DESC.
+// Returns an empty slice (not nil) when no jobs exist for the server.
+func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, error) {
+	if serverID <= 0 {
+		return nil, fmt.Errorf("server_id must be greater than zero")
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		 FROM jobs
+		 WHERE server_id = ?
+		 ORDER BY created_at DESC`,
+		serverID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list jobs by server: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Job, 0)
+	for rows.Next() {
+		var (
+			job       Job
+			serverIDN sql.NullInt64
+			lastErr   sql.NullString
+		)
+		if err := rows.Scan(
+			&job.ID,
+			&serverIDN,
+			&job.Kind,
+			&job.Status,
+			&job.CurrentStep,
+			&job.RetryCount,
+			&lastErr,
+			&job.CreatedAt,
+			&job.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		if serverIDN.Valid {
+			job.ServerID = serverIDN.Int64
+		}
+		if lastErr.Valid {
+			job.LastError = lastErr.String
+		}
+		out = append(out, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate jobs: %w", err)
+	}
+
+	return out, nil
+}
+
+// GetLatestJobForServer returns the most recent job for a server.
+// Returns nil, nil if no jobs exist for the server (not an error).
+func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job, error) {
+	if serverID <= 0 {
+		return nil, fmt.Errorf("server_id must be greater than zero")
+	}
+
+	var (
+		job       Job
+		serverIDN sql.NullInt64
+		lastErr   sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		 FROM jobs
+		 WHERE server_id = ?
+		 ORDER BY created_at DESC
+		 LIMIT 1`,
+		serverID,
+	).Scan(
+		&job.ID,
+		&serverIDN,
+		&job.Kind,
+		&job.Status,
+		&job.CurrentStep,
+		&job.RetryCount,
+		&lastErr,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get latest job for server: %w", err)
+	}
+	if serverIDN.Valid {
+		job.ServerID = serverIDN.Int64
+	}
+	if lastErr.Valid {
+		job.LastError = lastErr.String
+	}
+	return &job, nil
+}
+
 func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, limit int) ([]JobEvent, error) {
 	if jobID <= 0 {
 		return nil, fmt.Errorf("job_id must be greater than zero")

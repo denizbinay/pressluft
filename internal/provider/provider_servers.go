@@ -67,12 +67,21 @@ type CreateServerResult struct {
 	Status           string `json:"status"`
 }
 
+// SSHKeyResult contains the result of creating an SSH key at the provider.
+type SSHKeyResult struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint"`
+}
+
 // ServerProvider is implemented by providers that support server lifecycle
 // operations in addition to credential validation.
 type ServerProvider interface {
 	Provider
 	ListServerCatalog(ctx context.Context, token string) (*ServerCatalog, error)
 	CreateServer(ctx context.Context, token string, req CreateServerRequest) (*CreateServerResult, error)
+	CreateSSHKey(ctx context.Context, token, name, publicKey string) (*SSHKeyResult, error)
+	DeleteSSHKey(ctx context.Context, token string, keyID int64) error
 }
 
 // GetServerProvider returns a provider that supports server operations.

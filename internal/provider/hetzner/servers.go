@@ -2,12 +2,16 @@ package hetzner
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
+	"golang.org/x/crypto/ssh"
 
 	"pressluft/internal/provider"
 )
@@ -225,4 +229,82 @@ func mapHetznerAPIError(err error) error {
 	default:
 		return fmt.Errorf("hetzner api error: %w", err)
 	}
+}
+
+// CreateSSHKey registers a public SSH key with Hetzner Cloud.
+func (h *Hetzner) CreateSSHKey(ctx context.Context, token, name, publicKey string) (*provider.SSHKeyResult, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("api token must not be empty")
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("ssh key name must not be empty")
+	}
+	if strings.TrimSpace(publicKey) == "" {
+		return nil, fmt.Errorf("public key must not be empty")
+	}
+
+	client := newClient(token)
+
+	sshKey, _, err := client.SSHKey.Create(ctx, hcloud.SSHKeyCreateOpts{
+		Name:      name,
+		PublicKey: publicKey,
+	})
+	if err != nil {
+		return nil, mapHetznerAPIError(err)
+	}
+
+	return &provider.SSHKeyResult{
+		ID:          sshKey.ID,
+		Name:        sshKey.Name,
+		Fingerprint: sshKey.Fingerprint,
+	}, nil
+}
+
+// DeleteSSHKey removes an SSH key from Hetzner Cloud by its ID.
+func (h *Hetzner) DeleteSSHKey(ctx context.Context, token string, keyID int64) error {
+	if strings.TrimSpace(token) == "" {
+		return fmt.Errorf("api token must not be empty")
+	}
+	if keyID <= 0 {
+		return fmt.Errorf("ssh key id must be positive")
+	}
+
+	client := newClient(token)
+
+	_, err := client.SSHKey.Delete(ctx, &hcloud.SSHKey{ID: keyID})
+	if err != nil {
+		return mapHetznerAPIError(err)
+	}
+
+	return nil
+}
+
+// GenerateSSHKeyPair creates a new Ed25519 SSH key pair.
+// Returns the public key in OpenSSH authorized_keys format and the private key in PEM format.
+func GenerateSSHKeyPair(comment string) (publicKey, privateKey string, err error) {
+	// Generate Ed25519 key pair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", fmt.Errorf("generate ed25519 key: %w", err)
+	}
+
+	// Convert public key to OpenSSH authorized_keys format
+	sshPubKey, err := ssh.NewPublicKey(pubKey)
+	if err != nil {
+		return "", "", fmt.Errorf("create ssh public key: %w", err)
+	}
+	authorizedKey := ssh.MarshalAuthorizedKey(sshPubKey)
+	publicKeyStr := strings.TrimSpace(string(authorizedKey))
+	if comment != "" {
+		publicKeyStr = publicKeyStr + " " + comment
+	}
+
+	// Convert private key to PEM format
+	pemBlock, err := ssh.MarshalPrivateKey(privKey, comment)
+	if err != nil {
+		return "", "", fmt.Errorf("marshal private key: %w", err)
+	}
+	privateKeyPEM := pem.EncodeToMemory(pemBlock)
+
+	return publicKeyStr, string(privateKeyPEM), nil
 }

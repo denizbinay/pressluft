@@ -73,6 +73,12 @@ export interface CreateServerInput {
   profile_key: string
 }
 
+export interface CreateServerResponse {
+  server_id: number
+  job_id: number
+  status: string
+}
+
 export function useServers() {
   const servers = ref<StoredServer[]>([])
   const profiles = ref<ServerProfile[]>([])
@@ -109,7 +115,7 @@ export function useServers() {
     profiles.value = body.profiles
   }
 
-  const createServer = async (payload: CreateServerInput) => {
+  const createServer = async (payload: CreateServerInput): Promise<CreateServerResponse> => {
     saving.value = true
     error.value = ''
     try {
@@ -122,7 +128,7 @@ export function useServers() {
         const body = await res.json().catch(() => ({ error: res.statusText }))
         throw new Error(body.error || 'Failed to create server')
       }
-      return res.json()
+      return await res.json() as CreateServerResponse
     } finally {
       saving.value = false
     }
