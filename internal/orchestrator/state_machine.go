@@ -19,6 +19,7 @@ var allowedTransitions = map[JobStatus]map[JobStatus]struct{}{
 		JobStatusWaitingReboot: {},
 		JobStatusVerifying:     {},
 		JobStatusRetrying:      {},
+		JobStatusSucceeded:     {},
 		JobStatusFailed:        {},
 		JobStatusCancelled:     {},
 		JobStatusTimedOut:      {},
@@ -65,7 +66,7 @@ func CanTransition(from, to JobStatus) bool {
 // ValidateTransition returns an error when transition is invalid.
 func ValidateTransition(from, to JobStatus) error {
 	if from == to {
-		return fmt.Errorf("status is already %q", from)
+		return nil
 	}
 	if !CanTransition(from, to) {
 		return fmt.Errorf("invalid job status transition: %q -> %q", from, to)

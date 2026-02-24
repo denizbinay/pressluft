@@ -272,7 +272,22 @@ func (s *ServerStore) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("id must be greater than zero")
 	}
 
-	res, err := s.db.ExecContext(ctx, `DELETE FROM servers WHERE id = ?`, id)
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// First delete associated jobs (and their cascading data)
+	// Note: jobs table has foreign key to servers but NO ON DELETE CASCADE
+	_, err = tx.ExecContext(ctx, `DELETE FROM jobs WHERE server_id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete associated jobs: %w", err)
+	}
+
+	// Then delete the server
+	res, err := tx.ExecContext(ctx, `DELETE FROM servers WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete server: %w", err)
 	}
@@ -280,6 +295,10 @@ func (s *ServerStore) Delete(ctx context.Context, id int64) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("server %d not found", id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

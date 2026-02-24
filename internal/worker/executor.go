@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
@@ -117,7 +116,8 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	e.updateStep(ctx, job.ID, "create_ssh_key")
 	e.emitStepStart(ctx, job.ID, "create_ssh_key", "Generating SSH key pair")
 
-	keyName := fmt.Sprintf("pressluft-%s-%d", server.Name, time.Now().Unix())
+	// Use job ID for deterministic key name to support retries
+	keyName := fmt.Sprintf("pressluft-%s-job-%d", server.Name, job.ID)
 	publicKey, privateKey, err := hetzner.GenerateSSHKeyPair(keyName)
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("failed to generate SSH key: %v", err))

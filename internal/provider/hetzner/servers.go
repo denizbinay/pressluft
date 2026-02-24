@@ -174,6 +174,16 @@ func (h *Hetzner) CreateServer(ctx context.Context, token string, req provider.C
 		Labels:     req.Labels,
 	})
 	if err != nil {
+		if hcloud.IsError(err, hcloud.ErrorCodeUniquenessError) {
+			// Idempotency: if server already exists, retrieve it
+			existingServer, _, errGet := client.Server.Get(ctx, req.Name)
+			if errGet == nil && existingServer != nil {
+				return &provider.CreateServerResult{
+					ProviderServerID: strconv.FormatInt(existingServer.ID, 10),
+					Status:           string(existingServer.Status),
+				}, nil
+			}
+		}
 		return nil, mapHetznerAPIError(err)
 	}
 
@@ -267,6 +277,17 @@ func (h *Hetzner) CreateSSHKey(ctx context.Context, token, name, publicKey strin
 		PublicKey: publicKey,
 	})
 	if err != nil {
+		if hcloud.IsError(err, hcloud.ErrorCodeUniquenessError) {
+			// Idempotency: if key already exists, try to retrieve it
+			existingKey, _, errGet := client.SSHKey.Get(ctx, name)
+			if errGet == nil && existingKey != nil {
+				return &provider.SSHKeyResult{
+					ID:          existingKey.ID,
+					Name:        existingKey.Name,
+					Fingerprint: existingKey.Fingerprint,
+				}, nil
+			}
+		}
 		return nil, mapHetznerAPIError(err)
 	}
 
