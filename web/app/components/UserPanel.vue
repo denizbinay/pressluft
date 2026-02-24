@@ -41,7 +41,6 @@ const items = computed<DropdownMenuItem[][]>(() => [[
 </script>
 
 <template>
-  <div class="border-t border-surface-700/60 pt-4">
     <UDropdownMenu
       :items="items"
       :content="{ align: 'center', collisionPadding: 12 }"
@@ -55,7 +54,7 @@ const items = computed<DropdownMenuItem[][]>(() => [[
         :label="collapsed ? undefined : user?.name"
         :avatar="collapsed ? undefined : user"
         :class="collapsed ? '' : 'justify-start'"
-        class="data-[state=open]:bg-neutral-700/50 w-full"
+        class="data-[state=open]:bg-neutral-700/50 w-full h-full p-4 rounded-none"
       >
         <template #leading>
           <UAvatar v-if="!collapsed" :alt="user.name" size="xs" />
@@ -65,5 +64,4 @@ const items = computed<DropdownMenuItem[][]>(() => [[
         </template>
       </UButton>
     </UDropdownMenu>
-  </div>
-</template>
+  </template>
