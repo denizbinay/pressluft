@@ -1,23 +1,39 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
-
 const route = useRoute()
 const open = ref(false)
 
-// Navigation items for sidebar
-const navItems: NavigationMenuItem[] = [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/' },
-  { label: 'Sites', icon: 'i-lucide-globe', to: '/sites' },
-  { label: 'Servers', icon: 'i-lucide-server', to: '/servers' },
-  { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
-  { label: 'Components', icon: 'i-lucide-box', to: '/components' },
+// Navigation sections with subheadings (flat structure for UNavigationMenu)
+const navSections = [
+  {
+    title: 'Main',
+    items: [
+      { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/' },
+    ]
+  },
+  {
+    title: 'Resources',
+    items: [
+      { label: 'Sites', icon: 'i-lucide-globe', to: '/sites' },
+      { label: 'Servers', icon: 'i-lucide-server', to: '/servers' },
+    ]
+  },
+  {
+    title: 'System',
+    items: [
+      { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
+      { label: 'Components', icon: 'i-lucide-box', to: '/components' },
+    ]
+  },
 ]
+
+// Flatten all items for command palette search
+const flatNavItems = navSections.flatMap(section => section.items)
 
 // Command palette groups
 const searchGroups = computed(() => [{
   id: 'navigation',
   label: 'Navigation',
-  items: navItems.map(item => ({
+  items: flatNavItems.map(item => ({
     id: item.label!.toLowerCase(),
     label: item.label,
     icon: item.icon,
@@ -59,11 +75,24 @@ const searchGroups = computed(() => [{
 
       <!-- Navigation -->
       <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-neutral-800/50 ring-neutral-700" />
-
+        <div v-if="!collapsed" class="space-y-6">
+          <div v-for="section in navSections" :key="section.title">
+            <!-- Section subheading -->
+            <p class="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-neutral-500">
+              {{ section.title }}
+            </p>
+            <!-- Navigation items for this section -->
+            <UNavigationMenu
+              :items="section.items"
+              orientation="vertical"
+              highlight
+            />
+          </div>
+        </div>
+        <!-- Collapsed: just icons, no labels -->
         <UNavigationMenu
-          :collapsed="collapsed"
-          :items="navItems"
+          v-else
+          :items="flatNavItems"
           orientation="vertical"
           highlight
         />
@@ -90,10 +119,13 @@ const searchGroups = computed(() => [{
           <!-- Breadcrumb -->
           <div class="flex items-center gap-1 text-sm text-neutral-400">
             <span>pressluft</span>
-            <template v-if="route.path !== '/'">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <template v-if="route.path === '/'">
+              <span class="text-neutral-200">Dashboard</span>
+            </template>
+            <template v-else>
               <span class="text-neutral-200 capitalize">{{ route.path.replace('/', '').replace('-', ' ') }}</span>
             </template>
           </div>
@@ -126,11 +158,11 @@ const searchGroups = computed(() => [{
               @click="open = true"
             />
 
-            <!-- Notifications -->
-            <UButton variant="ghost" color="neutral" icon="i-lucide-bell" />
-
             <!-- Help -->
             <UButton variant="ghost" color="neutral" icon="i-lucide-help-circle" />
+
+            <!-- Notifications -->
+            <UButton variant="ghost" color="neutral" icon="i-lucide-bell" />
           </template>
         </UDashboardNavbar>
       </template>

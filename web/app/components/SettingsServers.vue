@@ -348,7 +348,7 @@ const executeDelete = async (serverId: number) => {
       </div>
     </div>
 
-    <UiModal :open="modal.isOpen.value" title="Create Managed Server" @close="modal.close">
+    <UiModal v-if="modal.isOpen.value" :open="modal.isOpen.value" title="Create Managed Server" @close="modal.close">
       <div class="space-y-4">
         <div v-if="formError" class="rounded-lg border border-danger-600/30 bg-danger-900/20 px-3 py-2 text-sm text-danger-300">
           {{ formError }}

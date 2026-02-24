@@ -193,7 +193,7 @@ const formatDate = (iso: string): string => {
     </div>
 
     <!-- Add Provider Modal -->
-    <UiModal :open="modal.isOpen.value" title="Add Cloud Provider" @close="modal.close">
+    <UiModal v-if="modal.isOpen.value" :open="modal.isOpen.value" title="Add Cloud Provider" @close="modal.close">
       <div class="space-y-5">
         <!-- Step 1: Configure -->
         <template v-if="formStep === 'configure'">

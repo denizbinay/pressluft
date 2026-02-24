@@ -282,7 +282,7 @@ const simulateLoading = () => {
         <UiButton @click="openModal">Open Modal</UiButton>
       </UiCard>
 
-      <UiModal :open="modalOpen" title="Confirm Deployment" @close="closeModal">
+      <UiModal v-if="modalOpen" :open="modalOpen" title="Confirm Deployment" @close="closeModal">
         <p class="text-sm text-surface-400">
           You are about to deploy <span class="font-mono text-surface-200">api-gateway@v2.4.1</span>
           to <span class="font-semibold text-surface-200">production</span>. This action will
