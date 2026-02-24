@@ -45,6 +45,13 @@ func New(jobStore *orchestrator.Store, executor *Executor, logger *slog.Logger, 
 func (w *Worker) Run(ctx context.Context) {
 	w.logger.Info("worker started", "poll_interval", w.config.PollInterval)
 
+	// Recover any jobs that were interrupted by a previous shutdown
+	if recovered, err := w.jobStore.RecoverStuckJobs(ctx); err != nil {
+		w.logger.Error("failed to recover stuck jobs", "error", err)
+	} else if recovered > 0 {
+		w.logger.Info("recovered stuck jobs", "count", recovered)
+	}
+
 	ticker := time.NewTicker(w.config.PollInterval)
 	defer ticker.Stop()
 

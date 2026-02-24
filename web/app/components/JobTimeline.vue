@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useJobs, type Job, type JobEvent } from '~/composables/useJobs'
+import { useJobs, type Job, type JobEvent, type ConnectionMode } from '~/composables/useJobs'
 
 interface Props {
   jobId: number
@@ -20,10 +20,11 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
-const { activeJob, events, fetchJob, streamJobEvents } = useJobs()
+const { activeJob, events, connectionMode, fetchJob, streamJobEvents, clearEvents } = useJobs()
 
 const loading = ref(true)
 const connectionError = ref('')
+const retryCount = ref(0)
 
 // Step key to human-readable label mapping (matches backend executor steps)
 const stepLabels: Record<string, string> = {
@@ -156,13 +157,42 @@ function handleEvent(event: JobEvent) {
   }
 }
 
+// Handle connection mode changes
+function handleModeChange(mode: ConnectionMode) {
+  if (mode === 'polling') {
+    // Clear any previous connection error when we successfully fall back to polling
+    connectionError.value = ''
+  }
+}
+
+// Retry loading the job
+async function retryLoad() {
+  retryCount.value++
+  connectionError.value = ''
+  loading.value = true
+  clearEvents()
+
+  try {
+    await fetchJob(props.jobId)
+    loading.value = false
+
+    if (props.autoConnect && !isTerminal.value) {
+      if (closeStream) closeStream()
+      closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
+    }
+  } catch (e: any) {
+    connectionError.value = e.message || 'Failed to load job'
+    loading.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     await fetchJob(props.jobId)
     loading.value = false
 
     if (props.autoConnect && !isTerminal.value) {
-      closeStream = streamJobEvents(props.jobId, handleEvent)
+      closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
     }
   } catch (e: any) {
     connectionError.value = e.message || 'Failed to load job'
@@ -193,12 +223,23 @@ onUnmounted(() => {
       </svg>
     </div>
 
-    <!-- Error state -->
+    <!-- Error state with retry -->
     <div
       v-else-if="connectionError"
-      class="rounded-lg border border-danger-600/30 bg-danger-900/20 px-4 py-3 text-sm text-danger-300"
+      class="rounded-lg border border-danger-600/30 bg-danger-900/20 px-4 py-3"
     >
-      {{ connectionError }}
+      <div class="flex items-start justify-between gap-3">
+        <div class="space-y-1">
+          <p class="text-sm font-medium text-danger-300">Failed to load job</p>
+          <p class="text-xs text-danger-400/80">{{ connectionError }}</p>
+        </div>
+        <button
+          class="shrink-0 rounded-md bg-danger-800/50 px-3 py-1.5 text-xs font-medium text-danger-200 transition-colors hover:bg-danger-800/70"
+          @click="retryLoad"
+        >
+          Retry
+        </button>
+      </div>
     </div>
 
     <!-- Job timeline -->
@@ -209,6 +250,24 @@ onUnmounted(() => {
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-surface-200">Job #{{ jobId }}</span>
             <UiBadge :variant="statusVariant(jobStatus)">{{ jobStatus }}</UiBadge>
+            <!-- Connection mode indicator (only show when not in terminal state) -->
+            <span
+              v-if="!isTerminal && connectionMode !== 'disconnected'"
+              class="flex items-center gap-1 text-xs"
+              :class="{
+                'text-success-500': connectionMode === 'streaming',
+                'text-warning-500': connectionMode === 'polling',
+              }"
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="{
+                  'bg-success-500 animate-pulse': connectionMode === 'streaming',
+                  'bg-warning-500': connectionMode === 'polling',
+                }"
+              />
+              {{ connectionMode === 'streaming' ? 'Live' : 'Polling' }}
+            </span>
           </div>
           <p v-if="jobStartedAt && !compact" class="text-xs text-surface-500">Started at {{ jobStartedAt }}</p>
         </div>

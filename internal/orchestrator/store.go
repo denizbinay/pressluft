@@ -386,6 +386,29 @@ func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, lim
 	return out, nil
 }
 
+// RecoverStuckJobs resets jobs that were interrupted mid-execution (e.g., server restart).
+// Jobs in "preparing" or "running" status are transitioned back to "queued" so they can be re-claimed.
+// Returns the number of jobs recovered.
+func (s *Store) RecoverStuckJobs(ctx context.Context) (int64, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE jobs 
+		 SET status = ?, updated_at = ?
+		 WHERE status IN (?, ?)`,
+		JobStatusQueued,
+		now,
+		JobStatusPreparing,
+		JobStatusRunning,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("recover stuck jobs: %w", err)
+	}
+
+	count, _ := res.RowsAffected()
+	return count, nil
+}
+
 func nullableInt64(v int64) any {
 	if v <= 0 {
 		return nil

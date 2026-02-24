@@ -30,8 +30,9 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 		return nil, mapHetznerAPIError(err)
 	}
 
-	// Build availability map: serverTypeName -> []locationName
-	availability := make(map[string][]string)
+	// Build availability map: serverTypeID -> []locationName
+	// Note: dc.ServerTypes.Available only has ID populated, not Name
+	availability := make(map[int64][]string)
 	locationSet := make(map[string]*hcloud.Location)
 
 	for _, dc := range datacenters {
@@ -45,7 +46,7 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 				continue
 			}
 			// Deduplicate: multiple datacenters can share a location
-			locs := availability[st.Name]
+			locs := availability[st.ID]
 			found := false
 			for _, loc := range locs {
 				if loc == dc.Location.Name {
@@ -54,7 +55,7 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 				}
 			}
 			if !found {
-				availability[st.Name] = append(locs, dc.Location.Name)
+				availability[st.ID] = append(locs, dc.Location.Name)
 			}
 		}
 	}
@@ -83,7 +84,7 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 		if st == nil {
 			continue
 		}
-		availableAt, hasAvailability := availability[st.Name]
+		availableAt, hasAvailability := availability[st.ID]
 		if !hasAvailability || len(availableAt) == 0 {
 			// Skip server types that aren't available anywhere
 			continue
