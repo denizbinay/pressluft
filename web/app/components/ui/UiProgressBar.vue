@@ -20,18 +20,26 @@ const percentage = computed(() =>
   Math.min(100, Math.max(0, (props.value / props.max) * 100)),
 )
 
-const barColors: Record<ProgressVariant, string> = {
-  accent: 'bg-accent-500',
-  success: 'bg-success-500',
-  warning: 'bg-warning-500',
-  danger: 'bg-danger-500',
-}
+// Map variants to NuxtUI colors
+const nuxtUiColor = computed(() => {
+  const mapping: Record<ProgressVariant, 'primary' | 'success' | 'warning' | 'error'> = {
+    accent: 'primary',
+    success: 'success',
+    warning: 'warning',
+    danger: 'error',
+  }
+  return mapping[props.variant]
+})
 
-const sizeClasses: Record<string, string> = {
-  sm: 'h-1.5',
-  md: 'h-2.5',
-  lg: 'h-4',
-}
+// Map sizes to NuxtUI sizes
+const nuxtUiSize = computed(() => {
+  const mapping: Record<string, 'xs' | 'sm' | 'md' | 'lg' | 'xl'> = {
+    sm: 'xs',
+    md: 'sm',
+    lg: 'md',
+  }
+  return mapping[props.size] || 'sm'
+})
 </script>
 
 <template>
@@ -42,17 +50,11 @@ const sizeClasses: Record<string, string> = {
       </slot>
       <span class="text-xs font-mono text-surface-400">{{ Math.round(percentage) }}%</span>
     </div>
-    <div
-      :class="['w-full overflow-hidden rounded-full bg-surface-800', sizeClasses[props.size]]"
-      role="progressbar"
-      :aria-valuenow="props.value"
-      :aria-valuemin="0"
-      :aria-valuemax="props.max"
-    >
-      <div
-        :class="['h-full rounded-full transition-all duration-500 ease-out', barColors[props.variant]]"
-        :style="{ width: `${percentage}%` }"
-      />
-    </div>
+    <UProgress
+      :model-value="percentage"
+      :color="nuxtUiColor"
+      :size="nuxtUiSize"
+      :status="false"
+    />
   </div>
 </template>

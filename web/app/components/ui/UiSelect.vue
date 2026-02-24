@@ -23,9 +23,16 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const handleChange = (event: Event) => {
-  const target = event.target as HTMLSelectElement
-  emit('update:modelValue', target.value)
+// Convert options to NuxtUI format - items can be array of { label, value }
+const items = computed(() => {
+  return props.options.map(option => ({
+    label: option.label,
+    value: option.value,
+  }))
+})
+
+const handleUpdate = (value: string) => {
+  emit('update:modelValue', value)
 }
 </script>
 
@@ -34,27 +41,15 @@ const handleChange = (event: Event) => {
     <label v-if="props.label" class="block text-sm font-medium text-surface-300">
       {{ props.label }}
     </label>
-    <select
-      :value="props.modelValue"
+    <USelect
+      :model-value="props.modelValue"
+      :items="items"
+      :placeholder="props.placeholder"
       :disabled="props.disabled"
-      :class="[
-        'w-full appearance-none rounded-lg border border-surface-700/60 bg-surface-900/50 px-3.5 py-2 pr-10 text-sm text-surface-100',
-        'transition-colors duration-150',
-        'focus:outline-none focus:ring-2 focus:ring-accent-500/40 focus:border-accent-500/60',
-        'hover:border-surface-600',
-        'disabled:opacity-40 disabled:cursor-not-allowed',
-      ]"
-      @change="handleChange"
-    >
-      <option value="" disabled class="text-surface-500">{{ props.placeholder }}</option>
-      <option
-        v-for="option in props.options"
-        :key="option.value"
-        :value="option.value"
-        class="bg-surface-900 text-surface-100"
-      >
-        {{ option.label }}
-      </option>
-    </select>
+      :ui="{
+        base: 'border-surface-700/60 hover:border-surface-600',
+      }"
+      @update:model-value="handleUpdate"
+    />
   </div>
 </template>

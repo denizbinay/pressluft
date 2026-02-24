@@ -30,7 +30,7 @@ const { isOpen, triggerRef, menuRef, toggle } = useDropdown()
         v-if="isOpen"
         ref="menuRef"
         :class="[
-          'absolute z-50 mt-1.5 min-w-[12rem] origin-top rounded-lg border border-surface-700/60 bg-surface-850 p-1 shadow-xl shadow-surface-950/50',
+          'absolute z-50 mt-1.5 min-w-[12rem] origin-top rounded-lg border border-default bg-default p-1 shadow-xl',
           props.align === 'right' ? 'right-0' : 'left-0',
         ]"
       >

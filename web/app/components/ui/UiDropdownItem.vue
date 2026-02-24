@@ -15,8 +15,8 @@ const props = withDefaults(defineProps<Props>(), {
     :class="[
       'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors',
       props.danger
-        ? 'text-danger-400 hover:bg-danger-900/40 hover:text-danger-300'
-        : 'text-surface-300 hover:bg-surface-800 hover:text-surface-100',
+        ? 'text-error hover:bg-error/10 hover:text-error'
+        : 'text-foreground hover:bg-default focus:bg-default',
       props.disabled && 'opacity-40 pointer-events-none',
     ]"
     :disabled="props.disabled"

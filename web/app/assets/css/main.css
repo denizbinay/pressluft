@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@nuxt/ui";
 
 /* ─────────────────────────────────────────────────────────────
    Pressluft Design System — Premium Dark Theme for DevOps
@@ -63,6 +64,15 @@
   --radius-full: 9999px;
 }
 
+/* NuxtUI v4 with Tailwind v4 compatibility */
+@layer base {
+  /* Use NuxtUI's root variables for consistency */
+  :root {
+    --ui-bg: oklch(0.13 0.015 260);
+    --ui-border: oklch(0.28 0.012 260);
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
    Base layer — global resets and defaults
    ───────────────────────────────────────────────────────────── */
@@ -74,8 +84,8 @@
 
   body {
     @apply font-sans antialiased;
-    background-color: var(--color-surface-950);
-    color: var(--color-surface-100);
+    background-color: oklch(0.13 0.015 260);
+    color: oklch(0.90 0.002 260);
   }
 
   /* Scrollbar styling */
@@ -85,28 +95,28 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--color-surface-900);
+    background: oklch(0.16 0.015 260);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-surface-600);
+    background: oklch(0.35 0.010 260);
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-surface-500);
+    background: oklch(0.45 0.008 260);
   }
 
   /* Focus ring */
   :focus-visible {
-    outline: 2px solid var(--color-accent-500);
+    outline: 2px solid oklch(0.72 0.19 195);
     outline-offset: 2px;
   }
 
   /* Selection */
   ::selection {
     background-color: oklch(0.72 0.19 195 / 0.3);
-    color: var(--color-surface-50);
+    color: oklch(0.97 0.001 260);
   }
 }
 

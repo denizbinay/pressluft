@@ -7,7 +7,7 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  modules: ['@nuxtjs/google-fonts'],
+  modules: ['@nuxtjs/google-fonts', '@nuxt/ui'],
 
   googleFonts: {
     families: {
@@ -18,6 +18,11 @@ export default defineNuxtConfig({
     download: true,
     inject: true,
     subsets: ['latin'],
+  },
+
+  ui: {
+    primary: 'cyan',
+    gray: 'neutral',
   },
 
   vite: {
