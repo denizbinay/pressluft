@@ -126,6 +126,10 @@ func (jh *jobsHandler) handleEventStream(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	// Send a comment to establish connection immediately
+	fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 

@@ -101,6 +101,8 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 func respondJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
+	// Prevent caching of API responses
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
