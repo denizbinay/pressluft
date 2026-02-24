@@ -41,27 +41,29 @@ const items = computed<DropdownMenuItem[][]>(() => [[
 </script>
 
 <template>
-  <UDropdownMenu
-    :items="items"
-    :content="{ align: 'center', collisionPadding: 12 }"
-    :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
-  >
-    <UButton
-      color="neutral"
-      variant="ghost"
-      block
-      :square="collapsed"
-      :label="collapsed ? undefined : user?.name"
-      :avatar="collapsed ? undefined : user"
-      :class="collapsed ? '' : 'justify-start'"
-      class="data-[state=open]:bg-neutral-700/50"
+  <div class="border-t border-surface-700/60 pt-4">
+    <UDropdownMenu
+      :items="items"
+      :content="{ align: 'center', collisionPadding: 12 }"
+      :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
     >
-      <template #leading>
-        <UAvatar v-if="!collapsed" :alt="user.name" size="xs" />
-      </template>
-      <template #trailing>
-        <UIcon v-if="!collapsed" name="i-lucide-chevrons-up-down" class="ml-auto h-4 w-4 text-neutral-400" />
-      </template>
-    </UButton>
-  </UDropdownMenu>
+      <UButton
+        color="neutral"
+        variant="ghost"
+        block
+        :square="collapsed"
+        :label="collapsed ? undefined : user?.name"
+        :avatar="collapsed ? undefined : user"
+        :class="collapsed ? '' : 'justify-start'"
+        class="data-[state=open]:bg-neutral-700/50 w-full"
+      >
+        <template #leading>
+          <UAvatar v-if="!collapsed" :alt="user.name" size="xs" />
+        </template>
+        <template #trailing>
+          <UIcon v-if="!collapsed" name="i-lucide-chevrons-up-down" class="ml-auto h-4 w-4 text-neutral-400" />
+        </template>
+      </UButton>
+    </UDropdownMenu>
+  </div>
 </template>

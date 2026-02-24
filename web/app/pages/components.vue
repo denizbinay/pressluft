@@ -24,13 +24,13 @@ const simulateLoading = () => {
 </script>
 
 <template>
-  <div class="space-y-12">
+  <div class="space-y-16">
     <!-- Page header -->
     <div>
-      <h1 class="text-2xl font-semibold text-surface-50">
+      <h1 class="text-3xl font-semibold text-surface-50">
         UI Components
       </h1>
-      <p class="mt-2 text-sm text-surface-400">
+      <p class="mt-2 text-base text-surface-400">
         Component library &mdash; your design system at a glance.
       </p>
     </div>
@@ -38,7 +38,7 @@ const simulateLoading = () => {
     <!-- ────────────────────────────────────────────────────────────── -->
     <!-- Stats row -->
     <!-- ────────────────────────────────────────────────────────────── -->
-    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <section class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
       <UiCard v-for="stat in [
         { label: 'Deployments', value: '1,284', change: '+12%', variant: 'success' as const },
         { label: 'Active Services', value: '23', change: '+2', variant: 'info' as const },
@@ -50,7 +50,7 @@ const simulateLoading = () => {
             <p class="text-xs font-medium uppercase tracking-wider text-surface-500">
               {{ stat.label }}
             </p>
-            <p class="mt-1 text-2xl font-bold text-surface-50 font-mono">
+            <p class="mt-2 text-3xl font-bold text-surface-50 font-mono">
               {{ stat.value }}
             </p>
           </div>
@@ -63,13 +63,13 @@ const simulateLoading = () => {
     <!-- Buttons -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Buttons</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Buttons</h2>
       <UiCard>
-        <div class="space-y-4">
+        <div class="space-y-6">
           <!-- Variants -->
           <div>
-            <p class="mb-3 text-xs font-medium uppercase tracking-wider text-surface-500">Variants</p>
-            <div class="flex flex-wrap items-center gap-3">
+            <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">Variants</p>
+            <div class="flex flex-wrap items-center gap-4">
               <UiButton variant="primary">Primary</UiButton>
               <UiButton variant="secondary">Secondary</UiButton>
               <UiButton variant="outline">Outline</UiButton>
@@ -80,8 +80,8 @@ const simulateLoading = () => {
 
           <!-- Sizes -->
           <div>
-            <p class="mb-3 text-xs font-medium uppercase tracking-wider text-surface-500">Sizes</p>
-            <div class="flex flex-wrap items-center gap-3">
+            <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">Sizes</p>
+            <div class="flex flex-wrap items-center gap-4">
               <UiButton size="sm">Small</UiButton>
               <UiButton size="md">Medium</UiButton>
               <UiButton size="lg">Large</UiButton>
@@ -90,8 +90,8 @@ const simulateLoading = () => {
 
           <!-- States -->
           <div>
-            <p class="mb-3 text-xs font-medium uppercase tracking-wider text-surface-500">States</p>
-            <div class="flex flex-wrap items-center gap-3">
+            <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">States</p>
+            <div class="flex flex-wrap items-center gap-4">
               <UiButton disabled>Disabled</UiButton>
               <UiButton :loading="loadingBtn" @click="simulateLoading">
                 {{ loadingBtn ? 'Deploying...' : 'Click to load' }}
@@ -106,9 +106,9 @@ const simulateLoading = () => {
     <!-- Badges -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Badges</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Badges</h2>
       <UiCard>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="flex flex-wrap items-center gap-4">
           <UiBadge>Default</UiBadge>
           <UiBadge variant="success">Healthy</UiBadge>
           <UiBadge variant="warning">Degraded</UiBadge>
@@ -122,22 +122,22 @@ const simulateLoading = () => {
     <!-- Progress Bars -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Progress Bars</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Progress Bars</h2>
       <UiCard>
-        <div class="space-y-5">
+        <div class="space-y-6">
           <UiProgressBar :value="72" show-label>
             <template #label>
-              <span class="text-xs font-medium text-surface-300">CPU Usage</span>
+              <span class="text-sm font-medium text-surface-300">CPU Usage</span>
             </template>
           </UiProgressBar>
           <UiProgressBar :value="45" variant="success" show-label>
             <template #label>
-              <span class="text-xs font-medium text-surface-300">Memory</span>
+              <span class="text-sm font-medium text-surface-300">Memory</span>
             </template>
           </UiProgressBar>
           <UiProgressBar :value="89" variant="warning" show-label>
             <template #label>
-              <span class="text-xs font-medium text-surface-300">Disk</span>
+              <span class="text-sm font-medium text-surface-300">Disk</span>
             </template>
           </UiProgressBar>
           <UiProgressBar :value="12" variant="danger" size="sm" />
@@ -150,13 +150,13 @@ const simulateLoading = () => {
     <!-- Cards -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Cards</h2>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Cards</h2>
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <UiCard>
           <template #header>
-            <h3 class="text-sm font-semibold text-surface-100">Basic Card</h3>
+            <h3 class="text-base font-semibold text-surface-100">Basic Card</h3>
           </template>
-          <p class="text-sm text-surface-400">
+          <p class="text-base text-surface-400">
             A standard card with header, body, and footer slots. Use it for grouping related content.
           </p>
           <template #footer>
@@ -169,11 +169,11 @@ const simulateLoading = () => {
         <UiCard hoverable>
           <template #header>
             <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-surface-100">Hoverable Card</h3>
+              <h3 class="text-base font-semibold text-surface-100">Hoverable Card</h3>
               <UiBadge variant="success">Active</UiBadge>
             </div>
           </template>
-          <p class="text-sm text-surface-400">
+          <p class="text-base text-surface-400">
             This card has a hover effect. Useful for clickable items like service cards or pipeline entries.
           </p>
         </UiCard>
@@ -184,9 +184,9 @@ const simulateLoading = () => {
     <!-- Forms -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Form Controls</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Form Controls</h2>
       <UiCard>
-        <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
           <UiInput
             v-model="inputValue"
             label="Service Name"
@@ -223,9 +223,9 @@ const simulateLoading = () => {
     <!-- Toggles -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Toggles</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Toggles</h2>
       <UiCard>
-        <div class="space-y-4">
+        <div class="space-y-5">
           <UiToggle v-model="toggleA" label="Auto-deploy on push" />
           <UiToggle v-model="toggleB" label="Enable notifications" />
           <UiToggle label="Disabled toggle" disabled />
@@ -237,9 +237,9 @@ const simulateLoading = () => {
     <!-- Dropdown -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Dropdown</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Dropdown</h2>
       <UiCard>
-        <div class="flex gap-4">
+        <div class="flex gap-5">
           <UiDropdown>
             <template #trigger>
               <UiButton variant="secondary">
@@ -252,7 +252,7 @@ const simulateLoading = () => {
             <UiDropdownItem>Deploy</UiDropdownItem>
             <UiDropdownItem>Rollback</UiDropdownItem>
             <UiDropdownItem>View Logs</UiDropdownItem>
-            <div class="my-1 border-t border-surface-700/40" />
+            <div class="my-2 border-t border-surface-700/40" />
             <UiDropdownItem danger>Delete Service</UiDropdownItem>
           </UiDropdown>
 
@@ -277,19 +277,19 @@ const simulateLoading = () => {
     <!-- Modal -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Modal</h2>
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Modal</h2>
       <UiCard>
         <UiButton @click="openModal">Open Modal</UiButton>
       </UiCard>
 
       <UiModal v-if="modalOpen" :open="modalOpen" title="Confirm Deployment" @close="closeModal">
-        <p class="text-sm text-surface-400">
+        <p class="text-base text-surface-400">
           You are about to deploy <span class="font-mono text-surface-200">api-gateway@v2.4.1</span>
           to <span class="font-semibold text-surface-200">production</span>. This action will
           replace the currently running version.
         </p>
         <template #footer>
-          <div class="flex justify-end gap-3">
+          <div class="flex justify-end gap-4">
             <UiButton variant="ghost" @click="closeModal">Cancel</UiButton>
             <UiButton @click="closeModal">Deploy</UiButton>
           </div>
@@ -301,69 +301,69 @@ const simulateLoading = () => {
     <!-- Typography & Colors -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Typography &amp; Colors</h2>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Typography &amp; Colors</h2>
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <UiCard>
           <template #header>
-            <h3 class="text-sm font-semibold text-surface-100">Type Scale</h3>
+            <h3 class="text-base font-semibold text-surface-100">Type Scale</h3>
           </template>
-          <div class="space-y-3">
-            <p class="text-3xl font-bold text-surface-50">Heading 1</p>
-            <p class="text-2xl font-semibold text-surface-50">Heading 2</p>
-            <p class="text-xl font-semibold text-surface-100">Heading 3</p>
-            <p class="text-base text-surface-200">Body text — Inter 400</p>
-            <p class="text-sm text-surface-400">Secondary text — Inter 400</p>
-            <p class="text-xs text-surface-500">Caption text — Inter 400</p>
-            <p class="font-mono text-sm text-accent-400">Monospace — JetBrains Mono</p>
+          <div class="space-y-4">
+            <p class="text-4xl font-bold text-surface-50">Heading 1</p>
+            <p class="text-3xl font-semibold text-surface-50">Heading 2</p>
+            <p class="text-2xl font-semibold text-surface-100">Heading 3</p>
+            <p class="text-lg text-surface-200">Body text — Inter 400</p>
+            <p class="text-base text-surface-400">Secondary text — Inter 400</p>
+            <p class="text-sm text-surface-500">Caption text — Inter 400</p>
+            <p class="font-mono text-base text-accent-400">Monospace — JetBrains Mono</p>
           </div>
         </UiCard>
 
         <UiCard>
           <template #header>
-            <h3 class="text-sm font-semibold text-surface-100">Color Palette</h3>
+            <h3 class="text-base font-semibold text-surface-100">Color Palette</h3>
           </template>
-          <div class="space-y-3">
+          <div class="space-y-5">
             <div>
-              <p class="mb-1.5 text-xs font-medium text-surface-500">Surface</p>
-              <div class="flex gap-1">
-                <div class="h-8 w-8 rounded bg-surface-950" title="950" />
-                <div class="h-8 w-8 rounded bg-surface-900" title="900" />
-                <div class="h-8 w-8 rounded bg-surface-800" title="800" />
-                <div class="h-8 w-8 rounded bg-surface-700" title="700" />
-                <div class="h-8 w-8 rounded bg-surface-600" title="600" />
-                <div class="h-8 w-8 rounded bg-surface-500" title="500" />
-                <div class="h-8 w-8 rounded bg-surface-400" title="400" />
-                <div class="h-8 w-8 rounded bg-surface-300" title="300" />
+              <p class="mb-2 text-sm font-medium text-surface-500">Surface</p>
+              <div class="flex gap-1.5">
+                <div class="h-10 w-10 rounded-lg bg-surface-950" title="950" />
+                <div class="h-10 w-10 rounded-lg bg-surface-900" title="900" />
+                <div class="h-10 w-10 rounded-lg bg-surface-800" title="800" />
+                <div class="h-10 w-10 rounded-lg bg-surface-700" title="700" />
+                <div class="h-10 w-10 rounded-lg bg-surface-600" title="600" />
+                <div class="h-10 w-10 rounded-lg bg-surface-500" title="500" />
+                <div class="h-10 w-10 rounded-lg bg-surface-400" title="400" />
+                <div class="h-10 w-10 rounded-lg bg-surface-300" title="300" />
               </div>
             </div>
             <div>
-              <p class="mb-1.5 text-xs font-medium text-surface-500">Accent</p>
-              <div class="flex gap-1">
-                <div class="h-8 w-8 rounded bg-accent-700" title="700" />
-                <div class="h-8 w-8 rounded bg-accent-600" title="600" />
-                <div class="h-8 w-8 rounded bg-accent-500" title="500" />
-                <div class="h-8 w-8 rounded bg-accent-400" title="400" />
-                <div class="h-8 w-8 rounded bg-accent-300" title="300" />
+              <p class="mb-2 text-sm font-medium text-surface-500">Accent</p>
+              <div class="flex gap-1.5">
+                <div class="h-10 w-10 rounded-lg bg-accent-700" title="700" />
+                <div class="h-10 w-10 rounded-lg bg-accent-600" title="600" />
+                <div class="h-10 w-10 rounded-lg bg-accent-500" title="500" />
+                <div class="h-10 w-10 rounded-lg bg-accent-400" title="400" />
+                <div class="h-10 w-10 rounded-lg bg-accent-300" title="300" />
               </div>
             </div>
             <div>
-              <p class="mb-1.5 text-xs font-medium text-surface-500">Semantic</p>
-              <div class="flex gap-2">
-                <div class="flex items-center gap-1.5">
-                  <div class="h-6 w-6 rounded bg-success-500" />
-                  <span class="text-xs text-surface-400">Success</span>
+              <p class="mb-2 text-sm font-medium text-surface-500">Semantic</p>
+              <div class="flex gap-4">
+                <div class="flex items-center gap-2">
+                  <div class="h-8 w-8 rounded-lg bg-success-500" />
+                  <span class="text-sm text-surface-400">Success</span>
                 </div>
-                <div class="flex items-center gap-1.5">
-                  <div class="h-6 w-6 rounded bg-warning-500" />
-                  <span class="text-xs text-surface-400">Warning</span>
+                <div class="flex items-center gap-2">
+                  <div class="h-8 w-8 rounded-lg bg-warning-500" />
+                  <span class="text-sm text-surface-400">Warning</span>
                 </div>
-                <div class="flex items-center gap-1.5">
-                  <div class="h-6 w-6 rounded bg-danger-500" />
-                  <span class="text-xs text-surface-400">Danger</span>
+                <div class="flex items-center gap-2">
+                  <div class="h-8 w-8 rounded-lg bg-danger-500" />
+                  <span class="text-sm text-surface-400">Danger</span>
                 </div>
-                <div class="flex items-center gap-1.5">
-                  <div class="h-6 w-6 rounded bg-primary-500" />
-                  <span class="text-xs text-surface-400">Primary</span>
+                <div class="flex items-center gap-2">
+                  <div class="h-8 w-8 rounded-lg bg-primary-500" />
+                  <span class="text-sm text-surface-400">Primary</span>
                 </div>
               </div>
             </div>
@@ -376,17 +376,17 @@ const simulateLoading = () => {
     <!-- Glass effect demo -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-4 text-lg font-semibold text-surface-100">Special Effects</h2>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div class="glass rounded-xl p-5">
-          <h3 class="text-sm font-semibold text-surface-100">Glass Effect</h3>
-          <p class="mt-1 text-sm text-surface-400">
+      <h2 class="mb-6 text-xl font-semibold text-surface-100">Special Effects</h2>
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div class="glass rounded-xl p-6">
+          <h3 class="text-base font-semibold text-surface-100">Glass Effect</h3>
+          <p class="mt-2 text-base text-surface-400">
             Frosted glass panel with backdrop blur. Use for overlays and elevated surfaces.
           </p>
         </div>
-        <div class="glow-accent rounded-xl border border-accent-500/20 bg-surface-900/50 p-5">
-          <h3 class="text-sm font-semibold text-accent-300">Accent Glow</h3>
-          <p class="mt-1 text-sm text-surface-400">
+        <div class="glow-accent rounded-xl border border-accent-500/20 bg-surface-900/50 p-6">
+          <h3 class="text-base font-semibold text-accent-300">Accent Glow</h3>
+          <p class="mt-2 text-base text-surface-400">
             Subtle glow effect for highlighted or featured elements.
           </p>
         </div>

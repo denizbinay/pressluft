@@ -49,9 +49,9 @@ const selectSection = (key: string) => {
 <template>
   <div>
     <!-- Page header -->
-    <div class="mb-6">
-      <h1 class="text-2xl font-semibold text-surface-50">Settings</h1>
-      <p class="mt-1 text-sm text-surface-400">
+    <div class="mb-8">
+      <h1 class="text-3xl font-semibold text-surface-50">Settings</h1>
+      <p class="mt-2 text-base text-surface-400">
         Manage your application configuration and preferences.
       </p>
     </div>
@@ -135,15 +135,15 @@ const selectSection = (key: string) => {
     </div>
 
     <!-- Desktop layout: sidebar + content -->
-    <div class="flex gap-6">
+    <div class="flex gap-8">
       <!-- Sidebar (desktop) -->
-      <aside class="hidden w-56 shrink-0 lg:block">
-        <nav aria-label="Settings sections" class="space-y-0.5">
+      <aside class="hidden w-64 shrink-0 lg:block">
+        <nav aria-label="Settings sections" class="space-y-1">
           <button
             v-for="section in sections"
             :key="section.key"
             :class="[
-              'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+              'flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors',
               activeSection === section.key
                 ? 'bg-accent-500/10 text-accent-400'
                 : 'text-surface-400 hover:bg-surface-800/50 hover:text-surface-200',
@@ -152,7 +152,7 @@ const selectSection = (key: string) => {
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4 shrink-0"
+              class="h-5 w-5 shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -170,10 +170,10 @@ const selectSection = (key: string) => {
         <UiCard>
           <template #header>
             <div>
-              <h2 class="text-lg font-semibold text-surface-50">
+              <h2 class="text-xl font-semibold text-surface-50">
                 {{ currentSection.label }}
               </h2>
-              <p class="mt-0.5 text-sm text-surface-400">
+              <p class="mt-1 text-base text-surface-400">
                 {{ currentSection.description }}
               </p>
             </div>

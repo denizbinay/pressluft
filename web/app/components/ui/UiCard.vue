@@ -13,9 +13,9 @@ const cardUi = computed(() => ({
     'rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm',
     props.hoverable && 'transition-all duration-200 hover:border-surface-700/80 hover:bg-surface-900/70 hover:shadow-lg hover:shadow-surface-950/50 cursor-pointer',
   ],
-  header: 'border-b border-surface-800/40 px-5 py-4',
-  body: 'px-5 py-4',
-  footer: 'border-t border-surface-800/40 px-5 py-3',
+  header: 'border-b border-surface-800/40 px-6 py-5',
+  body: 'px-6 py-5',
+  footer: 'border-t border-surface-800/40 px-6 py-4',
 }))
 </script>
 
