@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 	"pressluft/internal/server/profiles"
 )
@@ -14,6 +15,7 @@ import (
 type serversHandler struct {
 	providerStore *provider.Store
 	serverStore   *ServerStore
+	jobStore      *orchestrator.Store
 }
 
 func (sh *serversHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +108,6 @@ type createServerRequest struct {
 	Name       string `json:"name"`
 	Location   string `json:"location"`
 	ServerType string `json:"server_type"`
-	Image      string `json:"image"`
 	ProfileKey string `json:"profile_key"`
 }
 
@@ -122,7 +123,8 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := profiles.Get(req.ProfileKey); !ok {
+	profile, ok := profiles.Get(req.ProfileKey)
+	if !ok {
 		respondError(w, http.StatusBadRequest, "unsupported profile_key: "+req.ProfileKey)
 		return
 	}
@@ -133,19 +135,20 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverProvider, ok := provider.GetServerProvider(storedProvider.Type)
-	if !ok {
+	if _, ok := provider.GetServerProvider(storedProvider.Type); !ok {
 		respondError(w, http.StatusBadRequest, "provider does not support server provisioning: "+storedProvider.Type)
 		return
 	}
 
+	// Create server record in pending state
+	// Image is derived from the profile, not user input
 	serverID, err := sh.serverStore.Create(r.Context(), CreateServerNodeInput{
 		ProviderID:   storedProvider.ID,
 		ProviderType: storedProvider.Type,
 		Name:         req.Name,
 		Location:     req.Location,
 		ServerType:   req.ServerType,
-		Image:        req.Image,
+		Image:        profile.Image,
 		ProfileKey:   req.ProfileKey,
 		Status:       "pending",
 	})
@@ -154,41 +157,30 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, createErr := serverProvider.CreateServer(r.Context(), storedProvider.APIToken, provider.CreateServerRequest{
-		Name:       req.Name,
-		Location:   req.Location,
-		ServerType: req.ServerType,
-		Image:      req.Image,
-		ProfileKey: req.ProfileKey,
-		Labels: map[string]string{
-			"pressluft_profile": req.ProfileKey,
-		},
+	// Create a provisioning job instead of calling provider directly
+	job, err := sh.jobStore.CreateJob(r.Context(), orchestrator.CreateJobInput{
+		Kind:     "provision_server",
+		ServerID: serverID,
 	})
-	if createErr != nil {
-		_ = sh.serverStore.UpdateProvisioning(r.Context(), serverID, "", "", "", "failed")
-		respondError(w, http.StatusBadGateway, "server provisioning failed: "+createErr.Error())
+	if err != nil {
+		// Rollback: mark server as failed since we couldn't create the job
+		_ = sh.serverStore.UpdateStatus(r.Context(), serverID, "failed")
+		respondError(w, http.StatusInternalServerError, "failed to create provisioning job: "+err.Error())
 		return
 	}
 
-	status := normalizeProvisionStatus(result.Status)
-	if err := sh.serverStore.UpdateProvisioning(
-		r.Context(),
-		serverID,
-		result.ProviderServerID,
-		result.ActionID,
-		result.Status,
-		status,
-	); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to update server provisioning state: "+err.Error())
-		return
-	}
+	// Emit initial job event
+	_, _ = sh.jobStore.AppendEvent(r.Context(), job.ID, orchestrator.CreateEventInput{
+		EventType: "job_created",
+		Level:     "info",
+		Status:    string(job.Status),
+		Message:   "Server provisioning job queued",
+	})
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
-		"id":                 serverID,
-		"status":             status,
-		"provider_server_id": result.ProviderServerID,
-		"action_id":          result.ActionID,
-		"action_status":      result.Status,
+		"server_id": serverID,
+		"job_id":    job.ID,
+		"status":    "pending",
 	})
 }
 
@@ -217,25 +209,8 @@ func validateCreateServerHTTPRequest(req createServerRequest) error {
 	if strings.TrimSpace(req.ServerType) == "" {
 		return fmt.Errorf("server_type is required")
 	}
-	if strings.TrimSpace(req.Image) == "" {
-		return fmt.Errorf("image is required")
-	}
 	if strings.TrimSpace(req.ProfileKey) == "" {
 		return fmt.Errorf("profile_key is required")
 	}
 	return nil
-}
-
-func normalizeProvisionStatus(actionStatus string) string {
-	status := strings.ToLower(strings.TrimSpace(actionStatus))
-	switch status {
-	case "success":
-		return "ready"
-	case "error":
-		return "failed"
-	case "running":
-		return "provisioning"
-	default:
-		return "provisioning"
-	}
 }

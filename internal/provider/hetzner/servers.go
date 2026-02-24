@@ -23,37 +23,107 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 
 	client := newClient(token)
 
-	locations, err := client.Location.All(ctx)
+	// Fetch datacenters - this is the authoritative source for availability.
+	// dc.ServerTypes.Available contains only server types that can be created NOW.
+	datacenters, err := client.Datacenter.All(ctx)
 	if err != nil {
 		return nil, mapHetznerAPIError(err)
 	}
 
+	// Build availability map: serverTypeName -> []locationName
+	availability := make(map[string][]string)
+	locationSet := make(map[string]*hcloud.Location)
+
+	for _, dc := range datacenters {
+		if dc.Location == nil {
+			continue
+		}
+		locationSet[dc.Location.Name] = dc.Location
+
+		for _, st := range dc.ServerTypes.Available {
+			if st == nil {
+				continue
+			}
+			// Deduplicate: multiple datacenters can share a location
+			locs := availability[st.Name]
+			found := false
+			for _, loc := range locs {
+				if loc == dc.Location.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				availability[st.Name] = append(locs, dc.Location.Name)
+			}
+		}
+	}
+
+	// Fetch all server types for full metadata (cores, memory, pricing)
 	serverTypes, err := client.ServerType.All(ctx)
 	if err != nil {
 		return nil, mapHetznerAPIError(err)
 	}
 
-	images, _, err := client.Image.List(ctx, hcloud.ImageListOpts{
-		Type:     []hcloud.ImageType{hcloud.ImageTypeSystem},
-		ListOpts: hcloud.ListOpts{PerPage: 50},
-	})
-	if err != nil {
-		return nil, mapHetznerAPIError(err)
+	// Convert locations
+	locations := make([]provider.ServerLocation, 0, len(locationSet))
+	for _, loc := range locationSet {
+		locations = append(locations, provider.ServerLocation{
+			Name:        loc.Name,
+			Description: loc.Description,
+			Country:     loc.Country,
+			City:        loc.City,
+			NetworkZone: string(loc.NetworkZone),
+		})
+	}
+
+	// Convert server types, only including those with availability
+	serverTypeOptions := make([]provider.ServerTypeOption, 0, len(serverTypes))
+	for _, st := range serverTypes {
+		if st == nil {
+			continue
+		}
+		availableAt, hasAvailability := availability[st.Name]
+		if !hasAvailability || len(availableAt) == 0 {
+			// Skip server types that aren't available anywhere
+			continue
+		}
+
+		prices := make([]provider.ServerTypePrice, 0, len(st.Pricings))
+		for _, p := range st.Pricings {
+			if p.Location == nil {
+				continue
+			}
+			prices = append(prices, provider.ServerTypePrice{
+				LocationName: p.Location.Name,
+				HourlyGross:  p.Hourly.Gross,
+				MonthlyGross: p.Monthly.Gross,
+				Currency:     p.Hourly.Currency,
+			})
+		}
+
+		slices.Sort(availableAt)
+		serverTypeOptions = append(serverTypeOptions, provider.ServerTypeOption{
+			Name:         st.Name,
+			Description:  st.Description,
+			Cores:        st.Cores,
+			MemoryGB:     float64(st.Memory),
+			DiskGB:       st.Disk,
+			Architecture: string(st.Architecture),
+			AvailableAt:  availableAt,
+			Prices:       prices,
+		})
 	}
 
 	catalog := &provider.ServerCatalog{
-		Locations:   mapLocations(locations),
-		ServerTypes: mapServerTypes(serverTypes),
-		Images:      mapImages(images),
+		Locations:   locations,
+		ServerTypes: serverTypeOptions,
 	}
 
 	slices.SortFunc(catalog.Locations, func(a, b provider.ServerLocation) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 	slices.SortFunc(catalog.ServerTypes, func(a, b provider.ServerTypeOption) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	slices.SortFunc(catalog.Images, func(a, b provider.ServerImageOption) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
@@ -144,57 +214,6 @@ func mapLocations(in []*hcloud.Location) []provider.ServerLocation {
 	return out
 }
 
-func mapServerTypes(in []*hcloud.ServerType) []provider.ServerTypeOption {
-	out := make([]provider.ServerTypeOption, 0, len(in))
-	for _, st := range in {
-		if st == nil {
-			continue
-		}
-
-		prices := make([]provider.ServerTypePrice, 0, len(st.Pricings))
-		for _, p := range st.Pricings {
-			if p.Location == nil {
-				continue
-			}
-			prices = append(prices, provider.ServerTypePrice{
-				LocationName: p.Location.Name,
-				HourlyGross:  p.Hourly.Gross,
-				MonthlyGross: p.Monthly.Gross,
-				Currency:     p.Hourly.Currency,
-			})
-		}
-
-		out = append(out, provider.ServerTypeOption{
-			Name:         st.Name,
-			Description:  st.Description,
-			Cores:        st.Cores,
-			MemoryGB:     float64(st.Memory),
-			DiskGB:       st.Disk,
-			Architecture: string(st.Architecture),
-			Prices:       prices,
-		})
-	}
-	return out
-}
-
-func mapImages(in []*hcloud.Image) []provider.ServerImageOption {
-	out := make([]provider.ServerImageOption, 0, len(in))
-	for _, img := range in {
-		if img == nil || img.IsDeprecated() || img.IsDeleted() {
-			continue
-		}
-		out = append(out, provider.ServerImageOption{
-			Name:         img.Name,
-			Description:  img.Description,
-			Type:         string(img.Type),
-			OSFlavor:     img.OSFlavor,
-			OSVersion:    img.OSVersion,
-			Architecture: string(img.Architecture),
-		})
-	}
-	return out
-}
-
 func validateCreateServerRequest(req provider.CreateServerRequest) error {
 	if strings.TrimSpace(req.Name) == "" {
 		return fmt.Errorf("name is required")
@@ -207,9 +226,6 @@ func validateCreateServerRequest(req provider.CreateServerRequest) error {
 	}
 	if strings.TrimSpace(req.Image) == "" {
 		return fmt.Errorf("image is required")
-	}
-	if strings.TrimSpace(req.ProfileKey) == "" {
-		return fmt.Errorf("profile_key is required")
 	}
 	return nil
 }

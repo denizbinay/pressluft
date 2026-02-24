@@ -190,6 +190,81 @@ func validateCreateServerNodeInput(in CreateServerNodeInput) error {
 	return nil
 }
 
+// GetByID returns a server by its ID.
+func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("id must be greater than zero")
+	}
+
+	var (
+		srv              StoredServer
+		providerServerID sql.NullString
+		actionID         sql.NullString
+		actionStatus     sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, provider_id, provider_type, provider_server_id, name, location, server_type, image, profile_key, status, action_id, action_status, created_at, updated_at
+		 FROM servers
+		 WHERE id = ?`,
+		id,
+	).Scan(
+		&srv.ID,
+		&srv.ProviderID,
+		&srv.ProviderType,
+		&providerServerID,
+		&srv.Name,
+		&srv.Location,
+		&srv.ServerType,
+		&srv.Image,
+		&srv.ProfileKey,
+		&srv.Status,
+		&actionID,
+		&actionStatus,
+		&srv.CreatedAt,
+		&srv.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("server %d not found", id)
+		}
+		return nil, fmt.Errorf("get server: %w", err)
+	}
+
+	srv.ProviderServerID = nullStringValue(providerServerID)
+	srv.ActionID = nullStringValue(actionID)
+	srv.ActionStatus = nullStringValue(actionStatus)
+
+	return &srv, nil
+}
+
+// UpdateStatus updates only the status field of a server.
+func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status string) error {
+	if id <= 0 {
+		return fmt.Errorf("id must be greater than zero")
+	}
+	if strings.TrimSpace(status) == "" {
+		return fmt.Errorf("status is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE servers SET status = ?, updated_at = ? WHERE id = ?`,
+		status,
+		now,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update server status: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %d not found", id)
+	}
+
+	return nil
+}
+
 func nullStringValue(v sql.NullString) string {
 	if !v.Valid {
 		return ""

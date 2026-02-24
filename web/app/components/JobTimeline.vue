@@ -4,6 +4,8 @@ import { useJobs, type Job, type JobEvent } from '~/composables/useJobs'
 interface Props {
   jobId: number
   autoConnect?: boolean
+  /** Compact mode for embedding in modals */
+  compact?: boolean
 }
 
 interface Emits {
@@ -13,6 +15,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   autoConnect: true,
+  compact: false,
 })
 
 const emit = defineEmits<Emits>()
@@ -22,12 +25,12 @@ const { activeJob, events, fetchJob, streamJobEvents } = useJobs()
 const loading = ref(true)
 const connectionError = ref('')
 
-// Step key to human-readable label mapping
+// Step key to human-readable label mapping (matches backend executor steps)
 const stepLabels: Record<string, string> = {
-  validate_input: 'Validating configuration',
+  validate: 'Validating configuration',
   create_ssh_key: 'Creating SSH key',
-  create_server: 'Creating server at Hetzner',
-  wait_for_running: 'Waiting for server to boot',
+  create_server: 'Creating server',
+  wait_running: 'Waiting for server',
   finalize: 'Finalizing setup',
 }
 
@@ -41,7 +44,8 @@ interface TimelineStep {
 }
 
 const steps = computed<TimelineStep[]>(() => {
-  const stepOrder = ['validate_input', 'create_ssh_key', 'create_server', 'wait_for_running', 'finalize']
+  // Step order matches backend executor (internal/worker/executor.go)
+  const stepOrder = ['validate', 'create_ssh_key', 'create_server', 'wait_running', 'finalize']
   const eventsByStep = new Map<string, JobEvent[]>()
 
   // Group events by step_key
@@ -93,7 +97,7 @@ const jobStartedAt = computed(() => {
 
 const isTerminal = computed(() => {
   const status = activeJob.value?.status
-  return status === 'completed' || status === 'failed'
+  return status === 'succeeded' || status === 'failed' || status === 'cancelled' || status === 'timed_out'
 })
 
 // Format timestamp to readable time
@@ -110,14 +114,17 @@ function formatTime(iso: string): string {
 }
 
 // Status badge variant
-function statusVariant(status: string): 'success' | 'warning' | 'danger' | 'default' | 'info' {
+function statusVariant(status: string): 'success' | 'warning' | 'danger' | 'default' {
   switch (status) {
-    case 'completed':
+    case 'succeeded':
       return 'success'
     case 'running':
+    case 'preparing':
     case 'queued':
-      return 'info'
+      return 'warning'
     case 'failed':
+    case 'cancelled':
+    case 'timed_out':
       return 'danger'
     default:
       return 'default'
@@ -133,9 +140,9 @@ watch(
   (status) => {
     if (!activeJob.value) return
 
-    if (status === 'completed') {
+    if (status === 'succeeded') {
       emit('completed', activeJob.value)
-    } else if (status === 'failed') {
+    } else if (status === 'failed' || status === 'cancelled' || status === 'timed_out') {
       emit('failed', activeJob.value, activeJob.value.last_error || 'Unknown error')
     }
   },
@@ -203,8 +210,15 @@ onUnmounted(() => {
             <span class="text-sm font-medium text-surface-200">Job #{{ jobId }}</span>
             <UiBadge :variant="statusVariant(jobStatus)">{{ jobStatus }}</UiBadge>
           </div>
-          <p v-if="jobStartedAt" class="text-xs text-surface-500">Started at {{ jobStartedAt }}</p>
+          <p v-if="jobStartedAt && !compact" class="text-xs text-surface-500">Started at {{ jobStartedAt }}</p>
         </div>
+        <NuxtLink
+          v-if="compact"
+          :to="`/jobs/${jobId}`"
+          class="text-xs text-accent-400 hover:text-accent-300 transition-colors"
+        >
+          View Details &rarr;
+        </NuxtLink>
       </div>
 
       <!-- Timeline steps -->

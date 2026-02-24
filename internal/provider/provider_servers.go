@@ -27,24 +27,15 @@ type ServerTypeOption struct {
 	MemoryGB     float64           `json:"memory_gb"`
 	DiskGB       int               `json:"disk_gb"`
 	Architecture string            `json:"architecture"`
+	AvailableAt  []string          `json:"available_at"`
 	Prices       []ServerTypePrice `json:"prices"`
 }
 
-// ServerImageOption describes an allowed OS image.
-type ServerImageOption struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Type         string `json:"type"`
-	OSFlavor     string `json:"os_flavor,omitempty"`
-	OSVersion    string `json:"os_version,omitempty"`
-	Architecture string `json:"architecture,omitempty"`
-}
-
 // ServerCatalog is the data required by the guided create-server UI.
+// Images are intentionally omitted - they are defined by the server profile.
 type ServerCatalog struct {
-	Locations   []ServerLocation    `json:"locations"`
-	ServerTypes []ServerTypeOption  `json:"server_types"`
-	Images      []ServerImageOption `json:"images"`
+	Locations   []ServerLocation   `json:"locations"`
+	ServerTypes []ServerTypeOption `json:"server_types"`
 }
 
 // CreateServerRequest is the provider-agnostic server creation payload.
@@ -55,7 +46,6 @@ type CreateServerRequest struct {
 	Location   string            `json:"location"`
 	ServerType string            `json:"server_type"`
 	Image      string            `json:"image"`
-	ProfileKey string            `json:"profile_key"`
 	UserData   string            `json:"user_data,omitempty"`
 	Labels     map[string]string `json:"labels,omitempty"`
 }

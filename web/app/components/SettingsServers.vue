@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useProviders } from '~/composables/useProviders'
-import { useServers, type ServerTypeOption, type ServerTypePrice } from '~/composables/useServers'
+import { useServers, type ServerTypePrice } from '~/composables/useServers'
+import type { Job } from '~/composables/useJobs'
 
 const modal = useModal()
 
@@ -16,7 +17,7 @@ const {
   createServer,
 } = useServers()
 
-const formStep = ref<'configure' | 'review'>('configure')
+const formStep = ref<'configure' | 'review' | 'provisioning'>('configure')
 const formError = ref('')
 const formLoadingCatalog = ref(false)
 
@@ -24,8 +25,10 @@ const formProviderId = ref('')
 const formName = ref('')
 const formLocation = ref('')
 const formServerType = ref('')
-const formImage = ref('')
 const formProfileKey = ref('')
+
+// Job tracking for provisioning step
+const activeJobId = ref<number | null>(null)
 
 const providerOptions = computed(() =>
   providers.value.map((p) => ({
@@ -41,13 +44,6 @@ const locationOptions = computed(() =>
   })),
 )
 
-const imageOptions = computed(() =>
-  (catalog.value?.images || []).map((img) => ({
-    value: img.name,
-    label: img.os_version ? `${img.name} (${img.os_version})` : img.name,
-  })),
-)
-
 const profileOptions = computed(() =>
   profiles.value.map((profile) => ({
     value: profile.key,
@@ -55,16 +51,25 @@ const profileOptions = computed(() =>
   })),
 )
 
-const serverTypeOptions = computed(() =>
-  (catalog.value?.server_types || []).map((type_) => {
-    const priceLabel = formatMonthlyPrice(type_, formLocation.value)
-    const detail = `${type_.cores} vCPU · ${type_.memory_gb}GB RAM · ${type_.disk_gb}GB SSD`
-    return {
-      value: type_.name,
-      label: priceLabel ? `${type_.name} (${detail}, ${priceLabel}/mo)` : `${type_.name} (${detail})`,
-    }
-  }),
-)
+// Filter server types to only show those available at the selected location
+const serverTypeOptions = computed(() => {
+  const selectedLocation = formLocation.value
+  return (catalog.value?.server_types || [])
+    .filter((type_) => {
+      // If no location selected, show all
+      if (!selectedLocation) return true
+      // Only show server types available at the selected location
+      return type_.available_at?.includes(selectedLocation) ?? false
+    })
+    .map((type_) => {
+      const priceLabel = formatMonthlyPrice(type_, selectedLocation)
+      const detail = `${type_.cores} vCPU · ${type_.memory_gb}GB RAM · ${type_.disk_gb}GB SSD`
+      return {
+        value: type_.name,
+        label: priceLabel ? `${type_.name} (${detail}, ${priceLabel}/mo)` : `${type_.name} (${detail})`,
+      }
+    })
+})
 
 const selectedProfile = computed(() =>
   profiles.value.find((profile) => profile.key === formProfileKey.value),
@@ -86,8 +91,8 @@ const resetForm = () => {
   formName.value = ''
   formLocation.value = ''
   formServerType.value = ''
-  formImage.value = ''
   formProfileKey.value = ''
+  activeJobId.value = null
 }
 
 const openModal = async () => {
@@ -107,8 +112,8 @@ const loadCatalogForSelectedProvider = async () => {
   try {
     await fetchCatalog(Number(formProviderId.value))
     formLocation.value = locationOptions.value[0]?.value || ''
-    formServerType.value = serverTypeOptions.value[0]?.value || ''
-    formImage.value = imageOptions.value[0]?.value || ''
+    // Server type will be set after location is selected (filtered by availability)
+    formServerType.value = ''
     formProfileKey.value = profileOptions.value[0]?.value || ''
   } catch (e: any) {
     formError.value = e.message
@@ -122,6 +127,12 @@ watch(formProviderId, async () => {
     return
   }
   await loadCatalogForSelectedProvider()
+})
+
+// When location changes, reset server type to first available option
+watch(formLocation, () => {
+  // Set to first available server type for this location
+  formServerType.value = serverTypeOptions.value[0]?.value || ''
 })
 
 const goToReview = () => {
@@ -145,19 +156,39 @@ const submit = async () => {
 
   formError.value = ''
   try {
-    await createServer({
+    const result = await createServer({
       provider_id: Number(formProviderId.value),
       name: formName.value.trim(),
       location: formLocation.value,
       server_type: formServerType.value,
-      image: formImage.value,
       profile_key: formProfileKey.value,
     })
-    modal.close()
-    await fetchServers()
+    
+    // Show provisioning progress instead of closing modal
+    activeJobId.value = result.job_id
+    formStep.value = 'provisioning'
+    
+    // Refresh server list in background
+    fetchServers()
   } catch (e: any) {
     formError.value = e.message
   }
+}
+
+const handleJobCompleted = (job: Job) => {
+  // Refresh servers to show updated status
+  fetchServers()
+}
+
+const handleJobFailed = (job: Job, error: string) => {
+  // Refresh servers to show failed status
+  fetchServers()
+}
+
+const closeAndReset = () => {
+  modal.close()
+  // Small delay to let modal animation complete before resetting
+  setTimeout(resetForm, 200)
 }
 
 const isFormValid = () => {
@@ -166,7 +197,6 @@ const isFormValid = () => {
     !!formName.value.trim() &&
     !!formLocation.value &&
     !!formServerType.value &&
-    !!formImage.value &&
     !!formProfileKey.value
   )
 }
@@ -298,38 +328,54 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
             label="Size"
             :options="serverTypeOptions"
             placeholder="Select size"
-            :disabled="formLoadingCatalog"
-          />
-
-          <UiSelect
-            v-model="formImage"
-            label="Base Image"
-            :options="imageOptions"
-            placeholder="Select image"
-            :disabled="formLoadingCatalog"
+            :disabled="formLoadingCatalog || !formLocation"
           />
 
           <p v-if="formLoadingCatalog" class="text-xs text-surface-500">Loading provider catalog...</p>
         </template>
 
-        <template v-else>
+        <template v-else-if="formStep === 'review'">
           <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3 text-sm text-surface-300">
             <p><strong class="text-surface-100">Name:</strong> {{ formName }}</p>
             <p><strong class="text-surface-100">Region:</strong> {{ formLocation }}</p>
             <p><strong class="text-surface-100">Size:</strong> {{ selectedTypeLabel }}</p>
-            <p><strong class="text-surface-100">Image:</strong> {{ formImage }}</p>
             <p><strong class="text-surface-100">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
           </div>
           <p class="text-xs text-surface-500">
-            Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
+            The base image is determined by the selected profile. Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
           </p>
+        </template>
+
+        <!-- Provisioning step: show job timeline -->
+        <template v-else-if="formStep === 'provisioning' && activeJobId">
+          <div class="space-y-3">
+            <div class="flex items-center gap-2">
+              <div class="h-2 w-2 animate-pulse rounded-full bg-accent-500" />
+              <span class="text-sm font-medium text-surface-200">Provisioning {{ formName }}</span>
+            </div>
+            <JobTimeline
+              :job-id="activeJobId"
+              compact
+              @completed="handleJobCompleted"
+              @failed="handleJobFailed"
+            />
+          </div>
         </template>
       </div>
 
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <UiButton variant="ghost" size="sm" @click="modal.close">Cancel</UiButton>
+          <!-- Cancel/Close button -->
+          <UiButton
+            v-if="formStep !== 'provisioning'"
+            variant="ghost"
+            size="sm"
+            @click="modal.close"
+          >
+            Cancel
+          </UiButton>
 
+          <!-- Back button (review step only) -->
           <UiButton
             v-if="formStep === 'review'"
             variant="ghost"
@@ -339,6 +385,7 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
             Back
           </UiButton>
 
+          <!-- Review button (configure step) -->
           <UiButton
             v-if="formStep === 'configure'"
             size="sm"
@@ -348,6 +395,7 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
             Review
           </UiButton>
 
+          <!-- Create button (review step) -->
           <UiButton
             v-if="formStep === 'review'"
             size="sm"
@@ -355,6 +403,15 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
             @click="submit"
           >
             Create Server
+          </UiButton>
+
+          <!-- Done button (provisioning step) -->
+          <UiButton
+            v-if="formStep === 'provisioning'"
+            size="sm"
+            @click="closeAndReset"
+          >
+            Done
           </UiButton>
         </div>
       </template>

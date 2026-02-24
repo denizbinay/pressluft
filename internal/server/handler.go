@@ -33,14 +33,17 @@ func NewHandler(db *sql.DB) http.Handler {
 		mux.HandleFunc("/api/providers/validate", ph.handleValidate)
 		mux.HandleFunc("/api/providers/types", ph.handleTypes)
 
+		jobStore := orchestrator.NewStore(db)
+
 		sh := &serversHandler{
 			providerStore: provider.NewStore(db),
 			serverStore:   NewServerStore(db),
+			jobStore:      jobStore,
 		}
 		mux.HandleFunc("/api/servers", sh.route)
 		mux.HandleFunc("/api/servers/", sh.routeWithPath)
 
-		jh := &jobsHandler{store: orchestrator.NewStore(db)}
+		jh := &jobsHandler{store: jobStore}
 		mux.HandleFunc("/api/jobs", jh.route)
 		mux.HandleFunc("/api/jobs/", jh.routeWithID)
 	}

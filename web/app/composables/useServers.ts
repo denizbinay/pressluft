@@ -29,22 +29,13 @@ export interface ServerTypeOption {
   memory_gb: number
   disk_gb: number
   architecture: string
+  available_at: string[]
   prices: ServerTypePrice[]
-}
-
-export interface ServerImageOption {
-  name: string
-  description: string
-  type: string
-  os_flavor?: string
-  os_version?: string
-  architecture?: string
 }
 
 export interface ServerCatalog {
   locations: ServerLocation[]
   server_types: ServerTypeOption[]
-  images: ServerImageOption[]
 }
 
 export interface StoredServer {
@@ -69,7 +60,6 @@ export interface CreateServerInput {
   name: string
   location: string
   server_type: string
-  image: string
   profile_key: string
 }
 

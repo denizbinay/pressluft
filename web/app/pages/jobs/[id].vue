@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import type { Job } from '~/composables/useJobs'
+
 const route = useRoute()
+const router = useRouter()
 
 const jobId = computed(() => {
   const id = Number(route.params.id)
@@ -7,6 +10,16 @@ const jobId = computed(() => {
 })
 
 const isInvalidId = computed(() => jobId.value === null)
+
+const handleCompleted = (job: Job) => {
+  // Could show a toast or notification here
+  console.log('Job completed:', job.id)
+}
+
+const handleFailed = (job: Job, error: string) => {
+  // Could show a toast or notification here
+  console.error('Job failed:', job.id, error)
+}
 </script>
 
 <template>
@@ -22,9 +35,9 @@ const isInvalidId = computed(() => jobId.value === null)
 
       <UiCard>
         <div class="flex flex-col items-center justify-center py-8 text-center">
-          <div class="mb-4 rounded-full bg-red-500/10 p-3">
+          <div class="mb-4 rounded-full bg-danger-500/10 p-3">
             <svg
-              class="h-6 w-6 text-red-400"
+              class="h-6 w-6 text-danger-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -52,18 +65,17 @@ const isInvalidId = computed(() => jobId.value === null)
       </div>
 
       <UiCard>
-        <!-- JobTimeline component will be integrated here -->
-        <!-- Will be replaced with: <JobTimeline :job-id="jobId" /> -->
-        <div class="py-4 text-center">
-          <div class="mb-3 inline-flex h-8 w-8 animate-spin items-center justify-center rounded-full border-2 border-surface-700 border-t-primary-500" />
-          <p class="text-surface-400">Loading job {{ jobId }}...</p>
-        </div>
+        <JobTimeline
+          :job-id="jobId!"
+          @completed="handleCompleted"
+          @failed="handleFailed"
+        />
       </UiCard>
     </template>
 
     <div class="flex gap-2">
       <NuxtLink
-        to="/servers"
+        to="/settings?tab=servers"
         class="text-sm text-surface-400 transition-colors hover:text-surface-200"
       >
         &larr; Back to Servers

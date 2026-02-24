@@ -63,7 +63,6 @@ func TestServersCreateEndpoint(t *testing.T) {
 		"name":        "agency-prod-01",
 		"location":    "fsn1",
 		"server_type": "cx22",
-		"image":       "ubuntu-24.04",
 		"profile_key": "nginx-stack",
 	}
 	bodyBytes, _ := json.Marshal(body)
@@ -74,9 +73,22 @@ func TestServersCreateEndpoint(t *testing.T) {
 	handler.ServeHTTP(res, req)
 
 	if res.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want %d", res.Code, http.StatusAccepted)
+		t.Fatalf("status = %d, want %d; body = %s", res.Code, http.StatusAccepted, res.Body.String())
 	}
 
+	// Verify response contains server_id and job_id
+	var respBody map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, ok := respBody["server_id"]; !ok {
+		t.Fatal("response missing server_id")
+	}
+	if _, ok := respBody["job_id"]; !ok {
+		t.Fatal("response missing job_id")
+	}
+
+	// Server should be in pending state (job will transition it)
 	servers, err := NewServerStore(db).List(context.Background())
 	if err != nil {
 		t.Fatalf("list servers: %v", err)
@@ -84,8 +96,8 @@ func TestServersCreateEndpoint(t *testing.T) {
 	if len(servers) != 1 {
 		t.Fatalf("server count = %d, want %d", len(servers), 1)
 	}
-	if servers[0].Status != "provisioning" {
-		t.Fatalf("server status = %q, want %q", servers[0].Status, "provisioning")
+	if servers[0].Status != "pending" {
+		t.Fatalf("server status = %q, want %q", servers[0].Status, "pending")
 	}
 }
 
@@ -101,7 +113,6 @@ func TestServersCreateEndpointValidationFailure(t *testing.T) {
 		"name":        "agency-prod-01",
 		"location":    "fsn1",
 		"server_type": "cx22",
-		"image":       "ubuntu-24.04",
 		"profile_key": "unknown-profile",
 	}
 	bodyBytes, _ := json.Marshal(body)
@@ -137,8 +148,8 @@ func (t *testServerProvider) ListServerCatalog(context.Context, string) (*provid
 		Locations: []provider.ServerLocation{{Name: "fsn1", Description: "Falkenstein"}},
 		ServerTypes: []provider.ServerTypeOption{{
 			Name: "cx22", Description: "Standard", Cores: 2, MemoryGB: 4, DiskGB: 40,
+			AvailableAt: []string{"fsn1"},
 		}},
-		Images: []provider.ServerImageOption{{Name: "ubuntu-24.04", Description: "Ubuntu 24.04"}},
 	}, nil
 }
 
@@ -212,6 +223,41 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 		);
 	`); err != nil {
 		t.Fatalf("create servers table: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE jobs (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			server_id    INTEGER,
+			kind         TEXT    NOT NULL,
+			status       TEXT    NOT NULL DEFAULT 'queued',
+			current_step TEXT    NOT NULL DEFAULT '',
+			retry_count  INTEGER NOT NULL DEFAULT 0,
+			last_error   TEXT,
+			created_at   TEXT    NOT NULL,
+			updated_at   TEXT    NOT NULL,
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		);
+	`); err != nil {
+		t.Fatalf("create jobs table: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE job_events (
+			job_id     INTEGER NOT NULL,
+			seq        INTEGER NOT NULL,
+			event_type TEXT    NOT NULL,
+			level      TEXT    NOT NULL,
+			step_key   TEXT,
+			status     TEXT,
+			message    TEXT    NOT NULL,
+			payload    TEXT,
+			created_at TEXT    NOT NULL,
+			PRIMARY KEY (job_id, seq),
+			FOREIGN KEY (job_id) REFERENCES jobs(id)
+		);
+	`); err != nil {
+		t.Fatalf("create job_events table: %v", err)
 	}
 
 	return db
