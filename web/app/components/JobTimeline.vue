@@ -20,7 +20,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
-const { activeJob, events, connectionMode, fetchJob, streamJobEvents, clearEvents } = useJobs()
+const { activeJob, events, connectionMode, fetchJob, fetchJobEvents, streamJobEvents, clearEvents } = useJobs()
+
+/** Whether we're showing a historical (already completed) job vs live */
+const isHistoricalView = ref(false)
 
 const loading = ref(true)
 const connectionError = ref('')
@@ -173,10 +176,19 @@ async function retryLoad() {
   clearEvents()
 
   try {
-    await fetchJob(props.jobId)
-    loading.value = false
+    const job = await fetchJob(props.jobId)
+    
+    // Check if job is already in terminal state (historical view)
+    const terminalStatuses = ['succeeded', 'failed', 'cancelled', 'timed_out']
+    if (terminalStatuses.includes(job.status)) {
+      isHistoricalView.value = true
+      await fetchJobEvents(props.jobId)
+      loading.value = false
+      return
+    }
 
-    if (props.autoConnect && !isTerminal.value) {
+    loading.value = false
+    if (props.autoConnect) {
       if (closeStream) closeStream()
       closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
     }
@@ -188,10 +200,21 @@ async function retryLoad() {
 
 onMounted(async () => {
   try {
-    await fetchJob(props.jobId)
-    loading.value = false
+    const job = await fetchJob(props.jobId)
+    
+    // Check if job is already in terminal state (historical view)
+    const terminalStatuses = ['succeeded', 'failed', 'cancelled', 'timed_out']
+    if (terminalStatuses.includes(job.status)) {
+      // Historical view: fetch all events at once, no streaming
+      isHistoricalView.value = true
+      await fetchJobEvents(props.jobId)
+      loading.value = false
+      return
+    }
 
-    if (props.autoConnect && !isTerminal.value) {
+    // Live view: stream events
+    loading.value = false
+    if (props.autoConnect) {
       closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
     }
   } catch (e: any) {
@@ -250,9 +273,9 @@ onUnmounted(() => {
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-surface-200">Job #{{ jobId }}</span>
             <UiBadge :variant="statusVariant(jobStatus)">{{ jobStatus }}</UiBadge>
-            <!-- Connection mode indicator (only show when not in terminal state) -->
+            <!-- Connection mode indicator (only show for live view) -->
             <span
-              v-if="!isTerminal && connectionMode !== 'disconnected'"
+              v-if="!isHistoricalView && !isTerminal && connectionMode !== 'disconnected'"
               class="flex items-center gap-1 text-xs"
               :class="{
                 'text-success-500': connectionMode === 'streaming',
@@ -267,6 +290,16 @@ onUnmounted(() => {
                 }"
               />
               {{ connectionMode === 'streaming' ? 'Live' : 'Polling' }}
+            </span>
+            <!-- Historical indicator -->
+            <span
+              v-if="isHistoricalView"
+              class="flex items-center gap-1 text-xs text-surface-500"
+            >
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Completed
             </span>
           </div>
           <p v-if="jobStartedAt && !compact" class="text-xs text-surface-500">Started at {{ jobStartedAt }}</p>
@@ -293,13 +326,16 @@ onUnmounted(() => {
           >
             <!-- Step indicator -->
             <div
-              class="absolute -left-3.5 flex h-5 w-5 items-center justify-center rounded-full transition-all duration-300"
-              :class="{
-                'bg-surface-800 text-surface-500': step.status === 'pending',
-                'bg-primary-700/50 text-primary-300': step.status === 'running',
-                'bg-success-900/60 text-success-400': step.status === 'completed',
-                'bg-danger-900/60 text-danger-400': step.status === 'failed',
-              }"
+              class="absolute -left-3.5 flex h-5 w-5 items-center justify-center rounded-full"
+              :class="[
+                {
+                  'bg-surface-800 text-surface-500': step.status === 'pending',
+                  'bg-primary-700/50 text-primary-300': step.status === 'running',
+                  'bg-success-900/60 text-success-400': step.status === 'completed',
+                  'bg-danger-900/60 text-danger-400': step.status === 'failed',
+                },
+                !isHistoricalView && 'transition-all duration-300',
+              ]"
             >
               <!-- Pending: empty circle -->
               <svg
@@ -311,10 +347,11 @@ onUnmounted(() => {
                 <circle cx="4" cy="4" r="3" />
               </svg>
 
-              <!-- Running: spinner -->
+              <!-- Running: spinner (only animate if live view) -->
               <svg
                 v-else-if="step.status === 'running'"
-                class="h-3 w-3 animate-spin"
+                class="h-3 w-3"
+                :class="{ 'animate-spin': !isHistoricalView }"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -352,13 +389,16 @@ onUnmounted(() => {
             <div class="min-w-0 flex-1 pt-0.5">
               <div class="flex items-center gap-2">
                 <span
-                  class="text-sm font-medium transition-colors duration-200"
-                  :class="{
-                    'text-surface-500': step.status === 'pending',
-                    'text-primary-300': step.status === 'running',
-                    'text-surface-200': step.status === 'completed',
-                    'text-danger-400': step.status === 'failed',
-                  }"
+                  class="text-sm font-medium"
+                  :class="[
+                    {
+                      'text-surface-500': step.status === 'pending',
+                      'text-primary-300': step.status === 'running',
+                      'text-surface-200': step.status === 'completed',
+                      'text-danger-400': step.status === 'failed',
+                    },
+                    !isHistoricalView && 'transition-colors duration-200',
+                  ]"
                 >
                   {{ step.label }}
                 </span>
@@ -368,11 +408,14 @@ onUnmounted(() => {
               </div>
               <p
                 v-if="step.message"
-                class="mt-0.5 text-xs transition-opacity duration-200"
-                :class="{
-                  'text-surface-500': step.status !== 'failed',
-                  'text-danger-400/80': step.status === 'failed',
-                }"
+                class="mt-0.5 text-xs"
+                :class="[
+                  {
+                    'text-surface-500': step.status !== 'failed',
+                    'text-danger-400/80': step.status === 'failed',
+                  },
+                  !isHistoricalView && 'transition-opacity duration-200',
+                ]"
               >
                 {{ step.message }}
               </p>

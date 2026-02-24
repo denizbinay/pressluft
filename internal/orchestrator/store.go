@@ -231,6 +231,54 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 	return &job, nil
 }
 
+// ListAllJobs returns all jobs, ordered by created_at DESC.
+// Returns an empty slice (not nil) when no jobs exist.
+func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		 FROM jobs
+		 ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list all jobs: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Job, 0)
+	for rows.Next() {
+		var (
+			job       Job
+			serverIDN sql.NullInt64
+			lastErr   sql.NullString
+		)
+		if err := rows.Scan(
+			&job.ID,
+			&serverIDN,
+			&job.Kind,
+			&job.Status,
+			&job.CurrentStep,
+			&job.RetryCount,
+			&lastErr,
+			&job.CreatedAt,
+			&job.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		if serverIDN.Valid {
+			job.ServerID = serverIDN.Int64
+		}
+		if lastErr.Valid {
+			job.LastError = lastErr.String
+		}
+		out = append(out, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate jobs: %w", err)
+	}
+
+	return out, nil
+}
+
 // ListJobsByServer returns all jobs for a given server, ordered by created_at DESC.
 // Returns an empty slice (not nil) when no jobs exist for the server.
 func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, error) {
@@ -354,6 +402,58 @@ func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, lim
 	defer rows.Close()
 
 	out := make([]JobEvent, 0, limit)
+	for rows.Next() {
+		var (
+			e       JobEvent
+			stepKey sql.NullString
+			status  sql.NullString
+			payload sql.NullString
+		)
+		if err := rows.Scan(
+			&e.JobID,
+			&e.Seq,
+			&e.EventType,
+			&e.Level,
+			&stepKey,
+			&status,
+			&e.Message,
+			&payload,
+			&e.OccurredAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		e.StepKey = nullString(stepKey)
+		e.Status = nullString(status)
+		e.Payload = nullString(payload)
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+
+	return out, nil
+}
+
+// ListAllEvents returns all events for a job, ordered by sequence.
+// Used for historical view of completed jobs.
+func (s *Store) ListAllEvents(ctx context.Context, jobID int64) ([]JobEvent, error) {
+	if jobID <= 0 {
+		return nil, fmt.Errorf("job_id must be greater than zero")
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT job_id, seq, event_type, level, step_key, status, message, payload, created_at
+		 FROM job_events
+		 WHERE job_id = ?
+		 ORDER BY seq ASC`,
+		jobID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list all events: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]JobEvent, 0)
 	for rows.Next() {
 		var (
 			e       JobEvent

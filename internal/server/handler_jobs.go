@@ -27,11 +27,22 @@ func (jh *jobsHandler) route(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		jh.handleList(w, r)
 	case http.MethodPost:
 		jh.handleCreate(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (jh *jobsHandler) handleList(w http.ResponseWriter, r *http.Request) {
+	jobs, err := jh.store.ListAllJobs(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, jobs)
 }
 
 func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +74,16 @@ func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jh.handleEventStream(w, r, jobID)
+		return
+	}
+
+	// /api/jobs/{id}/events/history - get all events as JSON (for completed jobs)
+	if len(parts) == 3 && parts[1] == "events" && parts[2] == "history" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		jh.handleEventHistory(w, r, jobID)
 		return
 	}
 
@@ -106,6 +127,16 @@ func (jh *jobsHandler) handleGet(w http.ResponseWriter, r *http.Request, jobID i
 	}
 
 	respondJSON(w, http.StatusOK, job)
+}
+
+func (jh *jobsHandler) handleEventHistory(w http.ResponseWriter, r *http.Request, jobID int64) {
+	events, err := jh.store.ListAllEvents(r.Context(), jobID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, events)
 }
 
 func (jh *jobsHandler) handleEventStream(w http.ResponseWriter, r *http.Request, jobID int64) {

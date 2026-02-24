@@ -67,6 +67,18 @@ export function useJobs() {
     return job as Job
   }
 
+  const fetchJobEvents = async (jobId: number) => {
+    error.value = ''
+    const res = await fetch(`/api/jobs/${jobId}/events/history`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(body.error || 'Failed to fetch job events')
+    }
+    const data = await res.json()
+    events.value = data as JobEvent[]
+    return data as JobEvent[]
+  }
+
   /**
    * Stream job events via SSE with automatic polling fallback.
    * If SSE fails, falls back to polling the job status every 2 seconds.
@@ -198,6 +210,7 @@ export function useJobs() {
     connectionMode: readonly(connectionMode),
     createJob,
     fetchJob,
+    fetchJobEvents,
     streamJobEvents,
     clearEvents,
   }

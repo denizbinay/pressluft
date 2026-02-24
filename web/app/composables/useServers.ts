@@ -124,6 +124,27 @@ export function useServers() {
     }
   }
 
+  const deleteServer = async (serverId: number): Promise<void> => {
+    error.value = ''
+    const res = await fetch(`/api/servers/${serverId}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(body.error || 'Failed to delete server')
+    }
+  }
+
+  const fetchServer = async (serverId: number): Promise<StoredServer> => {
+    error.value = ''
+    const res = await fetch(`/api/servers/${serverId}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(body.error || 'Failed to fetch server')
+    }
+    return await res.json() as StoredServer
+  }
+
   return {
     servers: readonly(servers),
     profiles: readonly(profiles),
@@ -132,7 +153,9 @@ export function useServers() {
     saving: readonly(saving),
     error: readonly(error),
     fetchServers,
+    fetchServer,
     fetchCatalog,
     createServer,
+    deleteServer,
   }
 }

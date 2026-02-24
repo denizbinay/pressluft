@@ -265,6 +265,26 @@ func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status string)
 	return nil
 }
 
+// Delete removes a server record by ID.
+// Returns an error if the server doesn't exist.
+func (s *ServerStore) Delete(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return fmt.Errorf("id must be greater than zero")
+	}
+
+	res, err := s.db.ExecContext(ctx, `DELETE FROM servers WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete server: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %d not found", id)
+	}
+
+	return nil
+}
+
 func nullStringValue(v sql.NullString) string {
 	if !v.Valid {
 		return ""

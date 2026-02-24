@@ -43,8 +43,77 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 	case "profiles":
 		sh.handleProfiles(w, r)
 	default:
+		// Check for nested paths like /api/servers/{id}/jobs
+		parts := strings.Split(tail, "/")
+		if len(parts) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+
+		serverID, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || serverID <= 0 {
+			http.NotFound(w, r)
+			return
+		}
+
+		if len(parts) == 1 {
+			sh.routeServerByID(w, r, serverID)
+			return
+		}
+
+		// Handle nested routes
+		if len(parts) == 2 && parts[1] == "jobs" {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			sh.handleListServerJobs(w, r, serverID)
+			return
+		}
+
 		http.NotFound(w, r)
 	}
+}
+
+func (sh *serversHandler) routeServerByID(w http.ResponseWriter, r *http.Request, serverID int64) {
+	switch r.Method {
+	case http.MethodGet:
+		sh.handleGetServer(w, r, serverID)
+	case http.MethodDelete:
+		sh.handleDeleteServer(w, r, serverID)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request, serverID int64) {
+	server, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, server)
+}
+
+func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Request, serverID int64) {
+	if err := sh.serverStore.Delete(r.Context(), serverID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (sh *serversHandler) handleListServerJobs(w http.ResponseWriter, r *http.Request, serverID int64) {
+	jobs, err := sh.jobStore.ListJobsByServer(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, jobs)
 }
 
 func (sh *serversHandler) handleList(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,7 @@ const sections: SettingsSection[] = [
   { key: 'notifications', label: 'Notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', description: 'Alerts, email digests, and webhook integrations' },
   { key: 'security', label: 'Security', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', description: 'Authentication, two-factor, and session management' },
   { key: 'api-keys', label: 'API Keys', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z', description: 'API tokens and access credentials' },
+  { key: 'activity', label: 'Activity', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', description: 'Account-wide audit log and activity history' },
 ]
 
 const route = useRoute()
@@ -233,6 +234,11 @@ const selectSection = (key: string) => {
                   API token generation, scopes, expiration, and revocation management will go here.
                 </p>
               </div>
+            </div>
+
+            <!-- Activity / Audit Log -->
+            <div v-if="activeSection === 'activity'" class="space-y-4">
+              <SettingsActivity />
             </div>
           </div>
         </UiCard>

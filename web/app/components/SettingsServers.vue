@@ -15,7 +15,12 @@ const {
   fetchServers,
   fetchCatalog,
   createServer,
+  deleteServer,
 } = useServers()
+
+// Delete confirmation state
+const deleteConfirmId = ref<number | null>(null)
+const deleting = ref(false)
 
 const formStep = ref<'configure' | 'review' | 'provisioning'>('configure')
 const formError = ref('')
@@ -238,6 +243,28 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
   if (status === 'provisioning' || status === 'pending') return 'warning'
   return 'default'
 }
+
+const confirmDelete = (serverId: number) => {
+  deleteConfirmId.value = serverId
+}
+
+const cancelDelete = () => {
+  deleteConfirmId.value = null
+}
+
+const executeDelete = async (serverId: number) => {
+  deleting.value = true
+  try {
+    await deleteServer(serverId)
+    deleteConfirmId.value = null
+    await fetchServers()
+  } catch (e: any) {
+    // Could show a toast here
+    console.error('Failed to delete server:', e.message)
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -272,18 +299,52 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
       <div
         v-for="server in servers"
         :key="server.id"
-        class="flex items-center justify-between rounded-lg border border-surface-800/60 bg-surface-900/30 px-4 py-3"
+        class="group flex items-center justify-between rounded-lg border border-surface-800/60 bg-surface-900/30 px-4 py-3 transition-colors hover:border-surface-700/60 hover:bg-surface-900/50"
       >
-        <div>
+        <NuxtLink
+          :to="`/servers/${server.id}`"
+          class="min-w-0 flex-1"
+        >
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-surface-100">{{ server.name }}</span>
+            <span class="text-sm font-medium text-surface-100 group-hover:text-surface-50">{{ server.name }}</span>
             <UiBadge :variant="statusVariant(server.status)">{{ server.status }}</UiBadge>
           </div>
           <p class="text-xs text-surface-500">
             {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }} · Added {{ formatDate(server.created_at) }}
           </p>
+        </NuxtLink>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-surface-500">{{ server.provider_type }}</span>
+          <!-- Delete button (always visible for failed, hover for others) -->
+          <button
+            v-if="deleteConfirmId !== server.id"
+            class="rounded p-1 text-surface-500 transition-colors hover:bg-danger-900/30 hover:text-danger-400"
+            :class="{ 'opacity-0 group-hover:opacity-100': server.status !== 'failed' }"
+            title="Delete server"
+            @click.prevent="confirmDelete(server.id)"
+          >
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          <!-- Delete confirmation -->
+          <div v-else class="flex items-center gap-1">
+            <button
+              class="rounded px-2 py-1 text-xs font-medium text-danger-400 transition-colors hover:bg-danger-900/30"
+              :disabled="deleting"
+              @click.prevent="executeDelete(server.id)"
+            >
+              {{ deleting ? 'Deleting...' : 'Confirm' }}
+            </button>
+            <button
+              class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-800/50 hover:text-surface-200"
+              :disabled="deleting"
+              @click.prevent="cancelDelete"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-        <span class="text-xs text-surface-500">{{ server.provider_type }}</span>
       </div>
     </div>
 
