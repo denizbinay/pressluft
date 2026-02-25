@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 interface Props {
   hoverable?: boolean
 }
@@ -7,28 +9,24 @@ const props = withDefaults(defineProps<Props>(), {
   hoverable: false,
 })
 
-// Build ui prop for UCard to maintain dark theme styling
-const cardUi = computed(() => ({
-  root: [
-    'rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm',
-    props.hoverable && 'transition-all duration-200 hover:border-surface-700/80 hover:bg-surface-900/70 hover:shadow-lg hover:shadow-surface-950/50 cursor-pointer',
-  ],
-  header: 'border-b border-surface-800/40 px-6 py-5',
-  body: 'px-6 py-5',
-  footer: 'border-t border-surface-800/40 px-6 py-4',
-}))
+const cardClass = computed(() => [
+  'rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm',
+  props.hoverable && 'transition-all duration-200 hover:border-surface-700/80 hover:bg-surface-900/70 hover:shadow-lg hover:shadow-surface-950/50 cursor-pointer',
+])
 </script>
 
 <template>
-  <UCard :ui="cardUi">
-    <template v-if="$slots.header" #header>
+  <section :class="cardClass">
+    <header v-if="$slots.header" class="border-b border-surface-800/40 px-6 py-5">
       <slot name="header" />
-    </template>
-    
-    <slot />
-    
-    <template v-if="$slots.footer" #footer>
+    </header>
+
+    <div class="px-6 py-5">
+      <slot />
+    </div>
+
+    <footer v-if="$slots.footer" class="border-t border-surface-800/40 px-6 py-4">
       <slot name="footer" />
-    </template>
-  </UCard>
+    </footer>
+  </section>
 </template>

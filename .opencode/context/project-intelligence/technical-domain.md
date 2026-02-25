@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.5 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/technical | Priority: critical | Version: 1.6 | Updated: 2026-02-25 -->
 
 # Technical Domain
 
@@ -26,7 +26,8 @@ Pressluft is a single-binary Go application that embeds a static Nuxt dashboard 
 - **API boundary**: `internal/server/*` handlers expose JSON endpoints; stores isolate persistence logic.
 - **Provider model**: interface + registry (`Register/Get/All`) keeps provider extension simple.
 - **Ops model**: `ops/` holds profile intent and convergence artifacts for ops contributors.
-- **Orchestration model**: job state machine + persisted events/checkpoints under `internal/orchestrator`.
+- **Orchestration model**: job state machine + persisted events/checkpoints under `internal/orchestrator` with SSE streaming.
+- **Worker model**: `internal/worker` polls queued jobs and runs provisioning steps via the executor.
 - **Execution boundary**: runner abstraction (`internal/runner`) isolates external tool invocation (Ansible guardrails).
 
 ## Project Structure (Core)
@@ -39,6 +40,7 @@ pressluft/
 │   ├── provider/{provider.go,provider_servers.go,hetzner/*}
 │   ├── server/{handler*.go,store_servers.go,profiles/registry.go,dist/}
 │   ├── orchestrator/{types.go,state_machine.go,store.go}
+│   ├── worker/{worker.go,executor.go,adapters.go}
 │   ├── runner/{runner.go,ansible/adapter.go}
 │   ├── agentproto/types.go
 │   └── events/types.go
@@ -56,11 +58,20 @@ pressluft/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Service health status |
-| GET/POST/DELETE | `/api/providers*` | Provider CRUD and token validation |
-| GET/POST | `/api/servers*` | Server list/catalog/profile-backed create |
-| POST | `/api/jobs` | Create orchestration job scaffold |
+| GET/POST | `/api/providers` | Provider list/create |
+| DELETE | `/api/providers/{id}` | Remove provider |
+| POST | `/api/providers/validate` | Validate provider token |
+| GET | `/api/providers/types` | List available provider types |
+| GET/POST | `/api/servers` | Server list/create (creates provisioning job) |
+| GET | `/api/servers/catalog?provider_id={id}` | Provider server catalog + profiles |
+| GET | `/api/servers/profiles` | Profile registry metadata |
+| GET | `/api/servers/{id}` | Server detail |
+| DELETE | `/api/servers/{id}` | Remove server (and its jobs) |
+| GET | `/api/servers/{id}/jobs` | Jobs tied to a server |
+| GET/POST | `/api/jobs` | List/create orchestration jobs |
 | GET | `/api/jobs/{id}` | Read orchestration job state |
 | GET | `/api/jobs/{id}/events` | Stream job events (SSE) |
+| GET | `/api/jobs/{id}/events/history` | Job event history (JSON) |
 
 All APIs return JSON; errors use `{"error":"..."}`.
 
@@ -82,6 +93,8 @@ running|resuming -> retrying -> running
 active -> failed|cancelled|timed_out
 ```
 
+Provisioning steps (current): `validate` → `create_ssh_key` → `create_server` → `wait_running` → `finalize`.
+
 ### Runner Guardrails
 
 - Use explicit command args (`exec.CommandContext`), never shell strings.
@@ -92,9 +105,9 @@ active -> failed|cancelled|timed_out
 ## Frontend Patterns
 
 - Nuxt 4 app under `web/app/` with composable-first state access.
-- Servers UX uses guided modal, provider catalog, and profile selection.
+- Servers UX uses guided modal, provider catalog, profile selection, and a provisioning timeline.
 - Price labels are normalized to 2 decimal places for readable pricing.
-- Jobs composable (`useJobs`) is scaffolded for live event timelines.
+- Jobs composable (`useJobs`) streams SSE events with polling fallback for timelines.
 
 ## Naming and Conventions
 
@@ -127,9 +140,13 @@ active -> failed|cancelled|timed_out
 - `internal/server/handler.go` - API route registration including jobs routes
 - `internal/server/handler_servers.go` - server catalog/profile/create behavior
 - `internal/server/handler_jobs.go` - orchestration job create/read/SSE handlers
+- `internal/server/store_servers.go` - server persistence and status updates
 - `internal/server/profiles/registry.go` - profile metadata exposed to API clients
 - `internal/orchestrator/state_machine.go` - lifecycle transition rules
 - `internal/orchestrator/store.go` - jobs/events persistence access
+- `internal/worker/executor.go` - provisioning workflow execution
+- `internal/worker/worker.go` - job polling and recovery loop
+- `internal/provider/hetzner/servers.go` - Hetzner catalog + create server + SSH keys
 - `internal/runner/ansible/adapter.go` - guardrailed Ansible execution scaffold
 - `internal/database/migrations/00003_create_jobs.sql` - orchestration tables
 - `ops/profiles/README.md` - profile authoring conventions

@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/nav | Priority: high | Version: 1.3 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/nav | Priority: high | Version: 1.4 | Updated: 2026-02-25 -->
 
 # Project Intelligence
 
@@ -77,6 +77,9 @@ See `.opencode/context/core/standards/project-intelligence.md` for the standard 
 - `internal/server/handler_jobs.go` - Orchestration job API and event stream handlers
 - `internal/server/store_servers.go` - Server persistence and provisioning state
 - `internal/orchestrator/` - Job lifecycle state machine and persistence access
+- `internal/worker/` - Job polling and provisioning executor pipeline
+- `internal/provider/provider_servers.go` - Provider server catalog/create contract
+- `internal/provider/hetzner/servers.go` - Hetzner catalog, create server, SSH key helpers
 - `web/app/components/SettingsProviders.vue` - Providers settings UX implementation
 - `web/app/components/SettingsServers.vue` - Servers settings UX implementation
 - `web/app/composables/useServers.ts` - Servers frontend API client

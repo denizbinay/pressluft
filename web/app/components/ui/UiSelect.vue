@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 interface SelectOption {
   label: string
   value: string
@@ -23,16 +25,15 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-// Convert options to NuxtUI format - items can be array of { label, value }
-const items = computed(() => {
-  return props.options.map(option => ({
-    label: option.label,
-    value: option.value,
-  }))
-})
+const selectClass = computed(() => [
+  'w-full appearance-none rounded-lg border bg-surface-900/60 px-3 py-2 text-sm text-surface-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950',
+  'border-surface-700/60 hover:border-surface-600',
+  props.disabled && 'cursor-not-allowed opacity-60',
+])
 
-const handleUpdate = (value: string) => {
-  emit('update:modelValue', value)
+const handleUpdate = (event: Event) => {
+  const target = event.target as HTMLSelectElement
+  emit('update:modelValue', target.value)
 }
 </script>
 
@@ -41,15 +42,29 @@ const handleUpdate = (value: string) => {
     <label v-if="props.label" class="block text-sm font-medium text-surface-300">
       {{ props.label }}
     </label>
-    <USelect
-      :model-value="props.modelValue"
-      :items="items"
-      :placeholder="props.placeholder"
-      :disabled="props.disabled"
-      :ui="{
-        base: 'border-surface-700/60 hover:border-surface-600',
-      }"
-      @update:model-value="handleUpdate"
-    />
+    <div class="relative">
+      <select
+        :value="props.modelValue"
+        :disabled="props.disabled"
+        :class="selectClass"
+        @change="handleUpdate"
+      >
+        <option value="" disabled>
+          {{ props.placeholder }}
+        </option>
+        <option v-for="option in props.options" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
+      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-surface-400">
+        <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+          <path
+            fill-rule="evenodd"
+            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </span>
+    </div>
   </div>
 </template>

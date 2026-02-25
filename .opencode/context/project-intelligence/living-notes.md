@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.3 | Updated: 2026-02-23 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.4 | Updated: 2026-02-25 -->
 
 # Living Notes
 
@@ -6,19 +6,21 @@
 
 ## Current State
 
-The dashboard UI foundation and first real feature (Hetzner Cloud provider) are complete. Users can configure a Hetzner API token at `/settings?tab=providers`, the backend validates it via hcloud-go, and it's persisted in SQLite.
+The dashboard UI foundation, provider integration, and server provisioning workflow are in place. Users can configure a Hetzner API token at `/settings?tab=providers`, fetch a provider catalog, create managed servers, and track provisioning jobs via SSE/polling; the worker executes provisioning steps and persists state in SQLite.
 
 **What's built:**
 - Go HTTP server with embedded static assets (`embed.FS`)
 - SQLite database layer (`modernc.org/sqlite`, pure Go) with goose embedded migrations
-- Provider abstraction: `Provider` interface + global registry + `Store` for DB CRUD
-- Hetzner Cloud implementation: token validation via Location.List + Server.List
-- 6 API endpoints: health, provider CRUD, standalone validation, provider types
+- Provider abstraction: `Provider` + `ServerProvider` interfaces, global registry, and DB store
+- Hetzner Cloud integration: token validation, server catalog, server create, SSH key helpers
+- Server persistence + profiles registry (ops-driven profile metadata)
+- Orchestration: jobs/events tables, state machine, SSE endpoints, worker + executor pipeline
+- API surface for providers, servers, server jobs, and orchestration jobs
 - Nuxt 4 frontend with Tailwind v4 dark theme
-- Full OKLCH design system with surface/accent/semantic color scales
-- 11 reusable UI components, 3 composables (useModal, useDropdown, useProviders)
-- `SettingsProviders` component: empty state, provider list, add modal with 2-step validate→save flow, inline tutorial
-- 3 pages: Dashboard (placeholder), Settings (Providers functional, 6 sections placeholder), Components (UI showcase)
+- OKLCH design system with surface/accent/semantic color scales
+- UI component library (Ui* components) + composables (useModal, useDropdown, useProviders, useServers, useJobs)
+- `SettingsProviders` and `SettingsServers` components: guided flows and provisioning timeline
+- Pages: Dashboard, Settings, Components, Servers, Server detail, Sites, Job detail
 - Responsive layout with top nav, mobile hamburger menu, footer
 - `make build` produces a single binary, `make dev` runs both servers with hot reload
 
@@ -26,10 +28,12 @@ The dashboard UI foundation and first real feature (Hetzner Cloud provider) are 
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Server provisioning | High | Use stored provider credentials to actually create/manage Hetzner servers |
+| Server action tracking | High | Poll Hetzner action status and sync server status updates |
 | More providers | Medium | DigitalOcean, AWS, Vultr — implement `Provider` interface + blank import |
 | Dashboard page content | High | Real monitoring/overview widgets (server status, resource usage) |
 | Settings section content | Medium | Fill remaining 6 sections (General, Servers, Sites, Notifications, Security, API Keys) |
+| Runner integration | High | Wire inventory + Ansible runner execution into job pipeline |
+| Secure SSH key storage | Medium | Store generated private keys in secure storage (not in logs) |
 | Token encryption at rest | Low | Currently plaintext in SQLite — acceptable for local app MVP |
 | Provider health checks | Low | Periodic re-validation of stored tokens |
 | Additional components | Medium | Tables, toasts/notifications as needed |
@@ -96,19 +100,32 @@ The dashboard UI foundation and first real feature (Hetzner Cloud provider) are 
 - Token validation: no dedicated "verify" endpoint for most cloud APIs. Use a lightweight read call (e.g. list locations) for auth check, then a resource-specific call for permission check.
 - `StoredProvider.APIToken` has `json:"-"` — never serialized to API responses.
 
+### Orchestration UI
+
+- Job timelines stream events from `/api/jobs/{id}/events` with polling fallback to `/api/jobs/{id}`.
+- Job history for completed jobs is available at `/api/jobs/{id}/events/history`.
+
 ### Page Patterns
 
 - **Placeholder pages**: `<h1>` headline + `<p>` subline, minimal template-only SFC
 - **Feature pages**: `<script setup>` with composables + reactive state, sections with `<UiCard>` wrappers
 - **Settings sections**: Extract into dedicated components (e.g. `SettingsProviders.vue`) when section has real functionality. Keep placeholder sections inline in `settings.vue`.
 - **Sub-navigated pages**: Query-param routing (`?tab=section`) with vertical sidebar on desktop, collapsible dropdown on mobile. Sections defined as a typed array, active section derived from `useRoute().query`. See `settings.vue` as the reference implementation. Prefer this over nested file-based routes for in-page section switching.
+- **Server detail pages**: Use query-param sections (`/servers/{id}?tab=overview`) with shared sidebar layout.
 
 ## 📂 Codebase References
 
 - `web/app/components/SettingsProviders.vue` - Current implemented providers flow and UI states
+- `web/app/components/SettingsServers.vue` - Server provisioning flow and job timeline
+- `web/app/composables/useServers.ts` - Server API client
+- `web/app/composables/useJobs.ts` - Job API + SSE/polling logic
 - `web/app/composables/useProviders.ts` - Frontend calls for providers API
 - `internal/server/handler_providers.go` - Backend provider endpoint behavior and response shape
+- `internal/server/handler_servers.go` - Server list/create/catalog endpoints
+- `internal/server/handler_jobs.go` - Job list/create/SSE endpoints
 - `internal/provider/hetzner/hetzner.go` - Hetzner validation behavior and permission messaging
+- `internal/provider/hetzner/servers.go` - Hetzner server catalog + create flow
+- `internal/worker/executor.go` - Provisioning workflow execution steps
 - `internal/database/database.go` - Runtime DB setup and migration execution
 - `cmd/main.go` - DB path resolution (`PRESSLUFT_DB`, XDG fallback)
 

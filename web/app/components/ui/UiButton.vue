@@ -1,7 +1,5 @@
 <script setup lang="ts">
-type ButtonColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
-type ButtonVariant = 'solid' | 'outline' | 'soft' | 'subtle' | 'ghost' | 'link'
-type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+import { computed, useAttrs } from 'vue'
 
 type ButtonVariantOld = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
 type ButtonSizeOld = 'sm' | 'md' | 'lg'
@@ -20,45 +18,49 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-// Map old variant to NuxtUI color and variant
-const nuxtUiColor = computed<ButtonColor>(() => {
-  const mapping: Record<ButtonVariantOld, ButtonColor> = {
-    primary: 'primary',
-    secondary: 'neutral',
-    outline: 'neutral',
-    ghost: 'neutral',
-    danger: 'error',
+const attrs = useAttrs()
+
+const sizeClass = computed(() => {
+  const mapping: Record<ButtonSizeOld, string> = {
+    sm: 'h-8 px-3 text-xs',
+    md: 'h-10 px-4 text-sm',
+    lg: 'h-11 px-5 text-sm',
   }
+
+  return mapping[props.size]
+})
+
+const variantClass = computed(() => {
+  const mapping: Record<ButtonVariantOld, string> = {
+    primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    secondary: 'bg-surface-800 text-surface-100 hover:bg-surface-700',
+    outline: 'border border-surface-700 text-surface-100 hover:bg-surface-800/60',
+    ghost: 'text-surface-200 hover:bg-surface-800/50',
+    danger: 'bg-danger-600 text-white hover:bg-danger-500',
+  }
+
   return mapping[props.variant]
 })
 
-const nuxtUiVariant = computed<ButtonVariant>(() => {
-  const mapping: Record<ButtonVariantOld, ButtonVariant> = {
-    primary: 'solid',
-    secondary: 'solid',
-    outline: 'outline',
-    ghost: 'ghost',
-    danger: 'solid',
-  }
-  return mapping[props.variant]
-})
-
-const nuxtUiSize = computed<ButtonSize>(() => {
-  // NuxtUI supports 'xs' | 'sm' | 'md' | 'lg' | 'xl'
-  // We map directly: sm → sm, md → md, lg → lg
-  return props.size as ButtonSize
-})
+const isDisabled = computed(() => props.disabled || props.loading)
 </script>
 
 <template>
-  <UButton
-    :color="nuxtUiColor"
-    :variant="nuxtUiVariant"
-    :size="nuxtUiSize"
-    :disabled="props.disabled"
-    :loading="props.loading"
-    class="cursor-pointer"
+  <button
+    v-bind="attrs"
+    :disabled="isDisabled"
+    class="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+    :class="[
+      sizeClass,
+      variantClass,
+      isDisabled && 'cursor-not-allowed opacity-60',
+    ]"
   >
+    <span
+      v-if="props.loading"
+      class="inline-flex h-4 w-4 animate-spin items-center justify-center rounded-full border-2 border-current border-b-transparent"
+      aria-hidden="true"
+    />
     <slot />
-  </UButton>
+  </button>
 </template>

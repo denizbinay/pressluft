@@ -11,15 +11,9 @@ const jobId = computed(() => {
 
 const isInvalidId = computed(() => jobId.value === null)
 
-const handleCompleted = (job: Job) => {
-  // Could show a toast or notification here
-  console.log('Job completed:', job.id)
-}
+const handleCompleted = (_job: Job) => {}
 
-const handleFailed = (job: Job, error: string) => {
-  // Could show a toast or notification here
-  console.error('Job failed:', job.id, error)
-}
+const handleFailed = (_job: Job, _error: string) => {}
 </script>
 
 <template>

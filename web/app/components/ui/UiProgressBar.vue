@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 type ProgressVariant = 'accent' | 'success' | 'warning' | 'danger'
 
 interface Props {
@@ -20,25 +22,25 @@ const percentage = computed(() =>
   Math.min(100, Math.max(0, (props.value / props.max) * 100)),
 )
 
-// Map variants to NuxtUI colors
-const nuxtUiColor = computed(() => {
-  const mapping: Record<ProgressVariant, 'primary' | 'success' | 'warning' | 'error'> = {
-    accent: 'primary',
-    success: 'success',
-    warning: 'warning',
-    danger: 'error',
+const barClass = computed(() => {
+  const mapping: Record<ProgressVariant, string> = {
+    accent: 'bg-accent-500',
+    success: 'bg-success-500',
+    warning: 'bg-warning-500',
+    danger: 'bg-danger-500',
   }
+
   return mapping[props.variant]
 })
 
-// Map sizes to NuxtUI sizes
-const nuxtUiSize = computed(() => {
-  const mapping: Record<string, 'xs' | 'sm' | 'md' | 'lg' | 'xl'> = {
-    sm: 'xs',
-    md: 'sm',
-    lg: 'md',
+const trackHeight = computed(() => {
+  const mapping: Record<NonNullable<Props['size']>, string> = {
+    sm: 'h-1.5',
+    md: 'h-2.5',
+    lg: 'h-3.5',
   }
-  return mapping[props.size] || 'sm'
+
+  return mapping[props.size]
 })
 </script>
 
@@ -50,11 +52,12 @@ const nuxtUiSize = computed(() => {
       </slot>
       <span class="text-xs font-mono text-surface-400">{{ Math.round(percentage) }}%</span>
     </div>
-    <UProgress
-      :model-value="percentage"
-      :color="nuxtUiColor"
-      :size="nuxtUiSize"
-      :status="false"
-    />
+    <div class="w-full overflow-hidden rounded-full bg-surface-800/70" :class="trackHeight">
+      <div
+        class="h-full rounded-full transition-[width] duration-300"
+        :class="barClass"
+        :style="{ width: `${percentage}%` }"
+      />
+    </div>
   </div>
 </template>
