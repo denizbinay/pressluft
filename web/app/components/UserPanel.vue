@@ -15,6 +15,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const colorMode = useColorMode()
 const { state } = useSidebar()
 
 // Mock user data - would come from auth in real app
@@ -35,7 +36,7 @@ const initials = computed(() =>
 
 const isCollapsed = computed(() => props.collapsed ?? state.value === "collapsed")
 
-type MenuIcon = "user" | "settings" | "logout"
+type MenuIcon = "user" | "settings" | "theme" | "logout"
 
 interface MenuItem {
   id: string
@@ -50,10 +51,29 @@ const menuSections: MenuItem[][] = [
     { id: "profile", label: "Profile", icon: "user" },
     { id: "settings", label: "Settings", icon: "settings", to: "/settings" },
   ],
+  [{ id: "theme", label: "Theme", icon: "theme" }],
   [{ id: "sign-out", label: "Sign out", icon: "logout", danger: true }],
 ]
 
+const formatModeLabel = (mode: string) => `${mode.charAt(0).toUpperCase()}${mode.slice(1)}`
+
+const themeLabel = computed(() => {
+  const current = colorMode.preference ?? "system"
+  return `Theme: ${formatModeLabel(current)}`
+})
+
+const toggleThemePreference = () => {
+  const current = colorMode.preference ?? "system"
+  const next = current === "system" ? "light" : current === "light" ? "dark" : "system"
+  colorMode.preference = next
+}
+
 const handleItemClick = (item: MenuItem) => {
+  if (item.id === "theme") {
+    toggleThemePreference()
+    return
+  }
+
   if (item.to) {
     router.push(item.to)
   }
@@ -62,6 +82,10 @@ const handleItemClick = (item: MenuItem) => {
 const iconPath = (icon: MenuIcon): string => {
   if (icon === "settings") {
     return "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 0 0 2.573-1.066z"
+  }
+
+  if (icon === "theme") {
+    return "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
   }
 
   if (icon === "logout") {
@@ -129,7 +153,9 @@ const iconPath = (icon: MenuIcon): string => {
                 'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors',
                 item.danger
                   ? 'text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive'
-                  : 'text-muted-foreground hover:bg-muted/60 focus:bg-muted/60',
+                  : item.id === 'theme'
+                    ? 'text-foreground hover:bg-muted/60 focus:bg-muted/60'
+                    : 'text-muted-foreground hover:bg-muted/60 focus:bg-muted/60',
               )"
               @click="handleItemClick(item)"
             >
@@ -143,7 +169,7 @@ const iconPath = (icon: MenuIcon): string => {
                 <path stroke-linecap="round" stroke-linejoin="round" :d="iconPath(item.icon)" />
                 <circle v-if="item.icon === 'user'" cx="12" cy="7" r="4" />
               </svg>
-              <span>{{ item.label }}</span>
+              <span>{{ item.id === 'theme' ? themeLabel : item.label }}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator
               v-if="sectionIndex < menuSections.length - 1"

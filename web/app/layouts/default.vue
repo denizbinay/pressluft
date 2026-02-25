@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
       collapsible="icon"
       class="border-r border-border/60 bg-background"
     >
-      <SidebarHeader class="flex items-center justify-between px-4 py-4">
+      <SidebarHeader class="flex px-4 py-4">
         <NuxtLink to="/" class="flex items-center gap-2">
           <div class="flex h-9 w-9 items-center justify-center rounded-lg text-accent">
             <svg
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
         />
       </SidebarHeader>
 
-      <SidebarContent class="px-3 pb-6">
+      <SidebarContent class="px-3 py-6 gap-8">
         <div v-for="section in navSections" :key="section.title" class="space-y-3">
           <p
             class="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground group-data-[collapsible=icon]:hidden"
