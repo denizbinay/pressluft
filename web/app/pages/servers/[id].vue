@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { useServers, type StoredServer } from '~/composables/useServers'
 import { useJobs, type Job } from '~/composables/useJobs'
 
@@ -131,7 +133,18 @@ onMounted(async () => {
         </div>
         <div class="mt-2 flex items-center gap-3">
           <h1 class="text-2xl font-semibold text-surface-50">{{ server.name }}</h1>
-          <UiBadge :variant="statusVariant(server.status)">{{ server.status }}</UiBadge>
+          <Badge
+            variant="outline"
+            :class="[
+              'px-2.5 py-1 text-sm border',
+              statusVariant(server.status) === 'success' && 'border-success-700/40 bg-success-900/40 text-success-300',
+              statusVariant(server.status) === 'warning' && 'border-warning-700/40 bg-warning-900/40 text-warning-300',
+              statusVariant(server.status) === 'danger' && 'border-danger-700/40 bg-danger-900/40 text-danger-300',
+              statusVariant(server.status) === 'default' && 'border-surface-700/60 bg-surface-800/60 text-surface-100',
+            ]"
+          >
+            {{ server.status }}
+          </Badge>
         </div>
         <p class="mt-1 text-sm text-surface-400">
           {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }}
@@ -249,8 +262,8 @@ onMounted(async () => {
 
         <!-- Content area -->
         <div class="min-w-0 flex-1">
-          <UiCard>
-            <template #header>
+          <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
+            <CardHeader class="border-b border-surface-800/40 px-6 py-5">
               <div>
                 <h2 class="text-lg font-semibold text-surface-50">
                   {{ currentSection.label }}
@@ -259,10 +272,11 @@ onMounted(async () => {
                   {{ currentSection.description }}
                 </p>
               </div>
-            </template>
+            </CardHeader>
 
-            <!-- Section content -->
-            <div class="space-y-6">
+            <CardContent class="px-6 py-5">
+              <!-- Section content -->
+              <div class="space-y-6">
               <!-- Overview -->
               <div v-if="activeSection === 'overview'" class="space-y-4">
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -343,8 +357,9 @@ onMounted(async () => {
               <div v-if="activeSection === 'activity'" class="space-y-4">
                 <ServerActivity :server-id="server.id" />
               </div>
-            </div>
-          </UiCard>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </template>

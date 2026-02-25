@@ -7,7 +7,7 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  modules: ['@nuxtjs/google-fonts'],
+  modules: ['@nuxtjs/google-fonts', 'shadcn-nuxt'],
 
   googleFonts: {
     families: {
@@ -22,6 +22,11 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+  },
+
+  shadcn: {     
+    prefix: 'Ui',
+    componentDir: './app/components/ui'
   },
 
   nitro: {

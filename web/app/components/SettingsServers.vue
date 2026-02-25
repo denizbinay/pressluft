@@ -1,7 +1,29 @@
 <script setup lang="ts">
-import { useProviders } from '~/composables/useProviders'
-import { useServers, type ServerTypePrice } from '~/composables/useServers'
-import type { Job } from '~/composables/useJobs'
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
+import { cn } from "@/lib/utils"
+import { useProviders } from "~/composables/useProviders"
+import { useServers, type ServerTypePrice } from "~/composables/useServers"
+import type { Job } from "~/composables/useJobs"
 
 const modal = useModal()
 
@@ -22,15 +44,15 @@ const {
 const deleteConfirmId = ref<number | null>(null)
 const deleting = ref(false)
 
-const formStep = ref<'configure' | 'review' | 'provisioning'>('configure')
-const formError = ref('')
+const formStep = ref<"configure" | "review" | "provisioning">("configure")
+const formError = ref("")
 const formLoadingCatalog = ref(false)
 
-const formProviderId = ref('')
-const formName = ref('')
-const formLocation = ref('')
-const formServerType = ref('')
-const formProfileKey = ref('')
+const formProviderId = ref("")
+const formName = ref("")
+const formLocation = ref("")
+const formServerType = ref("")
+const formProfileKey = ref("")
 
 // Job tracking for provisioning step
 const activeJobId = ref<number | null>(null)
@@ -71,7 +93,9 @@ const serverTypeOptions = computed(() => {
       const detail = `${type_.cores} vCPU · ${type_.memory_gb}GB RAM · ${type_.disk_gb}GB SSD`
       return {
         value: type_.name,
-        label: priceLabel ? `${type_.name} (${detail}, ${priceLabel}/mo)` : `${type_.name} (${detail})`,
+        label: priceLabel
+          ? `${type_.name} (${detail}, ${priceLabel}/mo)`
+          : `${type_.name} (${detail})`,
       }
     })
 })
@@ -81,22 +105,45 @@ const selectedProfile = computed(() =>
 )
 
 const selectedTypeLabel = computed(() =>
-  serverTypeOptions.value.find((option) => option.value === formServerType.value)?.label || formServerType.value,
+  serverTypeOptions.value.find((option) => option.value === formServerType.value)?.label
+  || formServerType.value,
 )
+
+const controlClass =
+  "w-full rounded-lg border bg-surface-900/60 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+
+const selectTriggerClass = cn(
+  controlClass,
+  "border-surface-700/60 hover:border-surface-600 data-[placeholder]:text-surface-400",
+)
+
+const inputClass = cn(
+  controlClass,
+  "border-surface-700/60 hover:border-surface-600",
+)
+
+const selectContentClass =
+  "border-surface-800/60 bg-surface-950 text-surface-100"
+
+const selectItemClass =
+  "text-surface-100 data-[disabled]:text-surface-500 data-[highlighted]:bg-surface-800/60 data-[highlighted]:text-surface-50"
+
+const buttonBaseClass =
+  "rounded-lg focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
 
 onMounted(async () => {
   await Promise.all([fetchProviders(), fetchServers()])
 })
 
 const resetForm = () => {
-  formStep.value = 'configure'
-  formError.value = ''
+  formStep.value = "configure"
+  formError.value = ""
   formLoadingCatalog.value = false
-  formProviderId.value = providerOptions.value[0]?.value || ''
-  formName.value = ''
-  formLocation.value = ''
-  formServerType.value = ''
-  formProfileKey.value = ''
+  formProviderId.value = providerOptions.value[0]?.value || ""
+  formName.value = ""
+  formLocation.value = ""
+  formServerType.value = ""
+  formProfileKey.value = profileOptions.value[0]?.value || ""
   activeJobId.value = null
 }
 
@@ -113,13 +160,13 @@ const loadCatalogForSelectedProvider = async () => {
     return
   }
   formLoadingCatalog.value = true
-  formError.value = ''
+  formError.value = ""
   try {
     await fetchCatalog(Number(formProviderId.value))
-    formLocation.value = locationOptions.value[0]?.value || ''
+    formLocation.value = locationOptions.value[0]?.value || ""
     // Server type will be set after location is selected (filtered by availability)
-    formServerType.value = ''
-    formProfileKey.value = profileOptions.value[0]?.value || ''
+    formServerType.value = ""
+    formProfileKey.value = profileOptions.value[0]?.value || ""
   } catch (e: any) {
     formError.value = e.message
   } finally {
@@ -137,29 +184,29 @@ watch(formProviderId, async () => {
 // When location changes, reset server type to first available option
 watch(formLocation, () => {
   // Set to first available server type for this location
-  formServerType.value = serverTypeOptions.value[0]?.value || ''
+  formServerType.value = serverTypeOptions.value[0]?.value || ""
 })
 
 const goToReview = () => {
   if (!isFormValid()) {
-    formError.value = 'Please fill all required fields before continuing.'
+    formError.value = "Please fill all required fields before continuing."
     return
   }
-  formError.value = ''
-  formStep.value = 'review'
+  formError.value = ""
+  formStep.value = "review"
 }
 
 const goBack = () => {
-  formStep.value = 'configure'
+  formStep.value = "configure"
 }
 
 const submit = async () => {
   if (!isFormValid()) {
-    formError.value = 'Please complete the form before creating a server.'
+    formError.value = "Please complete the form before creating a server."
     return
   }
 
-  formError.value = ''
+  formError.value = ""
   try {
     const result = await createServer({
       provider_id: Number(formProviderId.value),
@@ -168,11 +215,11 @@ const submit = async () => {
       server_type: formServerType.value,
       profile_key: formProfileKey.value,
     })
-    
+
     // Show provisioning progress instead of closing modal
     activeJobId.value = result.job_id
-    formStep.value = 'provisioning'
-    
+    formStep.value = "provisioning"
+
     // Refresh server list in background
     fetchServers()
   } catch (e: any) {
@@ -198,11 +245,11 @@ const closeAndReset = () => {
 
 const isFormValid = () => {
   return (
-    !!formProviderId.value &&
-    !!formName.value.trim() &&
-    !!formLocation.value &&
-    !!formServerType.value &&
-    !!formProfileKey.value
+    !!formProviderId.value
+    && !!formName.value.trim()
+    && !!formLocation.value
+    && !!formServerType.value
+    && !!formProfileKey.value
   )
 }
 
@@ -211,14 +258,14 @@ const formatMonthlyPrice = (
   location: string,
 ): string => {
   const price = serverType.prices.find((entry) => entry.location_name === location)
-  if (!price) return ''
+  if (!price) return ""
 
   const amount = Number(price.monthly_gross)
   if (Number.isNaN(amount)) {
     return `${price.monthly_gross} ${price.currency}`
   }
 
-  const formattedAmount = new Intl.NumberFormat('en-US', {
+  const formattedAmount = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
@@ -227,21 +274,23 @@ const formatMonthlyPrice = (
 
 const formatDate = (iso: string): string => {
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+    return new Date(iso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     })
   } catch {
     return iso
   }
 }
 
-const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'default' => {
-  if (status === 'ready') return 'success'
-  if (status === 'failed') return 'danger'
-  if (status === 'provisioning' || status === 'pending') return 'warning'
-  return 'default'
+const statusBadgeClass = (status: string): string => {
+  if (status === "ready") return "border-success-700/40 bg-success-900/40 text-success-300"
+  if (status === "failed") return "border-danger-700/40 bg-danger-900/40 text-danger-300"
+  if (status === "provisioning" || status === "pending") {
+    return "border-warning-700/40 bg-warning-900/40 text-warning-300"
+  }
+  return "border-surface-700/60 bg-surface-800/60 text-surface-100"
 }
 
 const confirmDelete = (serverId: number) => {
@@ -260,10 +309,18 @@ const executeDelete = async (serverId: number) => {
     await fetchServers()
   } catch (e: any) {
     // Could show a toast here
-    console.error('Failed to delete server:', e.message)
+    console.error("Failed to delete server:", e.message)
   } finally {
     deleting.value = false
   }
+}
+
+const handleDialogUpdate = (value: boolean) => {
+  if (value) {
+    modal.open()
+    return
+  }
+  modal.close()
 }
 </script>
 
@@ -273,19 +330,20 @@ const executeDelete = async (serverId: number) => {
       <p class="text-sm text-surface-400">
         Provision managed servers for agency WordPress workloads.
       </p>
-      <UiButton size="sm" @click="openModal">
+      <Button
+        size="sm"
+        :class="cn(buttonBaseClass, 'bg-primary text-primary-foreground hover:bg-primary/90')"
+        @click="openModal"
+      >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
         </svg>
         Create New Server
-      </UiButton>
+      </Button>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-10">
-      <svg class="h-5 w-5 animate-spin text-surface-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
+      <Spinner class="text-surface-400" />
     </div>
 
     <div v-else-if="servers.length === 0" class="rounded-lg border border-dashed border-surface-700/50 px-4 py-10 text-center">
@@ -307,7 +365,7 @@ const executeDelete = async (serverId: number) => {
         >
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-surface-100 group-hover:text-surface-50">{{ server.name }}</span>
-            <UiBadge :variant="statusVariant(server.status)">{{ server.status }}</UiBadge>
+            <Badge :class="statusBadgeClass(server.status)">{{ server.status }}</Badge>
           </div>
           <p class="text-xs text-surface-500">
             {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }} · Added {{ formatDate(server.created_at) }}
@@ -316,166 +374,263 @@ const executeDelete = async (serverId: number) => {
         <div class="flex items-center gap-3">
           <span class="text-xs text-surface-500">{{ server.provider_type }}</span>
           <!-- Delete button (always visible for failed, hover for others) -->
-          <button
+          <Button
             v-if="deleteConfirmId !== server.id"
-            class="rounded p-1 text-surface-500 transition-colors hover:bg-danger-900/30 hover:text-danger-400"
-            :class="{ 'opacity-0 group-hover:opacity-100': server.status !== 'failed' }"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            :class="cn(
+              buttonBaseClass,
+              'text-surface-500 hover:bg-danger-900/30 hover:text-danger-400',
+              server.status !== 'failed' && 'opacity-0 group-hover:opacity-100',
+            )"
             title="Delete server"
             @click.prevent="confirmDelete(server.id)"
           >
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-          </button>
+          </Button>
           <!-- Delete confirmation -->
           <div v-else class="flex items-center gap-1">
-            <button
-              class="rounded px-2 py-1 text-xs font-medium text-danger-400 transition-colors hover:bg-danger-900/30"
+            <Button
+              variant="ghost"
+              type="button"
               :disabled="deleting"
+              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-danger-400 hover:bg-danger-900/30')"
               @click.prevent="executeDelete(server.id)"
             >
-              {{ deleting ? 'Deleting...' : 'Confirm' }}
-            </button>
-            <button
-              class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-800/50 hover:text-surface-200"
+              {{ deleting ? "Deleting..." : "Confirm" }}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
               :disabled="deleting"
+              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-surface-400 hover:bg-surface-800/50 hover:text-surface-200')"
               @click.prevent="cancelDelete"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </div>
     </div>
 
-    <UiModal v-if="modal.isOpen.value" :open="modal.isOpen.value" title="Create Managed Server" @close="modal.close">
-      <div class="space-y-4">
-        <div v-if="formError" class="rounded-lg border border-danger-600/30 bg-danger-900/20 px-3 py-2 text-sm text-danger-300">
-          {{ formError }}
+    <Dialog
+      v-if="modal.isOpen.value"
+      :open="modal.isOpen.value"
+      @update:open="handleDialogUpdate"
+    >
+      <DialogContent
+        class="border-surface-800/60 bg-surface-950/70 text-surface-100"
+      >
+        <DialogHeader class="text-left">
+          <DialogTitle class="text-base font-semibold text-surface-50">
+            Create Managed Server
+          </DialogTitle>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <Alert
+            v-if="formError"
+            variant="destructive"
+            class="border-danger-600/30 bg-danger-900/20 text-danger-300"
+          >
+            <AlertDescription class="text-danger-300">
+              {{ formError }}
+            </AlertDescription>
+          </Alert>
+
+          <template v-if="formStep === 'configure'">
+            <div class="space-y-1.5">
+              <Label class="text-sm font-medium text-surface-300">
+                Provider Connection
+              </Label>
+              <Select v-model="formProviderId">
+                <SelectTrigger :class="selectTriggerClass">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent :class="selectContentClass">
+                  <SelectItem
+                    v-for="option in providerOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :class="selectItemClass"
+                  >
+                    <SelectItemText>{{ option.label }}</SelectItemText>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-1.5">
+              <Label class="text-sm font-medium text-surface-300">
+                Server Name
+              </Label>
+              <Input
+                v-model="formName"
+                placeholder="e.g. agency-prod-eu-1"
+                :class="inputClass"
+              />
+            </div>
+
+            <div class="space-y-1.5">
+              <Label class="text-sm font-medium text-surface-300">
+                Server Profile
+              </Label>
+              <Select v-model="formProfileKey" :disabled="formLoadingCatalog">
+                <SelectTrigger :class="selectTriggerClass">
+                  <SelectValue placeholder="Select profile" />
+                </SelectTrigger>
+                <SelectContent :class="selectContentClass">
+                  <SelectItem
+                    v-for="option in profileOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :class="selectItemClass"
+                  >
+                    <SelectItemText>{{ option.label }}</SelectItemText>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-1.5">
+              <Label class="text-sm font-medium text-surface-300">
+                Region
+              </Label>
+              <Select v-model="formLocation" :disabled="formLoadingCatalog">
+                <SelectTrigger :class="selectTriggerClass">
+                  <SelectValue placeholder="Select region" />
+                </SelectTrigger>
+                <SelectContent :class="selectContentClass">
+                  <SelectItem
+                    v-for="option in locationOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :class="selectItemClass"
+                  >
+                    <SelectItemText>{{ option.label }}</SelectItemText>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-1.5">
+              <Label class="text-sm font-medium text-surface-300">
+                Size
+              </Label>
+              <Select
+                v-model="formServerType"
+                :disabled="formLoadingCatalog || !formLocation"
+              >
+                <SelectTrigger :class="selectTriggerClass">
+                  <SelectValue placeholder="Select size" />
+                </SelectTrigger>
+                <SelectContent :class="selectContentClass">
+                  <SelectItem
+                    v-for="option in serverTypeOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :class="selectItemClass"
+                  >
+                    <SelectItemText>{{ option.label }}</SelectItemText>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p v-if="formLoadingCatalog" class="text-xs text-surface-500">
+              Loading provider catalog...
+            </p>
+          </template>
+
+          <template v-else-if="formStep === 'review'">
+            <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3 text-sm text-surface-300">
+              <p><strong class="text-surface-100">Name:</strong> {{ formName }}</p>
+              <p><strong class="text-surface-100">Region:</strong> {{ formLocation }}</p>
+              <p><strong class="text-surface-100">Size:</strong> {{ selectedTypeLabel }}</p>
+              <p><strong class="text-surface-100">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
+            </div>
+            <p class="text-xs text-surface-500">
+              The base image is determined by the selected profile. Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
+            </p>
+          </template>
+
+          <!-- Provisioning step: show job timeline -->
+          <template v-else-if="formStep === 'provisioning' && activeJobId">
+            <div class="space-y-3">
+              <div class="flex items-center gap-2">
+                <div class="h-2 w-2 animate-pulse rounded-full bg-accent-500" />
+                <span class="text-sm font-medium text-surface-200">Provisioning {{ formName }}</span>
+              </div>
+              <JobTimeline
+                :job-id="activeJobId"
+                compact
+                @completed="handleJobCompleted"
+                @failed="handleJobFailed"
+              />
+            </div>
+          </template>
         </div>
 
-        <template v-if="formStep === 'configure'">
-          <UiSelect
-            v-model="formProviderId"
-            label="Provider Connection"
-            :options="providerOptions"
-            placeholder="Select provider"
-          />
-
-          <UiInput
-            v-model="formName"
-            label="Server Name"
-            placeholder="e.g. agency-prod-eu-1"
-          />
-
-          <UiSelect
-            v-model="formProfileKey"
-            label="Server Profile"
-            :options="profileOptions"
-            placeholder="Select profile"
-            :disabled="formLoadingCatalog"
-          />
-
-          <UiSelect
-            v-model="formLocation"
-            label="Region"
-            :options="locationOptions"
-            placeholder="Select region"
-            :disabled="formLoadingCatalog"
-          />
-
-          <UiSelect
-            v-model="formServerType"
-            label="Size"
-            :options="serverTypeOptions"
-            placeholder="Select size"
-            :disabled="formLoadingCatalog || !formLocation"
-          />
-
-          <p v-if="formLoadingCatalog" class="text-xs text-surface-500">Loading provider catalog...</p>
-        </template>
-
-        <template v-else-if="formStep === 'review'">
-          <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3 text-sm text-surface-300">
-            <p><strong class="text-surface-100">Name:</strong> {{ formName }}</p>
-            <p><strong class="text-surface-100">Region:</strong> {{ formLocation }}</p>
-            <p><strong class="text-surface-100">Size:</strong> {{ selectedTypeLabel }}</p>
-            <p><strong class="text-surface-100">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
-          </div>
-          <p class="text-xs text-surface-500">
-            The base image is determined by the selected profile. Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
-          </p>
-        </template>
-
-        <!-- Provisioning step: show job timeline -->
-        <template v-else-if="formStep === 'provisioning' && activeJobId">
-          <div class="space-y-3">
-            <div class="flex items-center gap-2">
-              <div class="h-2 w-2 animate-pulse rounded-full bg-accent-500" />
-              <span class="text-sm font-medium text-surface-200">Provisioning {{ formName }}</span>
-            </div>
-            <JobTimeline
-              :job-id="activeJobId"
-              compact
-              @completed="handleJobCompleted"
-              @failed="handleJobFailed"
-            />
-          </div>
-        </template>
-      </div>
-
-      <template #footer>
-        <div class="flex items-center justify-end gap-2">
+        <DialogFooter class="flex-row items-center justify-end gap-2">
           <!-- Cancel/Close button -->
-          <UiButton
+          <Button
             v-if="formStep !== 'provisioning'"
             variant="ghost"
             size="sm"
+            :class="cn(buttonBaseClass, 'text-surface-200 hover:bg-surface-800/50')"
             @click="modal.close"
           >
             Cancel
-          </UiButton>
+          </Button>
 
           <!-- Back button (review step only) -->
-          <UiButton
+          <Button
             v-if="formStep === 'review'"
             variant="ghost"
             size="sm"
+            :class="cn(buttonBaseClass, 'text-surface-200 hover:bg-surface-800/50')"
             @click="goBack"
           >
             Back
-          </UiButton>
+          </Button>
 
           <!-- Review button (configure step) -->
-          <UiButton
+          <Button
             v-if="formStep === 'configure'"
             size="sm"
             :disabled="!isFormValid() || formLoadingCatalog"
+            :class="cn(buttonBaseClass, 'bg-primary text-primary-foreground hover:bg-primary/90')"
             @click="goToReview"
           >
             Review
-          </UiButton>
+          </Button>
 
           <!-- Create button (review step) -->
-          <UiButton
+          <Button
             v-if="formStep === 'review'"
             size="sm"
-            :loading="saving"
+            :disabled="saving"
+            :class="cn(buttonBaseClass, 'bg-primary text-primary-foreground hover:bg-primary/90')"
             @click="submit"
           >
+            <Spinner v-if="saving" class="text-primary-foreground" />
             Create Server
-          </UiButton>
+          </Button>
 
           <!-- Done button (provisioning step) -->
-          <UiButton
+          <Button
             v-if="formStep === 'provisioning'"
             size="sm"
+            :class="cn(buttonBaseClass, 'bg-primary text-primary-foreground hover:bg-primary/90')"
             @click="closeAndReset"
           >
             Done
-          </UiButton>
-        </div>
-      </template>
-    </UiModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

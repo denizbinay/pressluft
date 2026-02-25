@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 interface SettingsSection {
   key: string
   label: string
@@ -167,8 +168,8 @@ const selectSection = (key: string) => {
 
       <!-- Content area -->
       <div class="min-w-0 flex-1">
-        <UiCard>
-          <template #header>
+        <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
+          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
             <div>
               <h2 class="text-xl font-semibold text-surface-50">
                 {{ currentSection.label }}
@@ -177,10 +178,11 @@ const selectSection = (key: string) => {
                 {{ currentSection.description }}
               </p>
             </div>
-          </template>
+          </CardHeader>
 
-          <!-- Placeholder content per section -->
-          <div class="space-y-6">
+          <CardContent class="px-6 py-5">
+            <!-- Placeholder content per section -->
+            <div class="space-y-6">
             <!-- General -->
             <div v-if="activeSection === 'general'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
@@ -240,8 +242,9 @@ const selectSection = (key: string) => {
             <div v-if="activeSection === 'activity'" class="space-y-4">
               <SettingsActivity />
             </div>
-          </div>
-        </UiCard>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   </div>

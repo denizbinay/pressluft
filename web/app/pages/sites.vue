@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 // Sites page - Top-level route for managing WordPress sites across all servers
 // This will be the primary workflow for agency users
 
@@ -31,12 +33,16 @@ const loading = ref(false)
           Manage WordPress sites across all your servers.
         </p>
       </div>
-      <UiButton size="sm" disabled>
+      <Button
+        size="sm"
+        class="h-8 px-3 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+        disabled
+      >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
         </svg>
         Create Site
-      </UiButton>
+      </Button>
     </div>
 
     <!-- Feature preview cards -->
@@ -121,27 +127,33 @@ const loading = ref(false)
     </div>
 
     <!-- Empty state -->
-    <UiCard>
-      <div class="flex flex-col items-center justify-center py-16 text-center">
-        <div class="flex h-20 w-20 items-center justify-center rounded-full bg-surface-800/50">
-          <svg class="h-10 w-10 text-surface-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-          </svg>
+    <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
+      <CardContent class="px-6 py-5">
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-full bg-surface-800/50">
+            <svg class="h-10 w-10 text-surface-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
+          </div>
+          <h3 class="mt-6 text-xl font-medium text-surface-200">No sites yet</h3>
+          <p class="mt-3 max-w-sm text-base text-surface-500">
+            Sites will appear here once you deploy WordPress to your managed servers.
+            First, make sure you have at least one server provisioned.
+          </p>
+          <div class="mt-8 flex gap-3">
+            <NuxtLink to="/servers">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-8 px-3 text-xs rounded-lg text-surface-200 hover:bg-surface-800/50"
+              >
+                View Servers
+              </Button>
+            </NuxtLink>
+          </div>
         </div>
-        <h3 class="mt-6 text-xl font-medium text-surface-200">No sites yet</h3>
-        <p class="mt-3 max-w-sm text-base text-surface-500">
-          Sites will appear here once you deploy WordPress to your managed servers.
-          First, make sure you have at least one server provisioned.
-        </p>
-        <div class="mt-8 flex gap-3">
-          <NuxtLink to="/servers">
-            <UiButton variant="ghost" size="sm">
-              View Servers
-            </UiButton>
-          </NuxtLink>
-        </div>
-      </div>
-    </UiCard>
+      </CardContent>
+    </Card>
 
     <!-- Coming soon note -->
     <div class="rounded-xl border border-accent-500/20 bg-accent-500/5 px-6 py-5">

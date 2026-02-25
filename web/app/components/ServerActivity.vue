@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { Job } from '~/composables/useJobs'
+import type { Job } from "~/composables/useJobs"
+import { onMounted, ref } from "vue"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 interface Props {
   serverId: number
@@ -9,16 +14,42 @@ const props = defineProps<Props>()
 
 const jobs = ref<Job[]>([])
 const loading = ref(true)
-const error = ref('')
+const error = ref("")
+
+type StatusVariant = "success" | "warning" | "danger" | "default"
+type BadgeSize = "xs" | "sm" | "md" | "lg" | "xl"
+
+const badgeVariantClass = (variant: StatusVariant): string => {
+  const mapping: Record<StatusVariant, string> = {
+    default: "border-surface-700/60 bg-surface-800/60 text-surface-100",
+    success: "border-success-700/40 bg-success-900/40 text-success-300",
+    warning: "border-warning-700/40 bg-warning-900/40 text-warning-300",
+    danger: "border-danger-700/40 bg-danger-900/40 text-danger-300",
+  }
+
+  return mapping[variant]
+}
+
+const badgeSizeClass = (size: BadgeSize): string => {
+  const mapping: Record<BadgeSize, string> = {
+    xs: "px-1.5 py-0.5 text-[10px]",
+    sm: "px-2 py-0.5 text-xs",
+    md: "px-2.5 py-1 text-sm",
+    lg: "px-3 py-1.5 text-sm",
+    xl: "px-3.5 py-2 text-base",
+  }
+
+  return mapping[size]
+}
 
 const fetchServerJobs = async () => {
   loading.value = true
-  error.value = ''
+  error.value = ""
   try {
     const res = await fetch(`/api/servers/${props.serverId}/jobs`)
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to fetch server jobs')
+      throw new Error(body.error || "Failed to fetch server jobs")
     }
     jobs.value = await res.json()
   } catch (e: any) {
@@ -28,21 +59,21 @@ const fetchServerJobs = async () => {
   }
 }
 
-const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'default' => {
-  if (status === 'succeeded') return 'success'
-  if (status === 'failed' || status === 'cancelled' || status === 'timed_out') return 'danger'
-  if (status === 'running' || status === 'preparing' || status === 'queued') return 'warning'
-  return 'default'
+const statusVariant = (status: string): StatusVariant => {
+  if (status === "succeeded") return "success"
+  if (status === "failed" || status === "cancelled" || status === "timed_out") return "danger"
+  if (status === "running" || status === "preparing" || status === "queued") return "warning"
+  return "default"
 }
 
 const formatDate = (iso: string): string => {
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(iso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     })
   } catch {
     return iso
@@ -51,11 +82,15 @@ const formatDate = (iso: string): string => {
 
 const kindLabel = (kind: string): string => {
   const labels: Record<string, string> = {
-    provision_server: 'Server Provisioning',
-    configure_server: 'Server Configuration',
-    deploy_site: 'Site Deployment',
+    provision_server: "Server Provisioning",
+    configure_server: "Server Configuration",
+    deploy_site: "Site Deployment",
   }
   return labels[kind] || kind
+}
+
+const badgeClass = (variant: StatusVariant, size: BadgeSize = "sm") => {
+  return cn(badgeVariantClass(variant), badgeSizeClass(size))
 }
 
 onMounted(fetchServerJobs)
@@ -63,7 +98,6 @@ onMounted(fetchServerJobs)
 
 <template>
   <div class="space-y-4">
-    <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-8">
       <svg class="h-5 w-5 animate-spin text-surface-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -71,25 +105,29 @@ onMounted(fetchServerJobs)
       </svg>
     </div>
 
-    <!-- Error -->
-    <div v-else-if="error" class="rounded-lg border border-danger-600/30 bg-danger-900/20 px-4 py-3">
-      <p class="text-sm text-danger-300">{{ error }}</p>
-      <button
-        class="mt-2 text-xs text-danger-400 hover:text-danger-300 transition-colors"
+    <Alert
+      v-else-if="error"
+      :class="cn('border-danger-600/30 bg-danger-900/20')"
+    >
+      <AlertDescription :class="cn('text-sm text-danger-300')">
+        {{ error }}
+      </AlertDescription>
+      <Button
+        variant="link"
+        size="sm"
+        :class="cn('mt-2 h-auto px-0 text-xs text-danger-400 hover:text-danger-300')"
         @click="fetchServerJobs"
       >
         Try again
-      </button>
-    </div>
+      </Button>
+    </Alert>
 
-    <!-- Empty state -->
     <div v-else-if="jobs.length === 0" class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
       <p class="text-sm text-surface-500">
         No activity recorded for this server yet.
       </p>
     </div>
 
-    <!-- Jobs list -->
     <div v-else class="space-y-3">
       <div
         v-for="job in jobs"
@@ -99,19 +137,26 @@ onMounted(fetchServerJobs)
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-surface-200">{{ kindLabel(job.kind) }}</span>
-            <UiBadge :variant="statusVariant(job.status)" size="sm">{{ job.status }}</UiBadge>
+            <Badge
+              variant="outline"
+              :class="badgeClass(statusVariant(job.status), 'sm')"
+            >
+              {{ job.status }}
+            </Badge>
           </div>
           <p class="mt-0.5 text-xs text-surface-500">
             {{ formatDate(job.created_at) }}
             <span v-if="job.last_error" class="text-danger-400"> · {{ job.last_error }}</span>
           </p>
         </div>
-        <NuxtLink
-          :to="`/jobs/${job.id}`"
-          class="shrink-0 text-xs text-accent-400 hover:text-accent-300 transition-colors"
+        <Button
+          as-child
+          variant="link"
+          size="sm"
+          :class="cn('h-auto shrink-0 px-0 text-xs text-accent-400 hover:text-accent-300')"
         >
-          View Details
-        </NuxtLink>
+          <NuxtLink :to="`/jobs/${job.id}`">View Details</NuxtLink>
+        </Button>
       </div>
     </div>
   </div>

@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import {
   Bell,
   Box,
@@ -218,9 +226,9 @@ onBeforeUnmount(() => {
       <div class="flex min-h-screen flex-1 flex-col">
         <header class="flex items-center justify-between border-b border-surface-800/60 bg-surface-950/80 px-4 py-3 backdrop-blur lg:px-6">
           <div class="flex items-center gap-3">
-            <UiButton
+            <Button
               variant="ghost"
-              class="lg:hidden"
+              class="lg:hidden rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
               type="button"
               aria-label="Toggle navigation"
               @click="toggleSidebarOpen"
@@ -234,11 +242,11 @@ onBeforeUnmount(() => {
               >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-            </UiButton>
+            </Button>
 
-            <UiButton
+            <Button
               variant="ghost"
-              class="hidden lg:flex"
+              class="hidden lg:flex rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
               type="button"
               aria-label="Collapse navigation"
               @click="toggleSidebarCollapse"
@@ -252,7 +260,7 @@ onBeforeUnmount(() => {
               >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M10 6l-6 6 6 6M20 6l-6 6 6 6" />
               </svg>
-            </UiButton>
+            </Button>
 
             <div class="flex items-center gap-1.5 text-xs text-surface-400">
               <span>Pressluft</span>
@@ -264,34 +272,44 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="flex items-center gap-2">
-            <UiButton
+            <Button
               variant="ghost"
-              class="hidden sm:flex text-surface-400 hover:text-surface-100"
+              class="hidden sm:flex rounded-lg text-surface-400 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
               type="button"
               @click="openSearch"
             >
                <Search class="h-4 w-4" aria-hidden="true" />
               <span>Search...</span>
               <span class="ml-2 text-xs text-surface-500 border border-surface-800/60 rounded px-1.5 py-0.5">⌘K</span>
-            </UiButton>
+            </Button>
 
-            <UiButton
+            <Button
               variant="ghost"
-              class="sm:hidden"
+              class="sm:hidden rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
               type="button"
               aria-label="Open search"
               @click="openSearch"
             >
                <Search class="h-4 w-4" aria-hidden="true" />
-            </UiButton>
+            </Button>
 
-            <UiButton variant="ghost" type="button" aria-label="Help">
+            <Button
+              variant="ghost"
+              class="rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+              type="button"
+              aria-label="Help"
+            >
                <HelpCircle class="h-4 w-4" aria-hidden="true" />
-            </UiButton>
+            </Button>
 
-            <UiButton variant="ghost" type="button" aria-label="Notifications">
+            <Button
+              variant="ghost"
+              class="rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+              type="button"
+              aria-label="Notifications"
+            >
                <Bell class="h-4 w-4" aria-hidden="true" />
-            </UiButton>
+            </Button>
           </div>
         </header>
 
@@ -305,33 +323,49 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <UiModal :open="searchOpen" title="Search" @close="closeSearch">
-      <div class="space-y-4">
-        <UiInput
-          v-model="searchQuery"
-          type="search"
-          placeholder="Search pages..."
-          autofocus
-        />
-
-        <div class="space-y-1">
-          <p class="text-xs font-medium uppercase tracking-wider text-surface-500">Navigation</p>
-          <div v-if="filteredNavItems.length" class="space-y-1">
-            <button
-              v-for="item in filteredNavItems"
-              :key="item.label"
-              type="button"
-              class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-surface-200 transition-colors hover:bg-surface-800/60"
-              @click="handleSearchSelect(item)"
-            >
-              <component :is="item.icon" class="h-4 w-4 shrink-0 text-surface-400" aria-hidden="true" />
-              <span>{{ item.label }}</span>
-              <span class="ml-auto text-xs text-surface-500">{{ item.to }}</span>
-            </button>
-          </div>
-          <p v-else class="text-sm text-surface-500">No matches found.</p>
+    <Dialog :open="searchOpen" @update:open="(value) => (value ? openSearch() : closeSearch())">
+      <DialogContent
+        :show-close-button="false"
+        class="w-full max-w-lg rounded-xl border border-surface-800/60 bg-surface-900/80 p-0 shadow-2xl"
+      >
+        <div class="flex items-center justify-between border-b border-surface-800/40 px-6 py-4">
+          <DialogTitle class="text-base font-semibold text-surface-100">Search</DialogTitle>
+          <DialogClose
+            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-surface-300 transition hover:bg-surface-800/60 hover:text-surface-100"
+            aria-label="Close modal"
+          >
+            <span aria-hidden="true">×</span>
+          </DialogClose>
         </div>
-      </div>
-    </UiModal>
+
+        <div class="space-y-4 px-6 py-5">
+          <Input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Search pages..."
+            autofocus
+            class="w-full rounded-lg border border-surface-700/60 bg-surface-900/60 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 hover:border-surface-600"
+          />
+
+          <div class="space-y-1">
+            <p class="text-xs font-medium uppercase tracking-wider text-surface-500">Navigation</p>
+            <div v-if="filteredNavItems.length" class="space-y-1">
+              <button
+                v-for="item in filteredNavItems"
+                :key="item.label"
+                type="button"
+                class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-surface-200 transition-colors hover:bg-surface-800/60"
+                @click="handleSearchSelect(item)"
+              >
+                <component :is="item.icon" class="h-4 w-4 shrink-0 text-surface-400" aria-hidden="true" />
+                <span>{{ item.label }}</span>
+                <span class="ml-auto text-xs text-surface-500">{{ item.to }}</span>
+              </button>
+            </div>
+            <p v-else class="text-sm text-surface-500">No matches found.</p>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

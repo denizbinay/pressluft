@@ -1,3 +1,7 @@
+<script setup lang="ts">
+import { Card, CardContent } from "@/components/ui/card"
+</script>
+
 <template>
   <div class="space-y-8">
     <div>
@@ -7,8 +11,10 @@
       </p>
     </div>
 
-    <UiCard>
-      <SettingsServers />
-    </UiCard>
+    <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
+      <CardContent class="px-6 py-5">
+        <SettingsServers />
+      </CardContent>
+    </Card>
   </div>
 </template>
