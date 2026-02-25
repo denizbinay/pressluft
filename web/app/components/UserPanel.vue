@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
 const props = defineProps<{
@@ -14,6 +15,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const { state } = useSidebar()
 
 // Mock user data - would come from auth in real app
 const user = ref({
@@ -30,6 +32,8 @@ const initials = computed(() =>
     .join("")
     .toUpperCase(),
 )
+
+const isCollapsed = computed(() => props.collapsed ?? state.value === "collapsed")
 
 type MenuIcon = "user" | "settings" | "logout"
 
@@ -74,8 +78,8 @@ const iconPath = (icon: MenuIcon): string => {
       <Button
         variant="ghost"
         :class="cn(
-          'w-full h-full rounded-none px-4 py-3',
-          props.collapsed ? 'justify-center' : 'justify-start',
+          'w-full h-full rounded-none px-4 py-3 hover:bg-surface-900/60 hover:text-surface-50 focus-visible:bg-surface-900/60',
+          isCollapsed ? 'justify-center' : 'justify-start',
         )"
         type="button"
       >
@@ -85,12 +89,12 @@ const iconPath = (icon: MenuIcon): string => {
           >
             {{ initials || "AU" }}
           </span>
-          <span v-if="!props.collapsed" class="min-w-0 flex-1 text-left">
+          <span v-if="!isCollapsed" class="min-w-0 flex-1 text-left">
             <span class="block text-sm font-medium text-surface-100">{{ user.name }}</span>
             <span class="block truncate text-xs text-surface-500">{{ user.email }}</span>
           </span>
           <svg
-            v-if="!props.collapsed"
+            v-if="!isCollapsed"
             class="ml-auto h-4 w-4 text-surface-500"
             viewBox="0 0 24 24"
             fill="none"
@@ -105,11 +109,11 @@ const iconPath = (icon: MenuIcon): string => {
     </DropdownMenuTrigger>
 
     <DropdownMenuContent
-      :align="props.collapsed ? 'end' : 'start'"
+      :align="isCollapsed ? 'end' : 'start'"
       :side-offset="6"
-      :class="cn('rounded-lg border border-default bg-default p-1 shadow-xl')"
+      :class="cn('rounded-lg border border-surface-800/60 bg-surface-950 p-1 shadow-xl text-surface-50')"
     >
-      <div :class="cn(props.collapsed ? 'w-48' : 'w-56')">
+      <div :class="cn(isCollapsed ? 'w-48' : 'w-56')">
         <div class="px-3 py-2">
           <p class="text-xs font-medium text-surface-200">{{ user.name }}</p>
           <p class="text-xs text-surface-500">{{ user.email }}</p>
@@ -125,7 +129,7 @@ const iconPath = (icon: MenuIcon): string => {
                 'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors',
                 item.danger
                   ? 'text-error hover:bg-error/10 hover:text-error focus:bg-error/10 focus:text-error'
-                  : 'text-foreground hover:bg-default focus:bg-default',
+                  : 'text-surface-200 hover:bg-surface-800/60 focus:bg-surface-800/60',
               )"
               @click="handleItemClick(item)"
             >
