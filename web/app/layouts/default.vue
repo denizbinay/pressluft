@@ -114,7 +114,7 @@ onBeforeUnmount(() => {
 
 <template>
   <SidebarProvider class="relative min-h-screen bg-background text-foreground">
-    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(56,189,248,0.15),transparent_60%)]" />
+    <div class="pointer-events-none fixed inset-0 z-50 app-glow opacity-100 mix-blend-screen" />
     <Sidebar
       collapsible="icon"
       class="border-r border-border/60 bg-background"
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
               xmlns:xlink="http://www.w3.org/1999/xlink"
               viewBox="390 220 250 220"
               xml:space="preserve"
-              class="h-7 w-7"
+              class="h-7 w-7 group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:w-4"
             >
               <defs>
                 <linearGradient id="pl-grad" x1="280" y1="210" x2="740" y2="460" gradientUnits="userSpaceOnUse">
@@ -212,7 +212,7 @@ onBeforeUnmount(() => {
 
           <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Pressluft</span>
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
             <span class="text-foreground capitalize">{{ breadcrumbLabel }}</span>
