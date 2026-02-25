@@ -125,17 +125,17 @@ function formatTime(iso: string): string {
 function statusBadgeClass(status: string) {
   switch (status) {
     case "succeeded":
-      return "border-success-700/40 bg-success-900/40 text-success-300"
+      return "border-primary/30 bg-primary/10 text-primary"
     case "running":
     case "preparing":
     case "queued":
-      return "border-warning-700/40 bg-warning-900/40 text-warning-300"
+      return "border-accent/30 bg-accent/10 text-accent"
     case "failed":
     case "cancelled":
     case "timed_out":
-      return "border-danger-700/40 bg-danger-900/40 text-danger-300"
+      return "border-destructive/30 bg-destructive/10 text-destructive"
     default:
-      return "border-surface-700/60 bg-surface-800/60 text-surface-100"
+      return "border-border/60 bg-muted/60 text-foreground"
   }
 }
 
@@ -239,26 +239,26 @@ onUnmounted(() => {
   <div class="space-y-4">
     <!-- Loading state -->
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <Spinner class="size-6 text-surface-400" />
+      <Spinner class="size-6 text-muted-foreground" />
     </div>
 
     <!-- Error state with retry -->
     <Alert
       v-else-if="connectionError"
       variant="destructive"
-      :class="cn('border-danger-600/30 bg-danger-900/20 text-danger-300')"
+      :class="cn('border-destructive/30 bg-destructive/10 text-destructive')"
     >
       <div class="flex items-start justify-between gap-3">
         <div class="space-y-1">
-          <AlertTitle class="text-sm font-medium text-danger-300">Failed to load job</AlertTitle>
-          <AlertDescription class="text-xs text-danger-400/80">
+          <AlertTitle class="text-sm font-medium text-destructive">Failed to load job</AlertTitle>
+          <AlertDescription class="text-xs text-destructive/80">
             {{ connectionError }}
           </AlertDescription>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          class="shrink-0 h-auto rounded-md bg-danger-800/50 px-3 py-1.5 text-xs font-medium text-danger-200 hover:bg-danger-800/70"
+          class="shrink-0 h-auto rounded-md bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20"
           @click="retryLoad"
         >
           Retry
@@ -269,10 +269,10 @@ onUnmounted(() => {
     <!-- Job timeline -->
     <template v-else>
       <!-- Job header -->
-      <div class="flex items-center justify-between border-b border-surface-800/40 pb-3">
+      <div class="flex items-center justify-between border-b border-border/40 pb-3">
         <div class="space-y-1">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-surface-200">Job #{{ jobId }}</span>
+            <span class="text-sm font-medium text-foreground">Job #{{ jobId }}</span>
             <Badge variant="outline" :class="cn(statusBadgeClass(jobStatus))">
               {{ jobStatus }}
             </Badge>
@@ -281,15 +281,15 @@ onUnmounted(() => {
               v-if="!isHistoricalView && !isTerminal && connectionMode !== 'disconnected'"
               class="flex items-center gap-1 text-xs"
               :class="cn({
-                'text-success-500': connectionMode === 'streaming',
-                'text-warning-500': connectionMode === 'polling',
+                'text-primary': connectionMode === 'streaming',
+                'text-accent': connectionMode === 'polling',
               })"
             >
               <span
                 class="h-1.5 w-1.5 rounded-full"
                 :class="cn({
-                  'bg-success-500 animate-pulse': connectionMode === 'streaming',
-                  'bg-warning-500': connectionMode === 'polling',
+                  'bg-primary animate-pulse': connectionMode === 'streaming',
+                  'bg-accent': connectionMode === 'polling',
                 })"
               />
               {{ connectionMode === 'streaming' ? 'Live' : 'Polling' }}
@@ -297,7 +297,7 @@ onUnmounted(() => {
             <!-- Historical indicator -->
             <span
               v-if="isHistoricalView"
-              class="flex items-center gap-1 text-xs text-surface-500"
+              class="flex items-center gap-1 text-xs text-muted-foreground"
             >
               <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path
@@ -309,14 +309,14 @@ onUnmounted(() => {
               Completed
             </span>
           </div>
-          <p v-if="jobStartedAt && !compact" class="text-xs text-surface-500">
+          <p v-if="jobStartedAt && !compact" class="text-xs text-muted-foreground">
             Started at {{ jobStartedAt }}
           </p>
         </div>
         <NuxtLink
           v-if="compact"
           :to="`/jobs/${jobId}`"
-          class="text-xs text-accent-400 transition-colors hover:text-accent-300"
+          class="text-xs text-accent transition-colors hover:text-accent/80"
         >
           View Details &rarr;
         </NuxtLink>
@@ -325,7 +325,7 @@ onUnmounted(() => {
       <!-- Timeline steps -->
       <div class="relative pl-6">
         <!-- Vertical line -->
-        <div class="absolute left-2.5 top-0 h-full w-px bg-surface-800/60" />
+        <div class="absolute left-2.5 top-0 h-full w-px bg-border/60" />
 
         <div class="space-y-4">
           <div
@@ -338,10 +338,10 @@ onUnmounted(() => {
               class="absolute -left-3.5 flex h-5 w-5 items-center justify-center rounded-full"
               :class="cn(
                 {
-                  'bg-surface-800 text-surface-500': step.status === 'pending',
-                  'bg-primary-700/50 text-primary-300': step.status === 'running',
-                  'bg-success-900/60 text-success-400': step.status === 'completed',
-                  'bg-danger-900/60 text-danger-400': step.status === 'failed',
+                  'bg-muted text-muted-foreground': step.status === 'pending',
+                  'bg-primary/20 text-primary': step.status === 'running',
+                  'bg-primary/20 text-primary': step.status === 'completed',
+                  'bg-destructive/20 text-destructive': step.status === 'failed',
                 },
                 !isHistoricalView && 'transition-all duration-300',
               )"
@@ -394,17 +394,17 @@ onUnmounted(() => {
                   class="text-sm font-medium"
                   :class="cn(
                     {
-                      'text-surface-500': step.status === 'pending',
-                      'text-primary-300': step.status === 'running',
-                      'text-surface-200': step.status === 'completed',
-                      'text-danger-400': step.status === 'failed',
+                      'text-muted-foreground': step.status === 'pending',
+                      'text-primary': step.status === 'running',
+                      'text-foreground': step.status === 'completed',
+                      'text-destructive': step.status === 'failed',
                     },
                     !isHistoricalView && 'transition-colors duration-200',
                   )"
                 >
                   {{ step.label }}
                 </span>
-                <span v-if="step.timestamp" class="text-xs text-surface-600">
+                <span v-if="step.timestamp" class="text-xs text-muted-foreground">
                   {{ formatTime(step.timestamp) }}
                 </span>
               </div>
@@ -413,8 +413,8 @@ onUnmounted(() => {
                 class="mt-0.5 text-xs"
                 :class="cn(
                   {
-                    'text-surface-500': step.status !== 'failed',
-                    'text-danger-400/80': step.status === 'failed',
+                    'text-muted-foreground': step.status !== 'failed',
+                    'text-destructive/80': step.status === 'failed',
                   },
                   !isHistoricalView && 'transition-opacity duration-200',
                 )"
@@ -430,10 +430,10 @@ onUnmounted(() => {
       <Alert
         v-if="activeJob?.status === 'failed' && activeJob.last_error"
         variant="destructive"
-        :class="cn('mt-4 border-danger-600/30 bg-danger-900/20')"
+        :class="cn('mt-4 border-destructive/30 bg-destructive/10')"
       >
-        <AlertTitle class="text-xs font-medium text-danger-400">Error</AlertTitle>
-        <AlertDescription class="mt-1 text-sm text-danger-300">
+        <AlertTitle class="text-xs font-medium text-destructive">Error</AlertTitle>
+        <AlertDescription class="mt-1 text-sm text-destructive">
           {{ activeJob.last_error }}
         </AlertDescription>
       </Alert>

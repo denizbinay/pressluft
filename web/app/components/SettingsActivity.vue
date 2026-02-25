@@ -86,10 +86,10 @@ const statusVariant = (status?: string): "success" | "warning" | "danger" | "def
 const statusBadgeClass = (status?: string): string => {
   const variant = statusVariant(status)
   const mapping: Record<typeof variant, string> = {
-    default: "border-surface-700/60 bg-surface-800/60 text-surface-100",
-    success: "border-success-700/40 bg-success-900/40 text-success-300",
-    warning: "border-warning-700/40 bg-warning-900/40 text-warning-300",
-    danger: "border-danger-700/40 bg-danger-900/40 text-danger-300",
+    default: "border-border/60 bg-muted/60 text-foreground",
+    success: "border-primary/30 bg-primary/10 text-primary",
+    warning: "border-accent/30 bg-accent/10 text-accent",
+    danger: "border-destructive/30 bg-destructive/10 text-destructive",
   }
   return mapping[variant]
 }
@@ -97,10 +97,10 @@ const statusBadgeClass = (status?: string): string => {
 const statusIconClass = (status?: string): string => {
   const variant = statusVariant(status)
   const mapping: Record<typeof variant, string> = {
-    success: "bg-success-500/10 text-success-400",
-    warning: "bg-warning-500/10 text-warning-400",
-    danger: "bg-danger-500/10 text-danger-400",
-    default: "bg-surface-800/50 text-surface-400",
+    success: "bg-primary/10 text-primary",
+    warning: "bg-accent/10 text-accent",
+    danger: "bg-destructive/10 text-destructive",
+    default: "bg-muted/50 text-muted-foreground",
   }
   return mapping[variant]
 }
@@ -150,14 +150,14 @@ onMounted(fetchAuditLog)
   <div class="space-y-4">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <p class="text-sm text-surface-400">
+      <p class="text-sm text-muted-foreground">
         Complete history of all actions performed in your account.
       </p>
       <Button
         variant="link"
         size="sm"
         :disabled="loading"
-        :class="cn('h-auto p-0 text-xs text-accent-400 hover:text-accent-300 hover:no-underline')"
+        :class="cn('h-auto p-0 text-xs text-accent hover:text-accent/80 hover:no-underline')"
         @click="fetchAuditLog"
       >
         Refresh
@@ -166,19 +166,19 @@ onMounted(fetchAuditLog)
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <Spinner :class="cn('h-5 w-5 text-surface-400')" />
+      <Spinner :class="cn('h-5 w-5 text-muted-foreground')" />
     </div>
 
     <!-- Error -->
-    <Alert v-else-if="error" :class="cn('border-danger-600/30 bg-danger-900/20')">
+    <Alert v-else-if="error" :class="cn('border-destructive/30 bg-destructive/10')">
       <div class="space-y-2">
-        <AlertDescription :class="cn('text-sm text-danger-300')">
+        <AlertDescription :class="cn('text-sm text-destructive')">
           {{ error }}
         </AlertDescription>
         <Button
           variant="link"
           size="sm"
-          :class="cn('h-auto p-0 text-xs text-danger-400 hover:text-danger-300 hover:no-underline')"
+          :class="cn('h-auto p-0 text-xs text-destructive hover:text-destructive/80 hover:no-underline')"
           @click="fetchAuditLog"
         >
           Try again
@@ -189,18 +189,18 @@ onMounted(fetchAuditLog)
     <!-- Empty state -->
     <Empty
       v-else-if="entries.length === 0"
-      :class="cn('border border-dashed border-surface-700/50 px-4 py-8 text-center')"
+      :class="cn('border border-dashed border-border/50 px-4 py-8 text-center')"
     >
-      <EmptyMedia :class="cn('text-surface-600')">
+      <EmptyMedia :class="cn('text-muted-foreground')">
         <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </EmptyMedia>
       <EmptyHeader :class="cn('gap-1')">
-        <EmptyTitle :class="cn('text-sm font-medium text-surface-200')">
+        <EmptyTitle :class="cn('text-sm font-medium text-foreground')">
           No activity yet
         </EmptyTitle>
-        <EmptyDescription :class="cn('text-sm text-surface-500')">
+        <EmptyDescription :class="cn('text-sm text-muted-foreground')">
           Actions like server provisioning, site deployments, and configuration changes will appear here.
         </EmptyDescription>
       </EmptyHeader>
@@ -211,7 +211,7 @@ onMounted(fetchAuditLog)
       <Item
         v-for="entry in entries"
         :key="entry.id"
-        :class="cn('items-start gap-3 rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3')"
+        :class="cn('items-start gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3')"
       >
         <ItemMedia
           :class="cn('h-8 w-8 rounded-lg', statusIconClass(entry.status))"
@@ -222,7 +222,7 @@ onMounted(fetchAuditLog)
         </ItemMedia>
 
         <ItemContent :class="cn('min-w-0')">
-          <ItemTitle :class="cn('text-surface-200')">
+          <ItemTitle :class="cn('text-foreground')">
             <span>{{ entry.action }}</span>
             <Badge
               v-if="entry.status"
@@ -232,11 +232,11 @@ onMounted(fetchAuditLog)
               {{ entry.status }}
             </Badge>
           </ItemTitle>
-          <p class="mt-0.5 text-xs text-surface-500">
+          <p class="mt-0.5 text-xs text-muted-foreground">
             <span v-if="entry.target">{{ entry.target }} · </span>
             {{ formatDate(entry.timestamp) }}
           </p>
-          <p v-if="entry.details" class="mt-1 text-xs text-danger-400/80">
+          <p v-if="entry.details" class="mt-1 text-xs text-destructive/80">
             {{ entry.details }}
           </p>
         </ItemContent>
@@ -246,7 +246,7 @@ onMounted(fetchAuditLog)
             as-child
             variant="link"
             size="sm"
-            :class="cn('h-auto p-0 text-xs text-accent-400 hover:text-accent-300 hover:no-underline')"
+            :class="cn('h-auto p-0 text-xs text-accent hover:text-accent/80 hover:no-underline')"
           >
             <NuxtLink :to="`/jobs/${entry.jobId}`">
               Details
@@ -257,11 +257,11 @@ onMounted(fetchAuditLog)
     </div>
 
     <!-- Info note -->
-    <Alert :class="cn('border-surface-800/40 bg-surface-900/20')">
-      <svg class="mt-0.5 h-4 w-4 text-surface-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <Alert :class="cn('border-border/40 bg-card/20')">
+      <svg class="mt-0.5 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <AlertDescription :class="cn('text-xs text-surface-500')">
+      <AlertDescription :class="cn('text-xs text-muted-foreground')">
         This audit log is permanent and cannot be deleted. All actions are recorded for compliance and troubleshooting purposes.
       </AlertDescription>
     </Alert>

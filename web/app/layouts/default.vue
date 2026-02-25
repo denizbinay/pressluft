@@ -113,15 +113,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SidebarProvider class="min-h-screen bg-surface-950 text-surface-50">
+  <SidebarProvider class="min-h-screen bg-background text-foreground">
     <Sidebar
       collapsible="icon"
-      class="border-r border-surface-800/60 bg-surface-950"
-      :style="{ '--sidebar': 'var(--color-surface-950)' }"
+      class="border-r border-border/60 bg-background"
     >
       <SidebarHeader class="flex items-center justify-between px-4 py-4">
         <NuxtLink to="/" class="flex items-center gap-2">
-          <div class="flex h-9 w-9 items-center justify-center rounded-lg text-cyan-400">
+          <div class="flex h-9 w-9 items-center justify-center rounded-lg text-accent">
             <svg
               version="1.1"
               xmlns="http://www.w3.org/2000/svg"
@@ -156,20 +155,20 @@ onBeforeUnmount(() => {
               </g>
             </svg>
           </div>
-          <span class="text-lg font-semibold tracking-tight text-white group-data-[collapsible=icon]:hidden">
+          <span class="text-lg font-semibold tracking-tight text-foreground group-data-[collapsible=icon]:hidden">
             Pressluft
           </span>
         </NuxtLink>
 
         <SidebarTrigger
-          class="lg:hidden rounded-md text-surface-400 transition hover:bg-surface-900/70 hover:text-surface-100"
+          class="lg:hidden rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
         />
       </SidebarHeader>
 
       <SidebarContent class="px-3 pb-6">
         <div v-for="section in navSections" :key="section.title" class="space-y-3">
           <p
-            class="px-3 text-[10px] font-medium uppercase tracking-wider text-surface-500 group-data-[collapsible=icon]:hidden"
+            class="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground group-data-[collapsible=icon]:hidden"
           >
             {{ section.title }}
           </p>
@@ -181,8 +180,8 @@ onBeforeUnmount(() => {
               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors group-data-[collapsible=icon]:justify-center"
               :class="[
                 isActive(item.to)
-                  ? 'bg-surface-800/60 text-surface-50'
-                  : 'text-surface-400 hover:bg-surface-800/40 hover:text-surface-100',
+                  ? 'bg-muted/60 text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
               ]"
               :aria-label="item.label"
               :title="item.label"
@@ -194,46 +193,46 @@ onBeforeUnmount(() => {
         </div>
       </SidebarContent>
 
-      <SidebarFooter class="border-t border-surface-800/60 p-0">
+      <SidebarFooter class="border-t border-border/60 p-0">
         <UserPanel />
       </SidebarFooter>
     </Sidebar>
 
-    <SidebarInset class="bg-surface-950 text-surface-50">
-      <header class="flex items-center justify-between border-b border-surface-800/60 bg-surface-950/80 px-4 py-3 backdrop-blur lg:px-6">
+    <SidebarInset class="bg-background text-foreground">
+      <header class="flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur lg:px-6">
         <div class="flex items-center gap-3">
           <SidebarTrigger
-            class="lg:hidden rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="lg:hidden rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
 
           <SidebarTrigger
-            class="hidden lg:flex rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="hidden lg:flex rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
 
-          <div class="flex items-center gap-1.5 text-xs text-surface-400">
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Pressluft</span>
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
-            <span class="text-surface-200 capitalize">{{ breadcrumbLabel }}</span>
+            <span class="text-foreground capitalize">{{ breadcrumbLabel }}</span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
           <Button
             variant="ghost"
-            class="hidden sm:flex rounded-lg text-surface-400 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="hidden sm:flex rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             type="button"
             @click="openSearch"
           >
              <Search class="h-4 w-4" aria-hidden="true" />
             <span>Search...</span>
-            <span class="ml-2 text-xs text-surface-500 border border-surface-800/60 rounded px-1.5 py-0.5">⌘K</span>
+            <span class="ml-2 text-xs text-muted-foreground border border-border/60 rounded px-1.5 py-0.5">⌘K</span>
           </Button>
 
           <Button
             variant="ghost"
-            class="sm:hidden rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="sm:hidden rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             type="button"
             aria-label="Open search"
             @click="openSearch"
@@ -243,7 +242,7 @@ onBeforeUnmount(() => {
 
           <Button
             variant="ghost"
-            class="rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             type="button"
             aria-label="Help"
           >
@@ -252,7 +251,7 @@ onBeforeUnmount(() => {
 
           <Button
             variant="ghost"
-            class="rounded-lg text-surface-300 hover:text-surface-100 hover:bg-surface-900/70 focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+            class="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             type="button"
             aria-label="Notifications"
           >
@@ -273,12 +272,12 @@ onBeforeUnmount(() => {
     <Dialog :open="searchOpen" @update:open="(value) => (value ? openSearch() : closeSearch())">
       <DialogContent
         :show-close-button="false"
-        class="w-full max-w-lg rounded-xl border border-surface-800/60 bg-surface-900/80 p-0 shadow-2xl"
+        class="w-full max-w-lg rounded-xl border border-border/60 bg-popover/90 p-0 shadow-2xl text-popover-foreground"
       >
-        <div class="flex items-center justify-between border-b border-surface-800/40 px-6 py-4">
-          <DialogTitle class="text-base font-semibold text-surface-100">Search</DialogTitle>
+        <div class="flex items-center justify-between border-b border-border/40 px-6 py-4">
+          <DialogTitle class="text-base font-semibold text-foreground">Search</DialogTitle>
           <DialogClose
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-surface-300 transition hover:bg-surface-800/60 hover:text-surface-100"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
             aria-label="Close modal"
           >
             <span aria-hidden="true">×</span>
@@ -291,25 +290,25 @@ onBeforeUnmount(() => {
             type="search"
             placeholder="Search pages..."
             autofocus
-            class="w-full rounded-lg border border-surface-700/60 bg-surface-900/60 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 hover:border-surface-600"
+            class="w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background hover:border-border"
           />
 
           <div class="space-y-1">
-            <p class="text-xs font-medium uppercase tracking-wider text-surface-500">Navigation</p>
+            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Navigation</p>
             <div v-if="filteredNavItems.length" class="space-y-1">
               <button
                 v-for="item in filteredNavItems"
                 :key="item.label"
                 type="button"
-                class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-surface-200 transition-colors hover:bg-surface-800/60"
+                class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-muted/60"
                 @click="handleSearchSelect(item)"
               >
-                <component :is="item.icon" class="h-4 w-4 shrink-0 text-surface-400" aria-hidden="true" />
+                <component :is="item.icon" class="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>{{ item.label }}</span>
-                <span class="ml-auto text-xs text-surface-500">{{ item.to }}</span>
+                <span class="ml-auto text-xs text-muted-foreground">{{ item.to }}</span>
               </button>
             </div>
-            <p v-else class="text-sm text-surface-500">No matches found.</p>
+            <p v-else class="text-sm text-muted-foreground">No matches found.</p>
           </div>
         </div>
       </DialogContent>

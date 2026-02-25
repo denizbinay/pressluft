@@ -56,48 +56,48 @@ const simulateLoading = () => {
 }
 
 const cardBaseClass =
-  "rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none"
+  "rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
 
 const cardHoverClass =
-  "transition-all duration-200 hover:border-surface-700/80 hover:bg-surface-900/70 hover:shadow-lg hover:shadow-surface-950/50 cursor-pointer"
+  "transition-all duration-200 hover:border-border/80 hover:bg-card/70 hover:shadow-lg hover:shadow-black/20 cursor-pointer"
 
 const buttonBaseClass =
-  "rounded-lg font-medium transition-colors focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+  "rounded-lg font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 const fieldClass =
-  "w-full rounded-lg border bg-surface-900/60 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+  "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 const selectTriggerClass = cn(
   fieldClass,
-  "border-surface-700/60 hover:border-surface-600 data-[placeholder]:text-surface-400",
+  "hover:border-border data-[placeholder]:text-muted-foreground",
 )
 
 const inputClass = cn(
   fieldClass,
-  "border-surface-700/60 hover:border-surface-600",
+  "hover:border-border",
 )
 
 const textareaClass = cn(
   fieldClass,
-  "border-surface-700/60 hover:border-surface-600 min-h-[96px]",
+  "hover:border-border min-h-[96px]",
 )
 
 const switchClass = cn(
-  "h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950",
-  "data-[state=checked]:border-accent-500/60 data-[state=checked]:bg-accent-500/40 data-[state=unchecked]:border-surface-700/60 data-[state=unchecked]:bg-surface-800/60",
+  "h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+  "data-[state=checked]:border-ring/60 data-[state=checked]:bg-ring/30 data-[state=unchecked]:border-border/60 data-[state=unchecked]:bg-muted/60",
   "disabled:cursor-not-allowed disabled:opacity-60",
-  "[&_[data-slot=switch-thumb]]:h-5 [&_[data-slot=switch-thumb]]:w-5 [&_[data-slot=switch-thumb]]:bg-surface-100",
+  "[&_[data-slot=switch-thumb]]:h-5 [&_[data-slot=switch-thumb]]:w-5 [&_[data-slot=switch-thumb]]:bg-background",
 )
 
 type BadgeVariant = "default" | "success" | "warning" | "danger" | "info"
 
 const badgeClass = (variant: BadgeVariant) => {
   const mapping: Record<BadgeVariant, string> = {
-    default: "border-surface-700/60 bg-surface-800/60 text-surface-100",
-    success: "border-success-700/40 bg-success-900/40 text-success-300",
-    warning: "border-warning-700/40 bg-warning-900/40 text-warning-300",
-    danger: "border-danger-700/40 bg-danger-900/40 text-danger-300",
-    info: "border-accent-600/40 bg-accent-500/15 text-accent-200",
+    default: "border-border/60 bg-muted/60 text-foreground",
+    success: "border-primary/30 bg-primary/10 text-primary",
+    warning: "border-accent/30 bg-accent/10 text-accent",
+    danger: "border-destructive/30 bg-destructive/10 text-destructive",
+    info: "border-accent/30 bg-accent/10 text-accent",
   }
 
   return cn("px-2.5 py-1 text-sm", mapping[variant])
@@ -108,10 +108,10 @@ type ProgressSize = "sm" | "md" | "lg"
 
 const progressIndicatorClass = (variant: ProgressVariant) => {
   const mapping: Record<ProgressVariant, string> = {
-    accent: "[&_[data-slot=progress-indicator]]:bg-accent-500",
-    success: "[&_[data-slot=progress-indicator]]:bg-success-500",
-    warning: "[&_[data-slot=progress-indicator]]:bg-warning-500",
-    danger: "[&_[data-slot=progress-indicator]]:bg-danger-500",
+    accent: "[&_[data-slot=progress-indicator]]:bg-accent",
+    success: "[&_[data-slot=progress-indicator]]:bg-primary",
+    warning: "[&_[data-slot=progress-indicator]]:bg-accent",
+    danger: "[&_[data-slot=progress-indicator]]:bg-destructive",
   }
 
   return mapping[variant]
@@ -135,10 +135,10 @@ const progressPercent = (value: number, max = 100) =>
   <div class="space-y-16">
     <!-- Page header -->
     <div>
-      <h1 class="text-3xl font-semibold text-surface-50">
+      <h1 class="text-3xl font-semibold text-foreground">
         UI Components
       </h1>
-      <p class="mt-2 text-base text-surface-400">
+      <p class="mt-2 text-base text-muted-foreground">
         Component library &mdash; your design system at a glance.
       </p>
     </div>
@@ -160,10 +160,10 @@ const progressPercent = (value: number, max = 100) =>
         <CardContent class="px-6 py-5">
           <div class="flex items-start justify-between">
             <div>
-              <p class="text-xs font-medium uppercase tracking-wider text-surface-500">
+              <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {{ stat.label }}
               </p>
-              <p class="mt-2 text-3xl font-bold text-surface-50 font-mono">
+              <p class="mt-2 text-3xl font-bold text-foreground font-mono">
                 {{ stat.value }}
               </p>
             </div>
@@ -179,25 +179,25 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Buttons -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Buttons</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Buttons</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="space-y-6">
             <!-- Variants -->
             <div>
-              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">Variants</p>
+              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">Variants</p>
               <div class="flex flex-wrap items-center gap-4">
                 <Button :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-primary text-primary-foreground hover:bg-primary/90')">Primary</Button>
-                <Button variant="secondary" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-surface-800 text-surface-100 hover:bg-surface-700')">Secondary</Button>
-                <Button variant="outline" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm border-surface-700 text-surface-100 hover:bg-surface-800/60')">Outline</Button>
-                <Button variant="ghost" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm text-surface-200 hover:bg-surface-800/50')">Ghost</Button>
-                <Button variant="destructive" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-danger-600 text-white hover:bg-danger-500')">Danger</Button>
+                <Button variant="secondary" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80')">Secondary</Button>
+                <Button variant="outline" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm border-border text-foreground hover:bg-muted/60')">Outline</Button>
+                <Button variant="ghost" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm text-muted-foreground hover:bg-muted/50')">Ghost</Button>
+                <Button variant="destructive" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90')">Danger</Button>
               </div>
             </div>
 
             <!-- Sizes -->
             <div>
-              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">Sizes</p>
+              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">Sizes</p>
               <div class="flex flex-wrap items-center gap-4">
                 <Button size="sm" :class="cn(buttonBaseClass, 'h-8 px-3 text-xs')">Small</Button>
                 <Button :class="cn(buttonBaseClass, 'h-10 px-4 text-sm')">Medium</Button>
@@ -207,7 +207,7 @@ const progressPercent = (value: number, max = 100) =>
 
             <!-- States -->
             <div>
-              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-surface-500">States</p>
+              <p class="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">States</p>
               <div class="flex flex-wrap items-center gap-4">
                 <Button disabled :class="cn(buttonBaseClass, 'h-10 px-4 text-sm')">Disabled</Button>
                 <Button :disabled="loadingBtn" :class="cn(buttonBaseClass, 'h-10 px-4 text-sm')" @click="simulateLoading">
@@ -225,7 +225,7 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Badges -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Badges</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Badges</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="flex flex-wrap items-center gap-4">
@@ -243,47 +243,47 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Progress Bars -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Progress Bars</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Progress Bars</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="space-y-6">
             <div class="w-full">
               <div class="mb-1.5 flex items-center justify-between">
-                <span class="text-sm font-medium text-surface-300">CPU Usage</span>
-                <span class="text-xs font-mono text-surface-400">{{ Math.round(progressPercent(72)) }}%</span>
+                  <span class="text-sm font-medium text-muted-foreground">CPU Usage</span>
+                  <span class="text-xs font-mono text-muted-foreground">{{ Math.round(progressPercent(72)) }}%</span>
+                </div>
+                <Progress
+                  :model-value="progressPercent(72)"
+                  :class="cn('bg-muted/70', progressHeightClass('md'), progressIndicatorClass('accent'))"
+                />
               </div>
-              <Progress
-                :model-value="progressPercent(72)"
-                :class="cn('bg-surface-800/70', progressHeightClass('md'), progressIndicatorClass('accent'))"
-              />
-            </div>
             <div class="w-full">
               <div class="mb-1.5 flex items-center justify-between">
-                <span class="text-sm font-medium text-surface-300">Memory</span>
-                <span class="text-xs font-mono text-surface-400">{{ Math.round(progressPercent(45)) }}%</span>
+                  <span class="text-sm font-medium text-muted-foreground">Memory</span>
+                  <span class="text-xs font-mono text-muted-foreground">{{ Math.round(progressPercent(45)) }}%</span>
+                </div>
+                <Progress
+                  :model-value="progressPercent(45)"
+                  :class="cn('bg-muted/70', progressHeightClass('md'), progressIndicatorClass('success'))"
+                />
               </div>
-              <Progress
-                :model-value="progressPercent(45)"
-                :class="cn('bg-surface-800/70', progressHeightClass('md'), progressIndicatorClass('success'))"
-              />
-            </div>
             <div class="w-full">
               <div class="mb-1.5 flex items-center justify-between">
-                <span class="text-sm font-medium text-surface-300">Disk</span>
-                <span class="text-xs font-mono text-surface-400">{{ Math.round(progressPercent(89)) }}%</span>
+                  <span class="text-sm font-medium text-muted-foreground">Disk</span>
+                  <span class="text-xs font-mono text-muted-foreground">{{ Math.round(progressPercent(89)) }}%</span>
+                </div>
+                <Progress
+                  :model-value="progressPercent(89)"
+                  :class="cn('bg-muted/70', progressHeightClass('md'), progressIndicatorClass('warning'))"
+                />
               </div>
-              <Progress
-                :model-value="progressPercent(89)"
-                :class="cn('bg-surface-800/70', progressHeightClass('md'), progressIndicatorClass('warning'))"
-              />
-            </div>
             <Progress
               :model-value="progressPercent(12)"
-              :class="cn('bg-surface-800/70', progressHeightClass('sm'), progressIndicatorClass('danger'))"
+              :class="cn('bg-muted/70', progressHeightClass('sm'), progressIndicatorClass('danger'))"
             />
             <Progress
               :model-value="progressPercent(60)"
-              :class="cn('bg-surface-800/70', progressHeightClass('lg'), progressIndicatorClass('accent'))"
+              :class="cn('bg-muted/70', progressHeightClass('lg'), progressIndicatorClass('accent'))"
             />
           </div>
         </CardContent>
@@ -294,23 +294,23 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Cards -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Cards</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Cards</h2>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card :class="cardBaseClass">
-          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
-            <h3 class="text-base font-semibold text-surface-100">Basic Card</h3>
+          <CardHeader class="border-b border-border/40 px-6 py-5">
+            <h3 class="text-base font-semibold text-foreground">Basic Card</h3>
           </CardHeader>
           <CardContent class="px-6 py-5">
-            <p class="text-base text-surface-400">
+            <p class="text-base text-muted-foreground">
               A standard card with header, body, and footer slots. Use it for grouping related content.
             </p>
           </CardContent>
-          <CardFooter class="border-t border-surface-800/40 px-6 py-4">
+          <CardFooter class="border-t border-border/40 px-6 py-4">
             <div class="flex justify-end">
               <Button
                 variant="ghost"
                 size="sm"
-                :class="cn(buttonBaseClass, 'h-8 px-3 text-xs text-surface-200 hover:bg-surface-800/50')"
+                :class="cn(buttonBaseClass, 'h-8 px-3 text-xs text-muted-foreground hover:bg-muted/50')"
               >
                 View details
               </Button>
@@ -319,14 +319,14 @@ const progressPercent = (value: number, max = 100) =>
         </Card>
 
         <Card :class="cn(cardBaseClass, cardHoverClass)">
-          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
+          <CardHeader class="border-b border-border/40 px-6 py-5">
             <div class="flex items-center justify-between">
-              <h3 class="text-base font-semibold text-surface-100">Hoverable Card</h3>
+              <h3 class="text-base font-semibold text-foreground">Hoverable Card</h3>
               <Badge variant="outline" :class="badgeClass('success')">Active</Badge>
             </div>
           </CardHeader>
           <CardContent class="px-6 py-5">
-            <p class="text-base text-surface-400">
+            <p class="text-base text-muted-foreground">
               This card has a hover effect. Useful for clickable items like service cards or pipeline entries.
             </p>
           </CardContent>
@@ -338,12 +338,12 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Forms -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Form Controls</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Form Controls</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">Service Name</Label>
+              <Label class="text-sm font-medium text-muted-foreground">Service Name</Label>
               <Input
                 v-model="inputValue"
                 placeholder="e.g. api-gateway"
@@ -351,17 +351,17 @@ const progressPercent = (value: number, max = 100) =>
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">Region</Label>
+              <Label class="text-sm font-medium text-muted-foreground">Region</Label>
               <Select v-model="selectValue">
                 <SelectTrigger :class="selectTriggerClass">
                   <SelectValue placeholder="Select an option" />
                 </SelectTrigger>
-                <SelectContent class="border-surface-800/60 bg-surface-950 text-surface-100">
+                <SelectContent class="border-border/60 bg-popover text-popover-foreground">
                   <SelectItem
                     v-for="option in selectOptions"
                     :key="option.value"
                     :value="option.value"
-                    class="text-surface-100 data-[disabled]:text-surface-500 data-[highlighted]:bg-surface-800/60 data-[highlighted]:text-surface-50"
+                    class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
                   >
                     <SelectItemText>{{ option.label }}</SelectItemText>
                   </SelectItem>
@@ -369,7 +369,7 @@ const progressPercent = (value: number, max = 100) =>
               </Select>
             </div>
             <div class="md:col-span-2 space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">Description</Label>
+              <Label class="text-sm font-medium text-muted-foreground">Description</Label>
               <Textarea
                 v-model="textareaValue"
                 placeholder="Describe the service configuration..."
@@ -378,17 +378,17 @@ const progressPercent = (value: number, max = 100) =>
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">With Error</Label>
+              <Label class="text-sm font-medium text-muted-foreground">With Error</Label>
               <Input
                 model-value="bad-value"
                 placeholder="Invalid input"
                 aria-invalid="true"
-                :class="cn(inputClass, 'border-danger-500/60 focus-visible:ring-danger-500/40')"
+                :class="cn(inputClass, 'border-destructive/60 focus-visible:ring-destructive/40')"
               />
-              <p class="text-xs text-danger-400">This field is required</p>
+              <p class="text-xs text-destructive">This field is required</p>
             </div>
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">Disabled</Label>
+              <Label class="text-sm font-medium text-muted-foreground">Disabled</Label>
               <Input
                 placeholder="Cannot edit"
                 disabled
@@ -404,20 +404,20 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Toggles -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Toggles</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Toggles</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="space-y-5">
             <div class="flex items-center justify-between gap-3">
-              <Label class="text-sm text-surface-200">Auto-deploy on push</Label>
+              <Label class="text-sm text-foreground/80">Auto-deploy on push</Label>
               <Switch v-model:checked="toggleA" :class="switchClass" />
             </div>
             <div class="flex items-center justify-between gap-3">
-              <Label class="text-sm text-surface-200">Enable notifications</Label>
+              <Label class="text-sm text-foreground/80">Enable notifications</Label>
               <Switch v-model:checked="toggleB" :class="switchClass" />
             </div>
             <div class="flex items-center justify-between gap-3">
-              <Label class="text-sm text-surface-400">Disabled toggle</Label>
+              <Label class="text-sm text-muted-foreground">Disabled toggle</Label>
               <Switch disabled :class="switchClass" />
             </div>
           </div>
@@ -429,7 +429,7 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Dropdown -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Dropdown</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Dropdown</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <div class="flex gap-5">
@@ -437,7 +437,7 @@ const progressPercent = (value: number, max = 100) =>
               <DropdownMenuTrigger as-child>
                 <Button
                   variant="secondary"
-                  :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-surface-800 text-surface-100 hover:bg-surface-700')"
+                  :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80')"
                 >
                   Actions
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -445,12 +445,12 @@ const progressPercent = (value: number, max = 100) =>
                   </svg>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent :class="cn('rounded-lg border border-default bg-default p-1 shadow-xl')">
-                <DropdownMenuItem class="text-foreground hover:bg-default focus:bg-default">Deploy</DropdownMenuItem>
-                <DropdownMenuItem class="text-foreground hover:bg-default focus:bg-default">Rollback</DropdownMenuItem>
-                <DropdownMenuItem class="text-foreground hover:bg-default focus:bg-default">View Logs</DropdownMenuItem>
-                <DropdownMenuSeparator class="mx-0 my-2 h-px bg-surface-700/40" />
-                <DropdownMenuItem class="text-error hover:bg-error/10 hover:text-error focus:bg-error/10 focus:text-error">
+              <DropdownMenuContent :class="cn('rounded-lg border border-border bg-popover p-1 shadow-xl text-popover-foreground')">
+                <DropdownMenuItem class="text-foreground hover:bg-muted focus:bg-muted">Deploy</DropdownMenuItem>
+                <DropdownMenuItem class="text-foreground hover:bg-muted focus:bg-muted">Rollback</DropdownMenuItem>
+                <DropdownMenuItem class="text-foreground hover:bg-muted focus:bg-muted">View Logs</DropdownMenuItem>
+                <DropdownMenuSeparator class="mx-0 my-2 h-px bg-border/40" />
+                <DropdownMenuItem class="text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive">
                   Delete Service
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -460,7 +460,7 @@ const progressPercent = (value: number, max = 100) =>
               <DropdownMenuTrigger as-child>
                 <Button
                   variant="outline"
-                  :class="cn(buttonBaseClass, 'h-10 px-4 text-sm border-surface-700 text-surface-100 hover:bg-surface-800/60')"
+                  :class="cn(buttonBaseClass, 'h-10 px-4 text-sm border-border text-foreground hover:bg-muted/60')"
                 >
                   Options
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -468,10 +468,10 @@ const progressPercent = (value: number, max = 100) =>
                   </svg>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" :class="cn('rounded-lg border border-default bg-default p-1 shadow-xl')">
-                <DropdownMenuItem class="text-foreground hover:bg-default focus:bg-default">Edit</DropdownMenuItem>
-                <DropdownMenuItem class="text-foreground hover:bg-default focus:bg-default">Duplicate</DropdownMenuItem>
-                <DropdownMenuItem disabled class="text-foreground/50">Archive</DropdownMenuItem>
+              <DropdownMenuContent align="end" :class="cn('rounded-lg border border-border bg-popover p-1 shadow-xl text-popover-foreground')">
+                <DropdownMenuItem class="text-foreground hover:bg-muted focus:bg-muted">Edit</DropdownMenuItem>
+                <DropdownMenuItem class="text-foreground hover:bg-muted focus:bg-muted">Duplicate</DropdownMenuItem>
+                <DropdownMenuItem disabled class="text-muted-foreground">Archive</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -483,7 +483,7 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Modal -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Modal</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Modal</h2>
       <Card :class="cardBaseClass">
         <CardContent class="px-6 py-5">
           <Button :class="cn(buttonBaseClass, 'h-10 px-4 text-sm bg-primary text-primary-foreground hover:bg-primary/90')" @click="openModal">
@@ -495,12 +495,12 @@ const progressPercent = (value: number, max = 100) =>
       <Dialog :open="modalOpen" @update:open="(value) => (value ? openModal() : closeModal())">
         <DialogContent
           :show-close-button="false"
-          class="w-full max-w-lg rounded-xl border border-surface-800/60 bg-surface-900/80 p-0 shadow-2xl"
+          class="w-full max-w-lg rounded-xl border border-border/60 bg-popover/90 p-0 shadow-2xl text-popover-foreground"
         >
-          <div class="flex items-center justify-between border-b border-surface-800/40 px-6 py-4">
-            <DialogTitle class="text-base font-semibold text-surface-100">Confirm Deployment</DialogTitle>
+          <div class="flex items-center justify-between border-b border-border/40 px-6 py-4">
+            <DialogTitle class="text-base font-semibold text-foreground">Confirm Deployment</DialogTitle>
             <DialogClose
-              class="inline-flex h-8 w-8 items-center justify-center rounded-md text-surface-300 transition hover:bg-surface-800/60 hover:text-surface-100"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
               aria-label="Close modal"
             >
               <span aria-hidden="true">×</span>
@@ -508,17 +508,17 @@ const progressPercent = (value: number, max = 100) =>
           </div>
 
           <div class="px-6 py-5">
-            <p class="text-base text-surface-400">
-              You are about to deploy <span class="font-mono text-surface-200">api-gateway@v2.4.1</span>
-              to <span class="font-semibold text-surface-200">production</span>. This action will
+            <p class="text-base text-muted-foreground">
+              You are about to deploy <span class="font-mono text-foreground">api-gateway@v2.4.1</span>
+              to <span class="font-semibold text-foreground">production</span>. This action will
               replace the currently running version.
             </p>
           </div>
-          <DialogFooter class="border-t border-surface-800/40 px-6 py-4">
+          <DialogFooter class="border-t border-border/40 px-6 py-4">
             <div class="flex justify-end gap-4">
               <Button
                 variant="ghost"
-                :class="cn(buttonBaseClass, 'h-10 px-4 text-sm text-surface-200 hover:bg-surface-800/50')"
+                :class="cn(buttonBaseClass, 'h-10 px-4 text-sm text-muted-foreground hover:bg-muted/50')"
                 @click="closeModal"
               >
                 Cancel
@@ -539,72 +539,68 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Typography & Colors -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Typography &amp; Colors</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Typography &amp; Colors</h2>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card :class="cardBaseClass">
-          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
-            <h3 class="text-base font-semibold text-surface-100">Type Scale</h3>
+          <CardHeader class="border-b border-border/40 px-6 py-5">
+            <h3 class="text-base font-semibold text-foreground">Type Scale</h3>
           </CardHeader>
           <CardContent class="px-6 py-5">
             <div class="space-y-4">
-              <p class="text-4xl font-bold text-surface-50">Heading 1</p>
-              <p class="text-3xl font-semibold text-surface-50">Heading 2</p>
-              <p class="text-2xl font-semibold text-surface-100">Heading 3</p>
-              <p class="text-lg text-surface-200">Body text — Inter 400</p>
-              <p class="text-base text-surface-400">Secondary text — Inter 400</p>
-              <p class="text-sm text-surface-500">Caption text — Inter 400</p>
-              <p class="font-mono text-base text-accent-400">Monospace — JetBrains Mono</p>
+              <p class="text-4xl font-bold text-foreground">Heading 1</p>
+              <p class="text-3xl font-semibold text-foreground">Heading 2</p>
+              <p class="text-2xl font-semibold text-foreground">Heading 3</p>
+              <p class="text-lg text-foreground/80">Body text — Inter 400</p>
+              <p class="text-base text-muted-foreground">Secondary text — Inter 400</p>
+              <p class="text-sm text-muted-foreground">Caption text — Inter 400</p>
+              <p class="font-mono text-base text-accent">Monospace — JetBrains Mono</p>
             </div>
           </CardContent>
         </Card>
 
         <Card :class="cardBaseClass">
-          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
-            <h3 class="text-base font-semibold text-surface-100">Color Palette</h3>
+          <CardHeader class="border-b border-border/40 px-6 py-5">
+            <h3 class="text-base font-semibold text-foreground">Color Palette</h3>
           </CardHeader>
           <CardContent class="px-6 py-5">
             <div class="space-y-5">
               <div>
-                <p class="mb-2 text-sm font-medium text-surface-500">Surface</p>
+                <p class="mb-2 text-sm font-medium text-muted-foreground">Surface</p>
                 <div class="flex gap-1.5">
-                  <div class="h-10 w-10 rounded-lg bg-surface-950" title="950" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-900" title="900" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-800" title="800" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-700" title="700" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-600" title="600" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-500" title="500" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-400" title="400" />
-                  <div class="h-10 w-10 rounded-lg bg-surface-300" title="300" />
+                  <div class="h-10 w-10 rounded-lg bg-background" title="background" />
+                  <div class="h-10 w-10 rounded-lg bg-card" title="card" />
+                  <div class="h-10 w-10 rounded-lg bg-muted" title="muted" />
+                  <div class="h-10 w-10 rounded-lg bg-secondary" title="secondary" />
+                  <div class="h-10 w-10 rounded-lg bg-border" title="border" />
+                  <div class="h-10 w-10 rounded-lg bg-foreground" title="foreground" />
+                  <div class="h-10 w-10 rounded-lg bg-input" title="input" />
+                  <div class="h-10 w-10 rounded-lg bg-popover" title="popover" />
                 </div>
               </div>
               <div>
-                <p class="mb-2 text-sm font-medium text-surface-500">Accent</p>
+                <p class="mb-2 text-sm font-medium text-muted-foreground">Accent</p>
                 <div class="flex gap-1.5">
-                  <div class="h-10 w-10 rounded-lg bg-accent-700" title="700" />
-                  <div class="h-10 w-10 rounded-lg bg-accent-600" title="600" />
-                  <div class="h-10 w-10 rounded-lg bg-accent-500" title="500" />
-                  <div class="h-10 w-10 rounded-lg bg-accent-400" title="400" />
-                  <div class="h-10 w-10 rounded-lg bg-accent-300" title="300" />
+                  <div class="h-10 w-10 rounded-lg bg-accent" title="accent" />
+                  <div class="h-10 w-10 rounded-lg bg-primary" title="primary" />
+                  <div class="h-10 w-10 rounded-lg bg-ring" title="ring" />
+                  <div class="h-10 w-10 rounded-lg bg-destructive" title="destructive" />
+                  <div class="h-10 w-10 rounded-lg bg-muted-foreground" title="muted-foreground" />
                 </div>
               </div>
               <div>
-                <p class="mb-2 text-sm font-medium text-surface-500">Semantic</p>
+                <p class="mb-2 text-sm font-medium text-muted-foreground">Semantic</p>
                 <div class="flex gap-4">
                   <div class="flex items-center gap-2">
-                    <div class="h-8 w-8 rounded-lg bg-success-500" />
-                    <span class="text-sm text-surface-400">Success</span>
+                    <div class="h-8 w-8 rounded-lg bg-primary" />
+                    <span class="text-sm text-muted-foreground">Primary</span>
                   </div>
                   <div class="flex items-center gap-2">
-                    <div class="h-8 w-8 rounded-lg bg-warning-500" />
-                    <span class="text-sm text-surface-400">Warning</span>
+                    <div class="h-8 w-8 rounded-lg bg-accent" />
+                    <span class="text-sm text-muted-foreground">Accent</span>
                   </div>
                   <div class="flex items-center gap-2">
-                    <div class="h-8 w-8 rounded-lg bg-danger-500" />
-                    <span class="text-sm text-surface-400">Danger</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <div class="h-8 w-8 rounded-lg bg-primary-500" />
-                    <span class="text-sm text-surface-400">Primary</span>
+                    <div class="h-8 w-8 rounded-lg bg-destructive" />
+                    <span class="text-sm text-muted-foreground">Destructive</span>
                   </div>
                 </div>
               </div>
@@ -618,17 +614,17 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Glass effect demo -->
     <!-- ────────────────────────────────────────────────────────────── -->
     <section>
-      <h2 class="mb-6 text-xl font-semibold text-surface-100">Special Effects</h2>
+      <h2 class="mb-6 text-xl font-semibold text-foreground">Special Effects</h2>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div class="glass rounded-xl p-6">
-          <h3 class="text-base font-semibold text-surface-100">Glass Effect</h3>
-          <p class="mt-2 text-base text-surface-400">
+          <h3 class="text-base font-semibold text-foreground">Glass Effect</h3>
+          <p class="mt-2 text-base text-muted-foreground">
             Frosted glass panel with backdrop blur. Use for overlays and elevated surfaces.
           </p>
         </div>
-        <div class="glow-accent rounded-xl border border-accent-500/20 bg-surface-900/50 p-6">
-          <h3 class="text-base font-semibold text-accent-300">Accent Glow</h3>
-          <p class="mt-2 text-base text-surface-400">
+        <div class="glow-accent rounded-xl border border-accent/20 bg-card/50 p-6">
+          <h3 class="text-base font-semibold text-accent">Accent Glow</h3>
+          <p class="mt-2 text-base text-muted-foreground">
             Subtle glow effect for highlighted or featured elements.
           </p>
         </div>

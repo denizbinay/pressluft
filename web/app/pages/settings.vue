@@ -51,8 +51,8 @@ const selectSection = (key: string) => {
   <div>
     <!-- Page header -->
     <div class="mb-8">
-      <h1 class="text-3xl font-semibold text-surface-50">Settings</h1>
-      <p class="mt-2 text-base text-surface-400">
+      <h1 class="text-3xl font-semibold text-foreground">Settings</h1>
+      <p class="mt-2 text-base text-muted-foreground">
         Manage your application configuration and preferences.
       </p>
     </div>
@@ -60,13 +60,13 @@ const selectSection = (key: string) => {
     <!-- Mobile section selector -->
     <div class="mb-4 lg:hidden">
       <button
-        class="flex w-full items-center justify-between rounded-lg border border-surface-800/60 bg-surface-900/50 px-4 py-3 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-900/70"
+        class="flex w-full items-center justify-between rounded-lg border border-border/60 bg-card/50 px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-card/70"
         @click="toggleMobileSidebar"
       >
         <span class="flex items-center gap-2.5">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4 text-surface-400"
+            class="h-4 w-4 text-muted-foreground"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -82,7 +82,7 @@ const selectSection = (key: string) => {
         </span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="h-4 w-4 text-surface-500 transition-transform"
+          class="h-4 w-4 text-muted-foreground transition-transform"
           :class="{ 'rotate-180': isMobileSidebarOpen }"
           fill="none"
           viewBox="0 0 24 24"
@@ -104,7 +104,7 @@ const selectSection = (key: string) => {
       >
         <div
           v-if="isMobileSidebarOpen"
-          class="mt-1 overflow-hidden rounded-lg border border-surface-800/60 bg-surface-900/80 backdrop-blur-sm"
+          class="mt-1 overflow-hidden rounded-lg border border-border/60 bg-card/80 backdrop-blur-sm"
         >
           <nav aria-label="Settings sections">
             <button
@@ -113,8 +113,8 @@ const selectSection = (key: string) => {
               :class="[
                 'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors',
                 activeSection === section.key
-                  ? 'bg-accent-500/10 text-accent-400'
-                  : 'text-surface-400 hover:bg-surface-800/50 hover:text-surface-200',
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
               ]"
               @click="selectSection(section.key)"
             >
@@ -146,8 +146,8 @@ const selectSection = (key: string) => {
             :class="[
               'flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors',
               activeSection === section.key
-                ? 'bg-accent-500/10 text-accent-400'
-                : 'text-surface-400 hover:bg-surface-800/50 hover:text-surface-200',
+                ? 'bg-accent/10 text-accent'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
             ]"
             @click="navigateTo(section.key)"
           >
@@ -168,13 +168,13 @@ const selectSection = (key: string) => {
 
       <!-- Content area -->
       <div class="min-w-0 flex-1">
-        <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
-          <CardHeader class="border-b border-surface-800/40 px-6 py-5">
+        <Card class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none">
+          <CardHeader class="border-b border-border/40 px-6 py-5">
             <div>
-              <h2 class="text-xl font-semibold text-surface-50">
+              <h2 class="text-xl font-semibold text-foreground">
                 {{ currentSection.label }}
               </h2>
-              <p class="mt-1 text-base text-surface-400">
+              <p class="mt-1 text-base text-muted-foreground">
                 {{ currentSection.description }}
               </p>
             </div>
@@ -184,9 +184,9 @@ const selectSection = (key: string) => {
             <!-- Placeholder content per section -->
             <div class="space-y-6">
             <!-- General -->
-            <div v-if="activeSection === 'general'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
+              <div v-if="activeSection === 'general'" class="space-y-4">
+              <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                <p class="text-sm text-muted-foreground">
                   Application name, default timezone, language preferences, and theme settings will go here.
                 </p>
               </div>
@@ -204,8 +204,8 @@ const selectSection = (key: string) => {
 
             <!-- Sites -->
             <div v-if="activeSection === 'sites'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
+              <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                <p class="text-sm text-muted-foreground">
                   Website management, domain configuration, and deployment target settings will go here.
                 </p>
               </div>
@@ -213,8 +213,8 @@ const selectSection = (key: string) => {
 
             <!-- Notifications -->
             <div v-if="activeSection === 'notifications'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
+              <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                <p class="text-sm text-muted-foreground">
                   Alert rules, email digest preferences, Slack/webhook integrations will go here.
                 </p>
               </div>
@@ -222,8 +222,8 @@ const selectSection = (key: string) => {
 
             <!-- Security -->
             <div v-if="activeSection === 'security'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
+              <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                <p class="text-sm text-muted-foreground">
                   Password policy, two-factor authentication, session management, and audit log will go here.
                 </p>
               </div>
@@ -231,8 +231,8 @@ const selectSection = (key: string) => {
 
             <!-- API Keys -->
             <div v-if="activeSection === 'api-keys'" class="space-y-4">
-              <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                <p class="text-sm text-surface-500">
+              <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                <p class="text-sm text-muted-foreground">
                   API token generation, scopes, expiration, and revocation management will go here.
                 </p>
               </div>

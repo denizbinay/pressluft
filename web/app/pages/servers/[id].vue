@@ -99,7 +99,7 @@ onMounted(async () => {
   <div>
     <!-- Loading state -->
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <svg class="h-6 w-6 animate-spin text-surface-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <svg class="h-6 w-6 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
@@ -108,12 +108,12 @@ onMounted(async () => {
     <!-- Error state -->
     <div v-else-if="error" class="space-y-4">
       <div>
-        <h1 class="text-2xl font-semibold text-surface-50">Server Not Found</h1>
-        <p class="mt-1 text-sm text-surface-400">{{ error }}</p>
+        <h1 class="text-2xl font-semibold text-foreground">Server Not Found</h1>
+        <p class="mt-1 text-sm text-muted-foreground">{{ error }}</p>
       </div>
       <NuxtLink
         to="/servers"
-        class="inline-flex items-center gap-1 text-sm text-accent-400 transition-colors hover:text-accent-300"
+        class="inline-flex items-center gap-1 text-sm text-accent transition-colors hover:text-accent/80"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -126,27 +126,27 @@ onMounted(async () => {
     <template v-else-if="server">
       <!-- Page header -->
       <div class="mb-6">
-        <div class="flex items-center gap-2 text-sm text-surface-500">
-          <NuxtLink to="/servers" class="hover:text-surface-300 transition-colors">Servers</NuxtLink>
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <NuxtLink to="/servers" class="hover:text-foreground/80 transition-colors">Servers</NuxtLink>
           <span>/</span>
-          <span class="text-surface-300">{{ server.name }}</span>
+          <span class="text-foreground/80">{{ server.name }}</span>
         </div>
         <div class="mt-2 flex items-center gap-3">
-          <h1 class="text-2xl font-semibold text-surface-50">{{ server.name }}</h1>
+          <h1 class="text-2xl font-semibold text-foreground">{{ server.name }}</h1>
           <Badge
             variant="outline"
             :class="[
               'px-2.5 py-1 text-sm border',
-              statusVariant(server.status) === 'success' && 'border-success-700/40 bg-success-900/40 text-success-300',
-              statusVariant(server.status) === 'warning' && 'border-warning-700/40 bg-warning-900/40 text-warning-300',
-              statusVariant(server.status) === 'danger' && 'border-danger-700/40 bg-danger-900/40 text-danger-300',
-              statusVariant(server.status) === 'default' && 'border-surface-700/60 bg-surface-800/60 text-surface-100',
+              statusVariant(server.status) === 'success' && 'border-primary/30 bg-primary/10 text-primary',
+              statusVariant(server.status) === 'warning' && 'border-accent/30 bg-accent/10 text-accent',
+              statusVariant(server.status) === 'danger' && 'border-destructive/30 bg-destructive/10 text-destructive',
+              statusVariant(server.status) === 'default' && 'border-border/60 bg-muted/60 text-foreground',
             ]"
           >
             {{ server.status }}
           </Badge>
         </div>
-        <p class="mt-1 text-sm text-surface-400">
+        <p class="mt-1 text-sm text-muted-foreground">
           {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }}
         </p>
       </div>
@@ -154,13 +154,13 @@ onMounted(async () => {
       <!-- Mobile section selector -->
       <div class="mb-4 lg:hidden">
         <button
-          class="flex w-full items-center justify-between rounded-lg border border-surface-800/60 bg-surface-900/50 px-4 py-3 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-900/70"
+          class="flex w-full items-center justify-between rounded-lg border border-border/60 bg-card/50 px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-card/70"
           @click="toggleMobileSidebar"
         >
           <span class="flex items-center gap-2.5">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4 text-surface-400"
+              class="h-4 w-4 text-muted-foreground"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -176,7 +176,7 @@ onMounted(async () => {
           </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4 text-surface-500 transition-transform"
+            class="h-4 w-4 text-muted-foreground transition-transform"
             :class="{ 'rotate-180': isMobileSidebarOpen }"
             fill="none"
             viewBox="0 0 24 24"
@@ -198,7 +198,7 @@ onMounted(async () => {
         >
           <div
             v-if="isMobileSidebarOpen"
-            class="mt-1 overflow-hidden rounded-lg border border-surface-800/60 bg-surface-900/80 backdrop-blur-sm"
+            class="mt-1 overflow-hidden rounded-lg border border-border/60 bg-card/80 backdrop-blur-sm"
           >
             <nav aria-label="Server sections">
               <button
@@ -207,8 +207,8 @@ onMounted(async () => {
                 :class="[
                   'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors',
                   activeSection === section.key
-                    ? 'bg-accent-500/10 text-accent-400'
-                    : 'text-surface-400 hover:bg-surface-800/50 hover:text-surface-200',
+                    ? 'bg-accent/10 text-accent'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
                 ]"
                 @click="selectSection(section.key)"
               >
@@ -240,8 +240,8 @@ onMounted(async () => {
               :class="[
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
                 activeSection === section.key
-                  ? 'bg-accent-500/10 text-accent-400'
-                  : 'text-surface-400 hover:bg-surface-800/50 hover:text-surface-200',
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
               ]"
               @click="navigateTo(section.key)"
             >
@@ -262,13 +262,13 @@ onMounted(async () => {
 
         <!-- Content area -->
         <div class="min-w-0 flex-1">
-          <Card class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none">
-            <CardHeader class="border-b border-surface-800/40 px-6 py-5">
+          <Card class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none">
+            <CardHeader class="border-b border-border/40 px-6 py-5">
               <div>
-                <h2 class="text-lg font-semibold text-surface-50">
+                <h2 class="text-lg font-semibold text-foreground">
                   {{ currentSection.label }}
                 </h2>
-                <p class="mt-0.5 text-sm text-surface-400">
+                <p class="mt-0.5 text-sm text-muted-foreground">
                   {{ currentSection.description }}
                 </p>
               </div>
@@ -280,52 +280,52 @@ onMounted(async () => {
               <!-- Overview -->
               <div v-if="activeSection === 'overview'" class="space-y-4">
                 <div class="grid gap-4 sm:grid-cols-2">
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Status</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Status</p>
                     <div class="mt-1 flex items-center gap-2">
                       <span
                         class="h-2 w-2 rounded-full"
                         :class="{
-                          'bg-success-500': server.status === 'ready',
-                          'bg-danger-500': server.status === 'failed',
-                          'bg-warning-500 animate-pulse': server.status === 'provisioning' || server.status === 'pending',
-                          'bg-surface-500': !['ready', 'failed', 'provisioning', 'pending'].includes(server.status),
+                          'bg-primary': server.status === 'ready',
+                          'bg-destructive': server.status === 'failed',
+                          'bg-accent animate-pulse': server.status === 'provisioning' || server.status === 'pending',
+                          'bg-muted-foreground': !['ready', 'failed', 'provisioning', 'pending'].includes(server.status),
                         }"
                       />
-                      <span class="text-sm font-medium text-surface-200 capitalize">{{ server.status }}</span>
+                      <span class="text-sm font-medium text-foreground/80 capitalize">{{ server.status }}</span>
                     </div>
                   </div>
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Provider</p>
-                    <p class="mt-1 text-sm font-medium text-surface-200">{{ server.provider_type }}</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Provider</p>
+                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.provider_type }}</p>
                   </div>
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Location</p>
-                    <p class="mt-1 text-sm font-medium text-surface-200">{{ server.location }}</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Location</p>
+                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.location }}</p>
                   </div>
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Server Type</p>
-                    <p class="mt-1 text-sm font-medium text-surface-200">{{ server.server_type }}</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Server Type</p>
+                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.server_type }}</p>
                   </div>
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Profile</p>
-                    <p class="mt-1 text-sm font-medium text-surface-200">{{ server.profile_key }}</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Profile</p>
+                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.profile_key }}</p>
                   </div>
-                  <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                    <p class="text-xs font-medium text-surface-500">Created</p>
-                    <p class="mt-1 text-sm font-medium text-surface-200">{{ formatDate(server.created_at) }}</p>
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Created</p>
+                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ formatDate(server.created_at) }}</p>
                   </div>
                 </div>
 
                 <!-- Provider Server ID (if available) -->
-                <div v-if="server.provider_server_id" class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3">
-                  <p class="text-xs font-medium text-surface-500">Provider Server ID</p>
-                  <p class="mt-1 font-mono text-sm text-surface-200">{{ server.provider_server_id }}</p>
+                <div v-if="server.provider_server_id" class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                  <p class="text-xs font-medium text-muted-foreground">Provider Server ID</p>
+                  <p class="mt-1 font-mono text-sm text-foreground/80">{{ server.provider_server_id }}</p>
                 </div>
 
                 <!-- Quick actions placeholder -->
-                <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-6 text-center">
-                  <p class="text-sm text-surface-500">
+                <div class="rounded-lg border border-dashed border-border/50 px-4 py-6 text-center">
+                  <p class="text-sm text-muted-foreground">
                     Quick actions (reboot, stop, start, SSH access) will be available here.
                   </p>
                 </div>
@@ -333,12 +333,12 @@ onMounted(async () => {
 
               <!-- Sites -->
               <div v-if="activeSection === 'sites'" class="space-y-4">
-                <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                  <h3 class="text-sm font-medium text-surface-200">No sites yet</h3>
-                  <p class="mt-1 text-sm text-surface-500">
+                <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                  <h3 class="text-sm font-medium text-foreground">No sites yet</h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
                     WordPress sites deployed to this server will appear here.
                   </p>
-                  <p class="mt-3 text-xs text-surface-600">
+                  <p class="mt-3 text-xs text-muted-foreground">
                     Site management features are coming soon.
                   </p>
                 </div>
@@ -346,8 +346,8 @@ onMounted(async () => {
 
               <!-- Settings -->
               <div v-if="activeSection === 'settings'" class="space-y-4">
-                <div class="rounded-lg border border-dashed border-surface-700/50 px-4 py-8 text-center">
-                  <p class="text-sm text-surface-500">
+                <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                  <p class="text-sm text-muted-foreground">
                     Server configuration options (SSH keys, firewall rules, backups, monitoring) will be available here.
                   </p>
                 </div>

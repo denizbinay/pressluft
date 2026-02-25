@@ -78,24 +78,24 @@ const iconPath = (icon: MenuIcon): string => {
       <Button
         variant="ghost"
         :class="cn(
-          'w-full h-full rounded-none px-4 py-3 hover:bg-surface-900/60 hover:text-surface-50 focus-visible:bg-surface-900/60',
+          'w-full h-full rounded-none px-4 py-3 hover:bg-muted/60 hover:text-foreground focus-visible:bg-muted/60',
           isCollapsed ? 'justify-center' : 'justify-start',
         )"
         type="button"
       >
         <span class="flex items-center gap-3 w-full">
           <span
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-surface-800 text-xs font-semibold text-surface-200"
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground"
           >
             {{ initials || "AU" }}
           </span>
           <span v-if="!isCollapsed" class="min-w-0 flex-1 text-left">
-            <span class="block text-sm font-medium text-surface-100">{{ user.name }}</span>
-            <span class="block truncate text-xs text-surface-500">{{ user.email }}</span>
+            <span class="block text-sm font-medium text-foreground">{{ user.name }}</span>
+            <span class="block truncate text-xs text-muted-foreground">{{ user.email }}</span>
           </span>
           <svg
             v-if="!isCollapsed"
-            class="ml-auto h-4 w-4 text-surface-500"
+            class="ml-auto h-4 w-4 text-muted-foreground"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -111,14 +111,14 @@ const iconPath = (icon: MenuIcon): string => {
     <DropdownMenuContent
       :align="isCollapsed ? 'end' : 'start'"
       :side-offset="6"
-      :class="cn('rounded-lg border border-surface-800/60 bg-surface-950 p-1 shadow-xl text-surface-50')"
+      :class="cn('rounded-lg border border-border/60 bg-popover p-1 shadow-xl text-popover-foreground')"
     >
       <div :class="cn(isCollapsed ? 'w-48' : 'w-56')">
         <div class="px-3 py-2">
-          <p class="text-xs font-medium text-surface-200">{{ user.name }}</p>
-          <p class="text-xs text-surface-500">{{ user.email }}</p>
+          <p class="text-xs font-medium text-foreground">{{ user.name }}</p>
+          <p class="text-xs text-muted-foreground">{{ user.email }}</p>
         </div>
-        <DropdownMenuSeparator class="mx-0 my-0 h-px bg-surface-800/60" />
+        <DropdownMenuSeparator class="mx-0 my-0 h-px bg-border/60" />
 
         <div class="space-y-1 py-1">
           <template v-for="(section, sectionIndex) in menuSections" :key="sectionIndex">
@@ -128,8 +128,8 @@ const iconPath = (icon: MenuIcon): string => {
               :class="cn(
                 'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors',
                 item.danger
-                  ? 'text-error hover:bg-error/10 hover:text-error focus:bg-error/10 focus:text-error'
-                  : 'text-surface-200 hover:bg-surface-800/60 focus:bg-surface-800/60',
+                  ? 'text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive'
+                  : 'text-muted-foreground hover:bg-muted/60 focus:bg-muted/60',
               )"
               @click="handleItemClick(item)"
             >
@@ -147,7 +147,7 @@ const iconPath = (icon: MenuIcon): string => {
             </DropdownMenuItem>
             <DropdownMenuSeparator
               v-if="sectionIndex < menuSections.length - 1"
-              class="mx-0 my-0 h-px bg-surface-800/60"
+              class="mx-0 my-0 h-px bg-border/60"
             />
           </template>
         </div>

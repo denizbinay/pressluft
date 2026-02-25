@@ -69,6 +69,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@nuxtjs/color-mode':
+        specifier: ^4.0.0
+        version: 4.0.0(magicast@0.5.2)
       '@nuxtjs/google-fonts':
         specifier: ^3.2.0
         version: 3.2.0(magicast@0.5.2)
@@ -640,6 +643,9 @@ packages:
     peerDependenciesMeta:
       rolldown:
         optional: true
+
+  '@nuxtjs/color-mode@4.0.0':
+    resolution: {integrity: sha512-xyaVR/TPLdMuRa2VOgH6b75jvmFEsn9QKL6ISldaAw38ooFJfWY1ts2F3ye43wcT/goCbcuvPuskF2f8yUZhlw==}
 
   '@nuxtjs/google-fonts@3.2.0':
     resolution: {integrity: sha512-cGAjDJoeQ2jm6VJCo4AtSmKO6KjsbO9RSLj8q261fD0lMVNMZCxkCxBkg8L0/2Vfgp+5QBHWVXL71p1tiybJFw==}
@@ -5424,6 +5430,16 @@ snapshots:
       - vti
       - vue-tsc
       - yaml
+
+  '@nuxtjs/color-mode@4.0.0(magicast@0.5.2)':
+    dependencies:
+      '@nuxt/kit': 4.3.1(magicast@0.5.2)
+      exsolve: 1.0.8
+      pathe: 2.0.3
+      pkg-types: 2.3.0
+      semver: 7.7.4
+    transitivePeerDependencies:
+      - magicast
 
   '@nuxtjs/google-fonts@3.2.0(magicast@0.5.2)':
     dependencies:

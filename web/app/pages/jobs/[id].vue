@@ -22,20 +22,20 @@ const handleFailed = (_job: Job, _error: string) => {}
     <!-- Error state for invalid job ID -->
     <template v-if="isInvalidId">
       <div>
-        <h1 class="text-2xl font-semibold text-surface-50">Invalid Job ID</h1>
-        <p class="mt-1 text-sm text-surface-400">
+        <h1 class="text-2xl font-semibold text-foreground">Invalid Job ID</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
           The job ID provided is not valid.
         </p>
       </div>
 
       <Card
-        class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none"
+        class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
       >
         <CardContent class="px-6 py-5">
           <div class="flex flex-col items-center justify-center py-8 text-center">
-            <div class="mb-4 rounded-full bg-danger-500/10 p-3">
+            <div class="mb-4 rounded-full bg-destructive/10 p-3">
               <svg
-                class="h-6 w-6 text-danger-400"
+                class="h-6 w-6 text-destructive"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -48,7 +48,7 @@ const handleFailed = (_job: Job, _error: string) => {}
                 />
               </svg>
             </div>
-            <p class="text-surface-300">Please provide a valid numeric job ID.</p>
+            <p class="text-muted-foreground">Please provide a valid numeric job ID.</p>
           </div>
         </CardContent>
       </Card>
@@ -57,14 +57,14 @@ const handleFailed = (_job: Job, _error: string) => {}
     <!-- Valid job ID - show job details -->
     <template v-else>
       <div>
-        <h1 class="text-2xl font-semibold text-surface-50">Job #{{ jobId }}</h1>
-        <p class="mt-1 text-sm text-surface-400">
+        <h1 class="text-2xl font-semibold text-foreground">Job #{{ jobId }}</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
           Server provisioning progress
         </p>
       </div>
 
       <Card
-        class="rounded-xl border border-surface-800/60 bg-surface-900/50 backdrop-blur-sm py-0 shadow-none"
+        class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
       >
         <CardContent class="px-6 py-5">
           <JobTimeline
@@ -79,7 +79,7 @@ const handleFailed = (_job: Job, _error: string) => {}
     <div class="flex gap-2">
       <NuxtLink
         to="/settings?tab=servers"
-        class="text-sm text-surface-400 transition-colors hover:text-surface-200"
+        class="text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         &larr; Back to Servers
       </NuxtLink>

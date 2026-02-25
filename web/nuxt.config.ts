@@ -7,7 +7,7 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  modules: ['@nuxtjs/google-fonts', 'shadcn-nuxt'],
+  modules: ['@nuxtjs/google-fonts', '@nuxtjs/color-mode', 'shadcn-nuxt'],
 
   googleFonts: {
     families: {
@@ -18,6 +18,12 @@ export default defineNuxtConfig({
     download: true,
     inject: true,
     subsets: ['latin'],
+  },
+
+  colorMode: {
+    classSuffix: '',
+    preference: 'system',
+    fallback: 'light',
   },
 
   vite: {

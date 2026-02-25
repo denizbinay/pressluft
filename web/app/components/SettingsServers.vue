@@ -110,26 +110,26 @@ const selectedTypeLabel = computed(() =>
 )
 
 const controlClass =
-  "w-full rounded-lg border bg-surface-900/60 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+  "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 const selectTriggerClass = cn(
   controlClass,
-  "border-surface-700/60 hover:border-surface-600 data-[placeholder]:text-surface-400",
+  "hover:border-border data-[placeholder]:text-muted-foreground",
 )
 
 const inputClass = cn(
   controlClass,
-  "border-surface-700/60 hover:border-surface-600",
+  "hover:border-border",
 )
 
 const selectContentClass =
-  "border-surface-800/60 bg-surface-950 text-surface-100"
+  "border-border/60 bg-popover text-popover-foreground"
 
 const selectItemClass =
-  "text-surface-100 data-[disabled]:text-surface-500 data-[highlighted]:bg-surface-800/60 data-[highlighted]:text-surface-50"
+  "text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
 
 const buttonBaseClass =
-  "rounded-lg focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950"
+  "rounded-lg focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 onMounted(async () => {
   await Promise.all([fetchProviders(), fetchServers()])
@@ -285,12 +285,12 @@ const formatDate = (iso: string): string => {
 }
 
 const statusBadgeClass = (status: string): string => {
-  if (status === "ready") return "border-success-700/40 bg-success-900/40 text-success-300"
-  if (status === "failed") return "border-danger-700/40 bg-danger-900/40 text-danger-300"
+  if (status === "ready") return "border-primary/30 bg-primary/10 text-primary"
+  if (status === "failed") return "border-destructive/30 bg-destructive/10 text-destructive"
   if (status === "provisioning" || status === "pending") {
-    return "border-warning-700/40 bg-warning-900/40 text-warning-300"
+    return "border-accent/30 bg-accent/10 text-accent"
   }
-  return "border-surface-700/60 bg-surface-800/60 text-surface-100"
+  return "border-border/60 bg-muted/60 text-foreground"
 }
 
 const confirmDelete = (serverId: number) => {
@@ -327,7 +327,7 @@ const handleDialogUpdate = (value: boolean) => {
 <template>
   <div class="space-y-6">
     <div class="flex items-center justify-between">
-      <p class="text-sm text-surface-400">
+      <p class="text-sm text-muted-foreground">
         Provision managed servers for agency WordPress workloads.
       </p>
       <Button
@@ -343,12 +343,12 @@ const handleDialogUpdate = (value: boolean) => {
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-10">
-      <Spinner class="text-surface-400" />
+      <Spinner class="text-muted-foreground" />
     </div>
 
-    <div v-else-if="servers.length === 0" class="rounded-lg border border-dashed border-surface-700/50 px-4 py-10 text-center">
-      <h3 class="text-sm font-medium text-surface-200">No servers yet</h3>
-      <p class="mt-1 text-sm text-surface-500">
+    <div v-else-if="servers.length === 0" class="rounded-lg border border-dashed border-border/50 px-4 py-10 text-center">
+      <h3 class="text-sm font-medium text-foreground">No servers yet</h3>
+      <p class="mt-1 text-sm text-muted-foreground">
         Create your first managed server to start onboarding WordPress sites.
       </p>
     </div>
@@ -357,22 +357,22 @@ const handleDialogUpdate = (value: boolean) => {
       <div
         v-for="server in servers"
         :key="server.id"
-        class="group flex items-center justify-between rounded-lg border border-surface-800/60 bg-surface-900/30 px-4 py-3 transition-colors hover:border-surface-700/60 hover:bg-surface-900/50"
+        class="group flex items-center justify-between rounded-lg border border-border/60 bg-card/30 px-4 py-3 transition-colors hover:border-border/80 hover:bg-card/50"
       >
         <NuxtLink
           :to="`/servers/${server.id}`"
           class="min-w-0 flex-1"
         >
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-surface-100 group-hover:text-surface-50">{{ server.name }}</span>
+            <span class="text-sm font-medium text-foreground group-hover:text-foreground">{{ server.name }}</span>
             <Badge :class="statusBadgeClass(server.status)">{{ server.status }}</Badge>
           </div>
-          <p class="text-xs text-surface-500">
+          <p class="text-xs text-muted-foreground">
             {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }} · Added {{ formatDate(server.created_at) }}
           </p>
         </NuxtLink>
         <div class="flex items-center gap-3">
-          <span class="text-xs text-surface-500">{{ server.provider_type }}</span>
+          <span class="text-xs text-muted-foreground">{{ server.provider_type }}</span>
           <!-- Delete button (always visible for failed, hover for others) -->
           <Button
             v-if="deleteConfirmId !== server.id"
@@ -381,7 +381,7 @@ const handleDialogUpdate = (value: boolean) => {
             type="button"
             :class="cn(
               buttonBaseClass,
-              'text-surface-500 hover:bg-danger-900/30 hover:text-danger-400',
+              'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
               server.status !== 'failed' && 'opacity-0 group-hover:opacity-100',
             )"
             title="Delete server"
@@ -397,7 +397,7 @@ const handleDialogUpdate = (value: boolean) => {
               variant="ghost"
               type="button"
               :disabled="deleting"
-              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-danger-400 hover:bg-danger-900/30')"
+              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-destructive hover:bg-destructive/10')"
               @click.prevent="executeDelete(server.id)"
             >
               {{ deleting ? "Deleting..." : "Confirm" }}
@@ -406,7 +406,7 @@ const handleDialogUpdate = (value: boolean) => {
               variant="ghost"
               type="button"
               :disabled="deleting"
-              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-surface-400 hover:bg-surface-800/50 hover:text-surface-200')"
+              :class="cn(buttonBaseClass, 'h-7 px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground')"
               @click.prevent="cancelDelete"
             >
               Cancel
@@ -422,10 +422,10 @@ const handleDialogUpdate = (value: boolean) => {
       @update:open="handleDialogUpdate"
     >
       <DialogContent
-        class="border-surface-800/60 bg-surface-950/70 text-surface-100"
+        class="border-border/60 bg-popover/90 text-popover-foreground"
       >
         <DialogHeader class="text-left">
-          <DialogTitle class="text-base font-semibold text-surface-50">
+          <DialogTitle class="text-base font-semibold text-foreground">
             Create Managed Server
           </DialogTitle>
         </DialogHeader>
@@ -434,16 +434,16 @@ const handleDialogUpdate = (value: boolean) => {
           <Alert
             v-if="formError"
             variant="destructive"
-            class="border-danger-600/30 bg-danger-900/20 text-danger-300"
+            class="border-destructive/30 bg-destructive/10 text-destructive"
           >
-            <AlertDescription class="text-danger-300">
+            <AlertDescription class="text-destructive">
               {{ formError }}
             </AlertDescription>
           </Alert>
 
           <template v-if="formStep === 'configure'">
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">
+              <Label class="text-sm font-medium text-muted-foreground">
                 Provider Connection
               </Label>
               <Select v-model="formProviderId">
@@ -464,7 +464,7 @@ const handleDialogUpdate = (value: boolean) => {
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">
+              <Label class="text-sm font-medium text-muted-foreground">
                 Server Name
               </Label>
               <Input
@@ -475,7 +475,7 @@ const handleDialogUpdate = (value: boolean) => {
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">
+              <Label class="text-sm font-medium text-muted-foreground">
                 Server Profile
               </Label>
               <Select v-model="formProfileKey" :disabled="formLoadingCatalog">
@@ -496,7 +496,7 @@ const handleDialogUpdate = (value: boolean) => {
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">
+              <Label class="text-sm font-medium text-muted-foreground">
                 Region
               </Label>
               <Select v-model="formLocation" :disabled="formLoadingCatalog">
@@ -517,7 +517,7 @@ const handleDialogUpdate = (value: boolean) => {
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-sm font-medium text-surface-300">
+              <Label class="text-sm font-medium text-muted-foreground">
                 Size
               </Label>
               <Select
@@ -540,19 +540,19 @@ const handleDialogUpdate = (value: boolean) => {
               </Select>
             </div>
 
-            <p v-if="formLoadingCatalog" class="text-xs text-surface-500">
+            <p v-if="formLoadingCatalog" class="text-xs text-muted-foreground">
               Loading provider catalog...
             </p>
           </template>
 
           <template v-else-if="formStep === 'review'">
-            <div class="rounded-lg border border-surface-800/60 bg-surface-950/40 px-4 py-3 text-sm text-surface-300">
-              <p><strong class="text-surface-100">Name:</strong> {{ formName }}</p>
-              <p><strong class="text-surface-100">Region:</strong> {{ formLocation }}</p>
-              <p><strong class="text-surface-100">Size:</strong> {{ selectedTypeLabel }}</p>
-              <p><strong class="text-surface-100">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
+            <div class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              <p><strong class="text-foreground">Name:</strong> {{ formName }}</p>
+              <p><strong class="text-foreground">Region:</strong> {{ formLocation }}</p>
+              <p><strong class="text-foreground">Size:</strong> {{ selectedTypeLabel }}</p>
+              <p><strong class="text-foreground">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
             </div>
-            <p class="text-xs text-surface-500">
+            <p class="text-xs text-muted-foreground">
               The base image is determined by the selected profile. Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
             </p>
           </template>
@@ -561,8 +561,8 @@ const handleDialogUpdate = (value: boolean) => {
           <template v-else-if="formStep === 'provisioning' && activeJobId">
             <div class="space-y-3">
               <div class="flex items-center gap-2">
-                <div class="h-2 w-2 animate-pulse rounded-full bg-accent-500" />
-                <span class="text-sm font-medium text-surface-200">Provisioning {{ formName }}</span>
+                <div class="h-2 w-2 animate-pulse rounded-full bg-accent" />
+                <span class="text-sm font-medium text-foreground/80">Provisioning {{ formName }}</span>
               </div>
               <JobTimeline
                 :job-id="activeJobId"
@@ -580,7 +580,7 @@ const handleDialogUpdate = (value: boolean) => {
             v-if="formStep !== 'provisioning'"
             variant="ghost"
             size="sm"
-            :class="cn(buttonBaseClass, 'text-surface-200 hover:bg-surface-800/50')"
+            :class="cn(buttonBaseClass, 'text-muted-foreground hover:bg-muted/50')"
             @click="modal.close"
           >
             Cancel
@@ -591,7 +591,7 @@ const handleDialogUpdate = (value: boolean) => {
             v-if="formStep === 'review'"
             variant="ghost"
             size="sm"
-            :class="cn(buttonBaseClass, 'text-surface-200 hover:bg-surface-800/50')"
+            :class="cn(buttonBaseClass, 'text-muted-foreground hover:bg-muted/50')"
             @click="goBack"
           >
             Back
