@@ -113,7 +113,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SidebarProvider class="min-h-screen bg-background text-foreground">
+  <SidebarProvider class="relative min-h-screen bg-background text-foreground">
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(56,189,248,0.15),transparent_60%)]" />
     <Sidebar
       collapsible="icon"
       class="border-r border-border/60 bg-background"
@@ -180,7 +181,7 @@ onBeforeUnmount(() => {
               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors group-data-[collapsible=icon]:justify-center"
               :class="[
                 isActive(item.to)
-                  ? 'bg-muted/60 text-foreground'
+                  ? 'text-primary bg-gradient-to-r from-primary/20 to-transparent'
                   : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
               ]"
               :aria-label="item.label"
