@@ -1,0 +1,33 @@
+---
+- name: Pressluft manage volume
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    api_token: "{{ api_token }}"
+    volume_name: "{{ volume_name }}"
+    size_gb: "{{ size_gb | default(0) }}"
+    location: "{{ location | default('') }}"
+    state: "{{ state }}"
+    automount: "{{ automount | default(false) }}"
+    server_name: "{{ server_name }}"
+  tasks:
+    - name: Validate required inputs
+      ansible.builtin.assert:
+        that:
+          - api_token | length > 0
+          - volume_name | length > 0
+          - state in ['present', 'absent']
+          - server_name | length > 0
+          - state != 'present' or (size_gb | int > 0)
+          - state != 'present' or (location | length > 0)
+
+    - name: Manage volume
+      hetzner.hcloud.volume:
+        api_token: "{{ api_token }}"
+        name: "{{ volume_name }}"
+        server: "{{ server_name }}"
+        size: "{{ (state == 'present') | ternary(size_gb | int, omit) }}"
+        location: "{{ (state == 'present') | ternary(location, omit) }}"
+        automount: "{{ (state == 'present') | ternary(automount | bool, omit) }}"
+        state: "{{ state }}"

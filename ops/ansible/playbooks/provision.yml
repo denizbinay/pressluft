@@ -1,7 +1,73 @@
 ---
-- name: Pressluft provisioning flow (scaffold)
-  hosts: all
-  become: true
-  gather_facts: true
-  roles:
-    - role: common
+- name: Pressluft provisioning flow
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hcloud_token: "{{ hcloud_token }}"
+    server_name: "{{ server_name }}"
+    server_location: "{{ server_location }}"
+    server_type: "{{ server_type }}"
+    server_image: "{{ server_image }}"
+    ssh_key_name: "{{ ssh_key_name }}"
+    ssh_public_key: "{{ ssh_public_key }}"
+    artifact_path: "{{ artifact_path | default('') }}"
+    ssh_wait_timeout_seconds: "{{ ssh_wait_timeout | default(300) }}"
+  tasks:
+    - name: Validate required inputs
+      ansible.builtin.assert:
+        that:
+          - hcloud_token | length > 0
+          - server_name | length > 0
+          - server_location | length > 0
+          - server_type | length > 0
+          - server_image | length > 0
+          - ssh_key_name | length > 0
+          - ssh_public_key | length > 0
+
+    - name: Ensure SSH key exists
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ hcloud_token }}"
+        name: "{{ ssh_key_name }}"
+        public_key: "{{ ssh_public_key }}"
+        state: present
+      register: hcloud_ssh_key
+
+    - name: Create server
+      hetzner.hcloud.server:
+        api_token: "{{ hcloud_token }}"
+        name: "{{ server_name }}"
+        location: "{{ server_location }}"
+        server_type: "{{ server_type }}"
+        image: "{{ server_image }}"
+        ssh_keys:
+          - "{{ ssh_key_name }}"
+        state: present
+      register: hcloud_server
+
+    - name: Capture server addresses
+      ansible.builtin.set_fact:
+        server_ipv4: "{{ hcloud_server.hcloud_server.ipv4_address | default('') }}"
+        server_ipv6: "{{ hcloud_server.hcloud_server.ipv6 | default('') }}"
+
+    - name: Wait for SSH to respond
+      ansible.builtin.wait_for:
+        host: "{{ server_ipv4 }}"
+        port: 22
+        timeout: "{{ ssh_wait_timeout_seconds | int }}"
+        delay: 5
+      when: server_ipv4 | length > 0
+
+    - name: Emit provision stats
+      ansible.builtin.set_stats:
+        data:
+          provision_result:
+            id: "{{ hcloud_server.hcloud_server.id }}"
+            ipv4: "{{ server_ipv4 }}"
+            ipv6: "{{ server_ipv6 }}"
+
+    - name: Write provision artifact
+      ansible.builtin.copy:
+        dest: "{{ artifact_path }}"
+        content: "{{ {'id': hcloud_server.hcloud_server.id, 'ipv4': server_ipv4, 'ipv6': server_ipv6} | to_nice_json }}"
+      when: artifact_path | length > 0

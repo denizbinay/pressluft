@@ -1,0 +1,4 @@
+---
+- name: Validate woocommerce-optimized marker
+  ansible.builtin.debug:
+    msg: "Pressluft woocommerce-optimized role scaffold executed"

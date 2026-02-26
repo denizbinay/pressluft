@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { useServers, type StoredServer } from '~/composables/useServers'
-import { useJobs, type Job } from '~/composables/useJobs'
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { useServers, type StoredServer } from "~/composables/useServers"
+import { useJobs } from "~/composables/useJobs"
 
 interface ServerSection {
   key: string
@@ -27,6 +31,7 @@ const serverId = computed(() => {
 })
 
 const { fetchServer } = useServers()
+const { createJob } = useJobs()
 
 const server = ref<StoredServer | null>(null)
 const loading = ref(true)
@@ -63,6 +68,154 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
   if (status === 'provisioning' || status === 'pending') return 'warning'
   return 'default'
 }
+
+const rebuildServerName = ref("")
+const rebuildServerImage = ref("")
+const resizeServerType = ref("")
+const resizeUpgradeDisk = ref(false)
+const updateFirewallsList = ref("")
+const volumeName = ref("")
+const volumeSizeGb = ref("")
+const volumeLocation = ref("")
+const volumeState = ref("present")
+const volumeAutomount = ref(false)
+
+const rebuildState = reactive({ loading: false, error: "", success: "" })
+const resizeState = reactive({ loading: false, error: "", success: "" })
+const firewallsState = reactive({ loading: false, error: "", success: "" })
+const volumeStateUi = reactive({ loading: false, error: "", success: "" })
+
+const normalizeText = (value: string) => value.trim()
+
+const submitRebuild = async () => {
+  if (!serverId.value) return
+  rebuildState.loading = true
+  rebuildState.error = ""
+  rebuildState.success = ""
+  try {
+    const serverName = normalizeText(rebuildServerName.value)
+    const serverImage = normalizeText(rebuildServerImage.value)
+    if (!serverName || !serverImage) {
+      throw new Error("Server name and image are required")
+    }
+    const job = await createJob({
+      kind: "rebuild_server",
+      server_id: serverId.value,
+      payload: {
+        server_name: serverName,
+        server_image: serverImage,
+      },
+    })
+    rebuildState.success = `Job #${job.id} created`
+  } catch (e: any) {
+    rebuildState.error = e.message || "Failed to create rebuild job"
+  } finally {
+    rebuildState.loading = false
+  }
+}
+
+const submitResize = async () => {
+  if (!serverId.value) return
+  resizeState.loading = true
+  resizeState.error = ""
+  resizeState.success = ""
+  try {
+    const serverType = normalizeText(resizeServerType.value)
+    if (!serverType) {
+      throw new Error("Server type is required")
+    }
+    const job = await createJob({
+      kind: "resize_server",
+      server_id: serverId.value,
+      payload: {
+        server_type: serverType,
+        upgrade_disk: resizeUpgradeDisk.value,
+      },
+    })
+    resizeState.success = `Job #${job.id} created`
+  } catch (e: any) {
+    resizeState.error = e.message || "Failed to create resize job"
+  } finally {
+    resizeState.loading = false
+  }
+}
+
+const submitUpdateFirewalls = async () => {
+  if (!serverId.value) return
+  firewallsState.loading = true
+  firewallsState.error = ""
+  firewallsState.success = ""
+  try {
+    const firewalls = updateFirewallsList.value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+    if (firewalls.length === 0) {
+      throw new Error("At least one firewall is required")
+    }
+    const job = await createJob({
+      kind: "update_firewalls",
+      server_id: serverId.value,
+      payload: { firewalls },
+    })
+    firewallsState.success = `Job #${job.id} created`
+  } catch (e: any) {
+    firewallsState.error = e.message || "Failed to create firewall update job"
+  } finally {
+    firewallsState.loading = false
+  }
+}
+
+const submitManageVolume = async () => {
+  if (!serverId.value) return
+  volumeStateUi.loading = true
+  volumeStateUi.error = ""
+  volumeStateUi.success = ""
+  try {
+    const name = normalizeText(volumeName.value)
+    const state = normalizeText(volumeState.value)
+    const location = normalizeText(volumeLocation.value)
+    const sizeGb = Number.parseInt(volumeSizeGb.value, 10)
+    if (!name || !state) {
+      throw new Error("Volume name and state are required")
+    }
+    if (state === "present") {
+      if (!location) {
+        throw new Error("Location is required when state is present")
+      }
+      if (!Number.isFinite(sizeGb) || sizeGb <= 0) {
+        throw new Error("Size must be a positive number")
+      }
+    }
+    const payload: Record<string, unknown> = {
+      volume_name: name,
+      state,
+    }
+    if (state === "present") {
+      payload.location = location
+      payload.size_gb = sizeGb
+      payload.automount = volumeAutomount.value
+    }
+    const job = await createJob({
+      kind: "manage_volume",
+      server_id: serverId.value,
+      payload,
+    })
+    volumeStateUi.success = `Job #${job.id} created`
+  } catch (e: any) {
+    volumeStateUi.error = e.message || "Failed to create volume job"
+  } finally {
+    volumeStateUi.loading = false
+  }
+}
+
+watch(server, (value) => {
+  if (!value) return
+  if (!rebuildServerName.value) rebuildServerName.value = value.name || ""
+  if (!rebuildServerImage.value) rebuildServerImage.value = value.image || ""
+  if (!resizeServerType.value) resizeServerType.value = value.server_type || ""
+  if (!volumeLocation.value) volumeLocation.value = value.location || ""
+})
 
 const formatDate = (iso: string): string => {
   try {
@@ -346,10 +499,139 @@ onMounted(async () => {
 
               <!-- Settings -->
               <div v-if="activeSection === 'settings'" class="space-y-4">
-                <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-                  <p class="text-sm text-muted-foreground">
-                    Server configuration options (SSH keys, firewall rules, backups, monitoring) will be available here.
-                  </p>
+                <div class="grid gap-4 lg:grid-cols-2">
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
+                    <div>
+                      <h3 class="text-sm font-semibold text-foreground">Rebuild server</h3>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        Reinstall the server with a new image.
+                      </p>
+                    </div>
+                    <form class="mt-4 space-y-3" @submit.prevent="submitRebuild">
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Server name</Label>
+                          <Input v-model="rebuildServerName" placeholder="server-1" />
+                        </div>
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Server image</Label>
+                          <Input v-model="rebuildServerImage" placeholder="ubuntu-24.04" />
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <Button type="submit" size="sm" :disabled="rebuildState.loading">
+                          Create rebuild job
+                        </Button>
+                        <span v-if="rebuildState.loading" class="text-xs text-muted-foreground">Submitting...</span>
+                        <span v-if="rebuildState.success" class="text-xs text-primary">{{ rebuildState.success }}</span>
+                        <span v-if="rebuildState.error" class="text-xs text-destructive">{{ rebuildState.error }}</span>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
+                    <div>
+                      <h3 class="text-sm font-semibold text-foreground">Resize server</h3>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        Update the server type and disk upgrade preference.
+                      </p>
+                    </div>
+                    <form class="mt-4 space-y-3" @submit.prevent="submitResize">
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Server type</Label>
+                          <Input v-model="resizeServerType" placeholder="cpx31" />
+                        </div>
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Upgrade disk</Label>
+                          <div class="flex items-center gap-2">
+                            <Switch v-model:checked="resizeUpgradeDisk" />
+                            <span class="text-xs text-muted-foreground">
+                              {{ resizeUpgradeDisk ? 'Yes' : 'No' }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <Button type="submit" size="sm" :disabled="resizeState.loading">
+                          Create resize job
+                        </Button>
+                        <span v-if="resizeState.loading" class="text-xs text-muted-foreground">Submitting...</span>
+                        <span v-if="resizeState.success" class="text-xs text-primary">{{ resizeState.success }}</span>
+                        <span v-if="resizeState.error" class="text-xs text-destructive">{{ resizeState.error }}</span>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
+                    <div>
+                      <h3 class="text-sm font-semibold text-foreground">Update firewalls</h3>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        Replace firewall assignments using firewall names or IDs.
+                      </p>
+                    </div>
+                    <form class="mt-4 space-y-3" @submit.prevent="submitUpdateFirewalls">
+                      <div class="space-y-1.5">
+                        <Label class="text-xs font-medium text-muted-foreground">Firewalls</Label>
+                        <Input v-model="updateFirewallsList" placeholder="fw-core, fw-web" />
+                        <p class="text-xs text-muted-foreground">Comma-separated list.</p>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <Button type="submit" size="sm" :disabled="firewallsState.loading">
+                          Create firewall update job
+                        </Button>
+                        <span v-if="firewallsState.loading" class="text-xs text-muted-foreground">Submitting...</span>
+                        <span v-if="firewallsState.success" class="text-xs text-primary">{{ firewallsState.success }}</span>
+                        <span v-if="firewallsState.error" class="text-xs text-destructive">{{ firewallsState.error }}</span>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
+                    <div>
+                      <h3 class="text-sm font-semibold text-foreground">Manage volume</h3>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        Attach or detach a volume for this server.
+                      </p>
+                    </div>
+                    <form class="mt-4 space-y-3" @submit.prevent="submitManageVolume">
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Volume name</Label>
+                          <Input v-model="volumeName" placeholder="data-volume" />
+                        </div>
+                        <div class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">State</Label>
+                          <Input v-model="volumeState" placeholder="present" />
+                        </div>
+                        <div v-if="volumeState === 'present'" class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Size (GB)</Label>
+                          <Input v-model="volumeSizeGb" placeholder="50" />
+                        </div>
+                        <div v-if="volumeState === 'present'" class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Location</Label>
+                          <Input v-model="volumeLocation" placeholder="fsn1" />
+                        </div>
+                        <div v-if="volumeState === 'present'" class="space-y-1.5">
+                          <Label class="text-xs font-medium text-muted-foreground">Automount</Label>
+                          <div class="flex items-center gap-2">
+                            <Switch v-model:checked="volumeAutomount" />
+                            <span class="text-xs text-muted-foreground">
+                              {{ volumeAutomount ? 'Yes' : 'No' }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <Button type="submit" size="sm" :disabled="volumeStateUi.loading">
+                          Create volume job
+                        </Button>
+                        <span v-if="volumeStateUi.loading" class="text-xs text-muted-foreground">Submitting...</span>
+                        <span v-if="volumeStateUi.success" class="text-xs text-primary">{{ volumeStateUi.success }}</span>
+                        <span v-if="volumeStateUi.error" class="text-xs text-destructive">{{ volumeStateUi.error }}</span>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               </div>
 

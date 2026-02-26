@@ -26,6 +26,7 @@ type Job struct {
 	CurrentStep string    `json:"current_step"`
 	RetryCount  int       `json:"retry_count"`
 	LastError   string    `json:"last_error,omitempty"`
+	Payload     string    `json:"payload,omitempty"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
 }
@@ -47,6 +48,7 @@ type JobEvent struct {
 type CreateJobInput struct {
 	Kind     string
 	ServerID int64
+	Payload  string
 }
 
 // TransitionInput updates a job lifecycle state.

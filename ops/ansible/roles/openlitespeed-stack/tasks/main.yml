@@ -1,0 +1,4 @@
+---
+- name: Validate openlitespeed-stack marker
+  ansible.builtin.debug:
+    msg: "Pressluft openlitespeed-stack role scaffold executed"

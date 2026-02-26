@@ -1,0 +1,26 @@
+---
+- name: Pressluft configure flow
+  hosts: all
+  gather_facts: false
+  vars:
+    profile_path: "{{ profile_path }}"
+  tasks:
+    - name: Load profile vars
+      ansible.builtin.include_vars:
+        file: "{{ profile_path }}"
+        name: profile
+
+    - name: Run common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Run profile role
+      ansible.builtin.include_role:
+        name: "{{ profile.artifacts.role }}"
+
+    - name: Emit configure stats
+      ansible.builtin.set_stats:
+        data:
+          configure_result:
+            profile_key: "{{ profile.key | default('') }}"
+            role: "{{ profile.artifacts.role | default('') }}"

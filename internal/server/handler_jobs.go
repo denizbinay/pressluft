@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,8 +17,31 @@ type jobsHandler struct {
 }
 
 type createJobRequest struct {
-	Kind     string `json:"kind"`
-	ServerID int64  `json:"server_id"`
+	Kind     string          `json:"kind"`
+	ServerID int64           `json:"server_id"`
+	Payload  json.RawMessage `json:"payload"`
+}
+
+type rebuildServerPayload struct {
+	ServerName  string `json:"server_name"`
+	ServerImage string `json:"server_image"`
+}
+
+type resizeServerPayload struct {
+	ServerType  string `json:"server_type"`
+	UpgradeDisk *bool  `json:"upgrade_disk"`
+}
+
+type updateFirewallsPayload struct {
+	Firewalls []string `json:"firewalls"`
+}
+
+type manageVolumePayload struct {
+	VolumeName string `json:"volume_name"`
+	SizeGB     int    `json:"size_gb"`
+	Location   string `json:"location"`
+	State      string `json:"state"`
+	Automount  *bool  `json:"automount"`
 }
 
 func (jh *jobsHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -99,10 +123,16 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Kind) == "" {
 		req.Kind = "provision_server"
 	}
+	payload, err := validateJobPayload(req)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	job, err := jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
 		Kind:     req.Kind,
 		ServerID: req.ServerID,
+		Payload:  payload,
 	})
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "failed to create job: "+err.Error())
@@ -117,6 +147,93 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	})
 
 	respondJSON(w, http.StatusAccepted, job)
+}
+
+func validateJobPayload(req createJobRequest) (string, error) {
+	payload := strings.TrimSpace(string(req.Payload))
+	payloadBytes := bytes.TrimSpace(req.Payload)
+	if len(payloadBytes) == 0 || string(payloadBytes) == "null" {
+		payloadBytes = []byte("{}")
+	}
+
+	switch req.Kind {
+	case "rebuild_server":
+		if req.ServerID <= 0 {
+			return "", fmt.Errorf("server_id is required for rebuild_server job")
+		}
+		if payload == "" || payload == "null" {
+			return "", nil
+		}
+		var parsed rebuildServerPayload
+		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
+			return "", fmt.Errorf("invalid rebuild_server payload: %w", err)
+		}
+	case "resize_server":
+		if req.ServerID <= 0 {
+			return "", fmt.Errorf("server_id is required for resize_server job")
+		}
+		var parsed resizeServerPayload
+		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
+			return "", fmt.Errorf("invalid resize_server payload: %w", err)
+		}
+		if strings.TrimSpace(parsed.ServerType) == "" {
+			return "", fmt.Errorf("server_type is required for resize_server job")
+		}
+		if parsed.UpgradeDisk == nil {
+			return "", fmt.Errorf("upgrade_disk is required for resize_server job")
+		}
+	case "update_firewalls":
+		if req.ServerID <= 0 {
+			return "", fmt.Errorf("server_id is required for update_firewalls job")
+		}
+		var parsed updateFirewallsPayload
+		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
+			return "", fmt.Errorf("invalid update_firewalls payload: %w", err)
+		}
+		firewalls := make([]string, 0, len(parsed.Firewalls))
+		for _, fw := range parsed.Firewalls {
+			fw = strings.TrimSpace(fw)
+			if fw != "" {
+				firewalls = append(firewalls, fw)
+			}
+		}
+		if len(firewalls) == 0 {
+			return "", fmt.Errorf("firewalls payload must contain at least one firewall")
+		}
+	case "manage_volume":
+		if req.ServerID <= 0 {
+			return "", fmt.Errorf("server_id is required for manage_volume job")
+		}
+		var parsed manageVolumePayload
+		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
+			return "", fmt.Errorf("invalid manage_volume payload: %w", err)
+		}
+		volumeName := strings.TrimSpace(parsed.VolumeName)
+		state := strings.TrimSpace(parsed.State)
+		location := strings.TrimSpace(parsed.Location)
+		if volumeName == "" {
+			return "", fmt.Errorf("volume_name is required for manage_volume job")
+		}
+		if state != "present" && state != "absent" {
+			return "", fmt.Errorf("state must be present or absent for manage_volume job")
+		}
+		if state == "present" {
+			if parsed.Automount == nil {
+				return "", fmt.Errorf("automount is required for manage_volume job when state=present")
+			}
+			if parsed.SizeGB <= 0 {
+				return "", fmt.Errorf("size_gb is required for manage_volume job when state=present")
+			}
+			if location == "" {
+				return "", fmt.Errorf("location is required for manage_volume job when state=present")
+			}
+		}
+	}
+
+	if payload == "null" {
+		payload = ""
+	}
+	return payload, nil
 }
 
 func (jh *jobsHandler) handleGet(w http.ResponseWriter, r *http.Request, jobID int64) {

@@ -1,0 +1,20 @@
+---
+- name: Pressluft delete server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    api_token: "{{ api_token }}"
+    server_name: "{{ server_name }}"
+  tasks:
+    - name: Validate required inputs
+      ansible.builtin.assert:
+        that:
+          - api_token | length > 0
+          - server_name | length > 0
+
+    - name: Delete server
+      hetzner.hcloud.server:
+        api_token: "{{ api_token }}"
+        name: "{{ server_name }}"
+        state: absent

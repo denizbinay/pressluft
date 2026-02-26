@@ -36,11 +36,24 @@ const retryCount = ref(0)
 
 // Step key to human-readable label mapping (matches backend executor steps)
 const stepLabels: Record<string, string> = {
-  validate: "Validating configuration",
-  create_ssh_key: "Creating SSH key",
-  create_server: "Creating server",
-  wait_running: "Waiting for server",
-  finalize: "Finalizing setup",
+  validate: "Validating request",
+  provision: "Provisioning server",
+  configure: "Configuring server",
+  finalize: "Finalizing",
+  delete: "Deleting server",
+  rebuild: "Rebuilding server",
+  resize: "Resizing server",
+  update_firewalls: "Updating firewalls",
+  manage_volume: "Managing volume",
+}
+
+const stepOrderByKind: Record<string, string[]> = {
+  provision: ["validate", "provision", "configure", "finalize"],
+  delete: ["validate", "delete", "finalize"],
+  rebuild: ["validate", "rebuild", "finalize"],
+  resize: ["validate", "resize", "finalize"],
+  update_firewalls: ["validate", "update_firewalls", "finalize"],
+  manage_volume: ["validate", "manage_volume", "finalize"],
 }
 
 // Derive steps from events
@@ -53,8 +66,17 @@ interface TimelineStep {
 }
 
 const steps = computed<TimelineStep[]>(() => {
-  // Step order matches backend executor (internal/worker/executor.go)
-  const stepOrder = ["validate", "create_ssh_key", "create_server", "wait_running", "finalize"]
+  const rawKind = activeJob.value?.kind || ""
+  const normalizedKind = rawKind.endsWith("_server")
+    ? rawKind.slice(0, Math.max(rawKind.length - "_server".length, 0))
+    : rawKind
+  const eventStepOrder: string[] = []
+  for (const event of events.value) {
+    if (event.step_key && !eventStepOrder.includes(event.step_key)) {
+      eventStepOrder.push(event.step_key)
+    }
+  }
+  const stepOrder = stepOrderByKind[normalizedKind] || eventStepOrder
   const eventsByStep = new Map<string, JobEvent[]>()
 
   // Group events by step_key
@@ -95,6 +117,41 @@ const steps = computed<TimelineStep[]>(() => {
       timestamp: latestEvent?.occurred_at,
     }
   })
+})
+
+const jobKindLabel = computed(() => {
+  const kind = activeJob.value?.kind
+  return kind ? kind.replace(/_/g, " ") : ""
+})
+
+function formatPayloadValue(value: unknown): string {
+  if (value === null) return "null"
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const payloadSummary = computed(() => {
+  const payload = activeJob.value?.payload
+  if (!payload) return ""
+  if (typeof payload === "string") {
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>
+      const entries = Object.entries(parsed)
+      if (entries.length === 0) return ""
+      const summary = entries
+        .map(([key, value]) => `${key}=${formatPayloadValue(value)}`)
+        .join(", ")
+      return summary.length > 160 ? `${summary.slice(0, 157)}...` : summary
+    } catch {
+      return payload
+    }
+  }
+  return ""
 })
 
 // Job metadata
@@ -309,9 +366,17 @@ onUnmounted(() => {
               Completed
             </span>
           </div>
-          <p v-if="jobStartedAt && !compact" class="text-xs text-muted-foreground">
-            Started at {{ jobStartedAt }}
-          </p>
+          <div v-if="jobStartedAt || jobKindLabel || payloadSummary" class="space-y-0.5">
+            <p v-if="jobStartedAt && !compact" class="text-xs text-muted-foreground">
+              Started at {{ jobStartedAt }}
+            </p>
+            <p v-if="jobKindLabel" class="text-xs text-muted-foreground">
+              Kind: <span class="font-medium text-foreground/80">{{ jobKindLabel }}</span>
+            </p>
+            <p v-if="payloadSummary" class="text-xs text-muted-foreground">
+              Payload: <span class="font-mono text-foreground/70">{{ payloadSummary }}</span>
+            </p>
+          </div>
         </div>
         <NuxtLink
           v-if="compact"

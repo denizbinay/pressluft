@@ -1,0 +1,4 @@
+---
+- name: Validate nginx-stack marker
+  ansible.builtin.debug:
+    msg: "Pressluft nginx-stack role scaffold executed"

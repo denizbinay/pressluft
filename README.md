@@ -47,6 +47,19 @@ Optional port override:
 PORT=9090 ./bin/pressluft
 ```
 
+## Age Key Management
+
+Pressluft encrypts stored SSH private keys using age. By default it uses
+`~/.pressluft/age.key` for the age identity file.
+
+- If `PRESSLUFT_AGE_KEY_PATH` is not set and the default file is missing,
+  Pressluft generates a new age identity on first run with permissions `0600`.
+- If `PRESSLUFT_AGE_KEY_PATH` is set, the file must already exist and be
+  readable; Pressluft will fail fast if it is missing.
+
+Keep the age identity file local to the host running Pressluft and never log
+or share the private key contents.
+
 ## Dev
 
 ```bash

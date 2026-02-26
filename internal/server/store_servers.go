@@ -14,6 +14,8 @@ type StoredServer struct {
 	ProviderID       int64  `json:"provider_id"`
 	ProviderType     string `json:"provider_type"`
 	ProviderServerID string `json:"provider_server_id,omitempty"`
+	IPv4             string `json:"ipv4,omitempty"`
+	IPv6             string `json:"ipv6,omitempty"`
 	Name             string `json:"name"`
 	Location         string `json:"location"`
 	ServerType       string `json:"server_type"`
@@ -22,6 +24,7 @@ type StoredServer struct {
 	Status           string `json:"status"`
 	ActionID         string `json:"action_id,omitempty"`
 	ActionStatus     string `json:"action_status,omitempty"`
+	HasKey           bool   `json:"has_key"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
 }
@@ -82,9 +85,11 @@ func (s *ServerStore) Create(ctx context.Context, in CreateServerNodeInput) (int
 
 func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, provider_id, provider_type, provider_server_id, name, location, server_type, image, profile_key, status, action_id, action_status, created_at, updated_at
-		 FROM servers
-		 ORDER BY created_at DESC`,
+		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.created_at, s.updated_at,
+		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
+		 FROM servers s
+		 LEFT JOIN server_keys k ON k.server_id = s.id
+		 ORDER BY s.created_at DESC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list servers: %w", err)
@@ -96,14 +101,19 @@ func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 		var (
 			s                StoredServer
 			providerServerID sql.NullString
+			ipv4             sql.NullString
+			ipv6             sql.NullString
 			actionID         sql.NullString
 			actionStatus     sql.NullString
+			hasKey           int
 		)
 		if err := rows.Scan(
 			&s.ID,
 			&s.ProviderID,
 			&s.ProviderType,
 			&providerServerID,
+			&ipv4,
+			&ipv6,
 			&s.Name,
 			&s.Location,
 			&s.ServerType,
@@ -114,12 +124,16 @@ func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 			&actionStatus,
 			&s.CreatedAt,
 			&s.UpdatedAt,
+			&hasKey,
 		); err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
 		}
 		s.ProviderServerID = nullStringValue(providerServerID)
+		s.IPv4 = nullStringValue(ipv4)
+		s.IPv6 = nullStringValue(ipv6)
 		s.ActionID = nullStringValue(actionID)
 		s.ActionStatus = nullStringValue(actionStatus)
+		s.HasKey = hasKey != 0
 		out = append(out, s)
 	}
 
@@ -130,7 +144,7 @@ func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	return out, nil
 }
 
-func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus, status string) error {
+func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus, status, ipv4, ipv6 string) error {
 	if id <= 0 {
 		return fmt.Errorf("id must be greater than zero")
 	}
@@ -141,12 +155,14 @@ func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, provider
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE servers
-		 SET provider_server_id = ?, action_id = ?, action_status = ?, status = ?, updated_at = ?
+		 SET provider_server_id = ?, action_id = ?, action_status = ?, status = ?, ipv4 = ?, ipv6 = ?, updated_at = ?
 		 WHERE id = ?`,
 		providerServerID,
 		actionID,
 		actionStatus,
 		status,
+		ipv4,
+		ipv6,
 		now,
 		id,
 	)
@@ -199,19 +215,26 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 	var (
 		srv              StoredServer
 		providerServerID sql.NullString
+		ipv4             sql.NullString
+		ipv6             sql.NullString
 		actionID         sql.NullString
 		actionStatus     sql.NullString
+		hasKey           int
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, provider_id, provider_type, provider_server_id, name, location, server_type, image, profile_key, status, action_id, action_status, created_at, updated_at
-		 FROM servers
-		 WHERE id = ?`,
+		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.created_at, s.updated_at,
+		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
+		 FROM servers s
+		 LEFT JOIN server_keys k ON k.server_id = s.id
+		 WHERE s.id = ?`,
 		id,
 	).Scan(
 		&srv.ID,
 		&srv.ProviderID,
 		&srv.ProviderType,
 		&providerServerID,
+		&ipv4,
+		&ipv6,
 		&srv.Name,
 		&srv.Location,
 		&srv.ServerType,
@@ -222,6 +245,7 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 		&actionStatus,
 		&srv.CreatedAt,
 		&srv.UpdatedAt,
+		&hasKey,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -231,8 +255,11 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 	}
 
 	srv.ProviderServerID = nullStringValue(providerServerID)
+	srv.IPv4 = nullStringValue(ipv4)
+	srv.IPv6 = nullStringValue(ipv6)
 	srv.ActionID = nullStringValue(actionID)
 	srv.ActionStatus = nullStringValue(actionStatus)
+	srv.HasKey = hasKey != 0
 
 	return &srv, nil
 }
@@ -255,6 +282,34 @@ func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status string)
 	)
 	if err != nil {
 		return fmt.Errorf("update server status: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %d not found", id)
+	}
+
+	return nil
+}
+
+// UpdateServerType updates the server_type field of a server.
+func (s *ServerStore) UpdateServerType(ctx context.Context, id int64, serverType string) error {
+	if id <= 0 {
+		return fmt.Errorf("id must be greater than zero")
+	}
+	if strings.TrimSpace(serverType) == "" {
+		return fmt.Errorf("server_type is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE servers SET server_type = ?, updated_at = ? WHERE id = ?`,
+		serverType,
+		now,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update server type: %w", err)
 	}
 
 	n, _ := res.RowsAffected()

@@ -230,6 +230,7 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	job, err := sh.jobStore.CreateJob(r.Context(), orchestrator.CreateJobInput{
 		Kind:     "provision_server",
 		ServerID: serverID,
+		Payload:  "",
 	})
 	if err != nil {
 		// Rollback: mark server as failed since we couldn't create the job

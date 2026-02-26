@@ -209,6 +209,8 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 			provider_id        INTEGER NOT NULL,
 			provider_type      TEXT    NOT NULL,
 			provider_server_id TEXT,
+			ipv4               TEXT,
+			ipv6               TEXT,
 			name               TEXT    NOT NULL,
 			location           TEXT    NOT NULL,
 			server_type        TEXT    NOT NULL,
@@ -226,6 +228,20 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
+		CREATE TABLE server_keys (
+			server_id             INTEGER PRIMARY KEY,
+			public_key            TEXT    NOT NULL,
+			private_key_encrypted TEXT    NOT NULL,
+			encryption_key_id     TEXT    NOT NULL,
+			created_at            TEXT    NOT NULL,
+			rotated_at            TEXT,
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		);
+	`); err != nil {
+		t.Fatalf("create server_keys table: %v", err)
+	}
+
+	if _, err := db.Exec(`
 		CREATE TABLE jobs (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			server_id    INTEGER,
@@ -234,6 +250,7 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 			current_step TEXT    NOT NULL DEFAULT '',
 			retry_count  INTEGER NOT NULL DEFAULT 0,
 			last_error   TEXT,
+			payload      TEXT,
 			created_at   TEXT    NOT NULL,
 			updated_at   TEXT    NOT NULL,
 			FOREIGN KEY (server_id) REFERENCES servers(id)

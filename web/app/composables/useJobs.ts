@@ -8,6 +8,7 @@ export interface Job {
   current_step: string
   retry_count: number
   last_error?: string
+  payload?: string
   created_at: string
   updated_at: string
 }
@@ -34,7 +35,11 @@ export function useJobs() {
   const error = ref('')
   const connectionMode = ref<ConnectionMode>('disconnected')
 
-  const createJob = async (payload: { kind?: string; server_id?: number }) => {
+  const createJob = async (payload: {
+    kind?: string
+    server_id?: number
+    payload?: Record<string, unknown> | string | null
+  }) => {
     loading.value = true
     error.value = ''
     try {

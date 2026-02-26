@@ -27,6 +27,8 @@ func (a *ServerStoreAdapter) GetByID(ctx context.Context, id int64) (*StoredServ
 		ProviderID:       s.ProviderID,
 		ProviderType:     s.ProviderType,
 		ProviderServerID: s.ProviderServerID,
+		IPv4:             s.IPv4,
+		IPv6:             s.IPv6,
 		Name:             s.Name,
 		Location:         s.Location,
 		ServerType:       s.ServerType,
@@ -40,8 +42,37 @@ func (a *ServerStoreAdapter) UpdateStatus(ctx context.Context, id int64, status 
 	return a.store.UpdateStatus(ctx, id, status)
 }
 
-func (a *ServerStoreAdapter) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus, status string) error {
-	return a.store.UpdateProvisioning(ctx, id, providerServerID, actionID, actionStatus, status)
+func (a *ServerStoreAdapter) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus, status, ipv4, ipv6 string) error {
+	return a.store.UpdateProvisioning(ctx, id, providerServerID, actionID, actionStatus, status, ipv4, ipv6)
+}
+
+func (a *ServerStoreAdapter) UpdateServerType(ctx context.Context, id int64, serverType string) error {
+	return a.store.UpdateServerType(ctx, id, serverType)
+}
+
+func (a *ServerStoreAdapter) GetKey(ctx context.Context, serverID int64) (*StoredServerKey, error) {
+	key, err := a.store.GetKey(ctx, serverID)
+	if err != nil || key == nil {
+		return nil, err
+	}
+	return &StoredServerKey{
+		ServerID:            key.ServerID,
+		PublicKey:           key.PublicKey,
+		PrivateKeyEncrypted: key.PrivateKeyEncrypted,
+		EncryptionKeyID:     key.EncryptionKeyID,
+		CreatedAt:           key.CreatedAt,
+		RotatedAt:           key.RotatedAt,
+	}, nil
+}
+
+func (a *ServerStoreAdapter) CreateKey(ctx context.Context, in CreateServerKeyInput) error {
+	return a.store.CreateKey(ctx, server.CreateServerKeyInput{
+		ServerID:            in.ServerID,
+		PublicKey:           in.PublicKey,
+		PrivateKeyEncrypted: in.PrivateKeyEncrypted,
+		EncryptionKeyID:     in.EncryptionKeyID,
+		RotatedAt:           in.RotatedAt,
+	})
 }
 
 // ProviderStoreAdapter wraps provider.Store to implement the worker.ProviderStore interface.

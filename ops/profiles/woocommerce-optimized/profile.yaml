@@ -34,5 +34,5 @@ hooks:
   - verify
 
 artifacts:
-  playbook: ansible/playbooks/provision.yml
+  playbook: ansible/playbooks/configure.yml
   role: woocommerce-optimized

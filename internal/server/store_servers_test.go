@@ -78,7 +78,7 @@ func TestServerStoreUpdateProvisioning(t *testing.T) {
 		t.Fatalf("create server: %v", err)
 	}
 
-	err = store.UpdateProvisioning(context.Background(), serverID, "123456", "9876", "running", "provisioning")
+	err = store.UpdateProvisioning(context.Background(), serverID, "123456", "9876", "running", "provisioning", "203.0.113.10", "2001:db8::10")
 	if err != nil {
 		t.Fatalf("update provisioning: %v", err)
 	}
@@ -92,6 +92,12 @@ func TestServerStoreUpdateProvisioning(t *testing.T) {
 	}
 	if servers[0].ActionID != "9876" {
 		t.Fatalf("action_id = %q, want %q", servers[0].ActionID, "9876")
+	}
+	if servers[0].IPv4 != "203.0.113.10" {
+		t.Fatalf("ipv4 = %q, want %q", servers[0].IPv4, "203.0.113.10")
+	}
+	if servers[0].IPv6 != "2001:db8::10" {
+		t.Fatalf("ipv6 = %q, want %q", servers[0].IPv6, "2001:db8::10")
 	}
 }
 
@@ -130,6 +136,8 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 			provider_id        INTEGER NOT NULL,
 			provider_type      TEXT    NOT NULL,
 			provider_server_id TEXT,
+			ipv4               TEXT,
+			ipv6               TEXT,
 			name               TEXT    NOT NULL,
 			location           TEXT    NOT NULL,
 			server_type        TEXT    NOT NULL,
@@ -144,6 +152,20 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 		);
 	`); err != nil {
 		t.Fatalf("create servers table: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE server_keys (
+			server_id             INTEGER PRIMARY KEY,
+			public_key            TEXT    NOT NULL,
+			private_key_encrypted TEXT    NOT NULL,
+			encryption_key_id     TEXT    NOT NULL,
+			created_at            TEXT    NOT NULL,
+			rotated_at            TEXT,
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		);
+	`); err != nil {
+		t.Fatalf("create server_keys table: %v", err)
 	}
 
 	return db

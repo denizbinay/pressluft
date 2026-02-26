@@ -24,11 +24,12 @@ func (s *Store) CreateJob(ctx context.Context, in CreateJobInput) (Job, error) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, created_at, updated_at)
-		 VALUES (?, ?, ?, '', 0, ?, ?)`,
+		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, payload, created_at, updated_at)
+		 VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
 		nullableInt64(in.ServerID),
 		in.Kind,
 		JobStatusQueued,
+		nullableString(in.Payload),
 		now,
 		now,
 	)
@@ -53,9 +54,10 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 		job      Job
 		serverID sql.NullInt64
 		lastErr  sql.NullString
+		payload  sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
 		 FROM jobs
 		 WHERE id = ?`,
 		id,
@@ -67,6 +69,7 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 		&job.CurrentStep,
 		&job.RetryCount,
 		&lastErr,
+		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	)
@@ -81,6 +84,9 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 	}
 	if lastErr.Valid {
 		job.LastError = lastErr.String
+	}
+	if payload.Valid {
+		job.Payload = payload.String
 	}
 	return job, nil
 }
@@ -188,6 +194,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		job      Job
 		serverID sql.NullInt64
 		lastErr  sql.NullString
+		payload  sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
 		`UPDATE jobs 
@@ -198,7 +205,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		   ORDER BY created_at ASC 
 		   LIMIT 1
 		 )
-		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at`,
+		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at`,
 		JobStatusPreparing,
 		now,
 		JobStatusQueued,
@@ -210,6 +217,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		&job.CurrentStep,
 		&job.RetryCount,
 		&lastErr,
+		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	)
@@ -227,6 +235,9 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 	if lastErr.Valid {
 		job.LastError = lastErr.String
 	}
+	if payload.Valid {
+		job.Payload = payload.String
+	}
 
 	return &job, nil
 }
@@ -235,7 +246,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 // Returns an empty slice (not nil) when no jobs exist.
 func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
 		 FROM jobs
 		 ORDER BY created_at DESC`,
 	)
@@ -250,6 +261,7 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 			job       Job
 			serverIDN sql.NullInt64
 			lastErr   sql.NullString
+			payload   sql.NullString
 		)
 		if err := rows.Scan(
 			&job.ID,
@@ -259,6 +271,7 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 			&job.CurrentStep,
 			&job.RetryCount,
 			&lastErr,
+			&payload,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		); err != nil {
@@ -269,6 +282,9 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 		}
 		if lastErr.Valid {
 			job.LastError = lastErr.String
+		}
+		if payload.Valid {
+			job.Payload = payload.String
 		}
 		out = append(out, job)
 	}
@@ -287,7 +303,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC`,
@@ -304,6 +320,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 			job       Job
 			serverIDN sql.NullInt64
 			lastErr   sql.NullString
+			payload   sql.NullString
 		)
 		if err := rows.Scan(
 			&job.ID,
@@ -313,6 +330,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 			&job.CurrentStep,
 			&job.RetryCount,
 			&lastErr,
+			&payload,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		); err != nil {
@@ -323,6 +341,9 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 		}
 		if lastErr.Valid {
 			job.LastError = lastErr.String
+		}
+		if payload.Valid {
+			job.Payload = payload.String
 		}
 		out = append(out, job)
 	}
@@ -344,9 +365,10 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 		job       Job
 		serverIDN sql.NullInt64
 		lastErr   sql.NullString
+		payload   sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC
@@ -360,6 +382,7 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 		&job.CurrentStep,
 		&job.RetryCount,
 		&lastErr,
+		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	)
@@ -374,6 +397,9 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 	}
 	if lastErr.Valid {
 		job.LastError = lastErr.String
+	}
+	if payload.Valid {
+		job.Payload = payload.String
 	}
 	return &job, nil
 }
