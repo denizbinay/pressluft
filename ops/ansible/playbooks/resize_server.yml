@@ -17,6 +17,12 @@
           - server_type | length > 0
           - upgrade_disk is not none
 
+    - name: Stop server before resize
+      hetzner.hcloud.server:
+        api_token: "{{ api_token }}"
+        name: "{{ server_name }}"
+        state: stopped
+
     - name: Resize server
       hetzner.hcloud.server:
         api_token: "{{ api_token }}"
@@ -24,3 +30,9 @@
         server_type: "{{ server_type }}"
         upgrade_disk: "{{ upgrade_disk | bool }}"
         state: present
+
+    - name: Start server after resize
+      hetzner.hcloud.server:
+        api_token: "{{ api_token }}"
+        name: "{{ server_name }}"
+        state: started

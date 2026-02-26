@@ -763,9 +763,6 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 		if payload.SizeGB <= 0 {
 			return e.failJob(ctx, job, "size_gb is required for manage_volume job when state=present")
 		}
-		if location == "" {
-			return e.failJob(ctx, job, "location is required for manage_volume job when state=present")
-		}
 	}
 
 	e.emitStepComplete(ctx, job.ID, "validate", "Volume request validated")

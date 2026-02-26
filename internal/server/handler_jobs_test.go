@@ -151,6 +151,17 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
+			name:     "manage volume missing size_gb",
+			kind:     "manage_volume",
+			serverID: serverID,
+			payload: map[string]any{
+				"volume_name": "data",
+				"state":       "present",
+				"automount":   automount,
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
 			name:     "manage volume absent valid",
 			kind:     "manage_volume",
 			serverID: serverID,
@@ -168,7 +179,6 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 				"volume_name": "data",
 				"state":       "present",
 				"size_gb":     20,
-				"location":    "fsn1",
 				"automount":   automount,
 			},
 			wantCode: http.StatusAccepted,

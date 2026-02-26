@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useServers, type StoredServer } from "~/composables/useServers"
 import { useJobs } from "~/composables/useJobs"
+import { useServerOptions } from "~/composables/useServerOptions"
 
 interface ServerSection {
   key: string
@@ -69,14 +71,14 @@ const statusVariant = (status: string): 'success' | 'warning' | 'danger' | 'defa
   return 'default'
 }
 
-const rebuildServerName = ref("")
 const rebuildServerImage = ref("")
 const resizeServerType = ref("")
 const resizeUpgradeDisk = ref(false)
-const updateFirewallsList = ref("")
+const firewallsSelected = ref<string[]>([])
+const firewallsCustom = ref("")
+const firewallsUseCustom = ref(false)
 const volumeName = ref("")
 const volumeSizeGb = ref("")
-const volumeLocation = ref("")
 const volumeState = ref("present")
 const volumeAutomount = ref(false)
 
@@ -85,7 +87,35 @@ const resizeState = reactive({ loading: false, error: "", success: "" })
 const firewallsState = reactive({ loading: false, error: "", success: "" })
 const volumeStateUi = reactive({ loading: false, error: "", success: "" })
 
+const controlClass = "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+
+const {
+  images: imageOptions,
+  serverTypes: serverTypeOptions,
+  firewalls: firewallOptions,
+  volumes: volumeOptions,
+  loading: optionsLoading,
+  error: optionsError,
+  fetchAll: fetchServerOptions,
+} = useServerOptions()
+
 const normalizeText = (value: string) => value.trim()
+const normalizeList = (value: string) => value
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean)
+
+const showFirewallCustomInput = computed(() =>
+  firewallOptions.value.length === 0 || firewallsUseCustom.value,
+)
+
+const toggleFirewallSelection = (value: string) => {
+  if (firewallsSelected.value.includes(value)) {
+    firewallsSelected.value = firewallsSelected.value.filter((item) => item !== value)
+    return
+  }
+  firewallsSelected.value = [...firewallsSelected.value, value]
+}
 
 const submitRebuild = async () => {
   if (!serverId.value) return
@@ -93,16 +123,14 @@ const submitRebuild = async () => {
   rebuildState.error = ""
   rebuildState.success = ""
   try {
-    const serverName = normalizeText(rebuildServerName.value)
     const serverImage = normalizeText(rebuildServerImage.value)
-    if (!serverName || !serverImage) {
-      throw new Error("Server name and image are required")
+    if (!serverImage) {
+      throw new Error("Server image is required")
     }
     const job = await createJob({
       kind: "rebuild_server",
       server_id: serverId.value,
       payload: {
-        server_name: serverName,
         server_image: serverImage,
       },
     })
@@ -146,10 +174,13 @@ const submitUpdateFirewalls = async () => {
   firewallsState.error = ""
   firewallsState.success = ""
   try {
-    const firewalls = updateFirewallsList.value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean)
+    const customFirewalls = showFirewallCustomInput.value
+      ? normalizeList(firewallsCustom.value)
+      : []
+    const firewalls = Array.from(new Set([
+      ...firewallsSelected.value,
+      ...customFirewalls,
+    ]))
     if (firewalls.length === 0) {
       throw new Error("At least one firewall is required")
     }
@@ -174,15 +205,11 @@ const submitManageVolume = async () => {
   try {
     const name = normalizeText(volumeName.value)
     const state = normalizeText(volumeState.value)
-    const location = normalizeText(volumeLocation.value)
     const sizeGb = Number.parseInt(volumeSizeGb.value, 10)
     if (!name || !state) {
       throw new Error("Volume name and state are required")
     }
     if (state === "present") {
-      if (!location) {
-        throw new Error("Location is required when state is present")
-      }
       if (!Number.isFinite(sizeGb) || sizeGb <= 0) {
         throw new Error("Size must be a positive number")
       }
@@ -192,7 +219,6 @@ const submitManageVolume = async () => {
       state,
     }
     if (state === "present") {
-      payload.location = location
       payload.size_gb = sizeGb
       payload.automount = volumeAutomount.value
     }
@@ -211,10 +237,44 @@ const submitManageVolume = async () => {
 
 watch(server, (value) => {
   if (!value) return
-  if (!rebuildServerName.value) rebuildServerName.value = value.name || ""
   if (!rebuildServerImage.value) rebuildServerImage.value = value.image || ""
   if (!resizeServerType.value) resizeServerType.value = value.server_type || ""
-  if (!volumeLocation.value) volumeLocation.value = value.location || ""
+})
+
+watch(imageOptions, (options) => {
+  if (!rebuildServerImage.value && server.value?.image) {
+    rebuildServerImage.value = server.value.image
+  }
+  if (options.length && !options.some((option) => option.value === rebuildServerImage.value)) {
+    rebuildServerImage.value = options[0].value
+  }
+})
+
+watch(serverTypeOptions, (options) => {
+  if (!resizeServerType.value && server.value?.server_type) {
+    resizeServerType.value = server.value.server_type
+  }
+  if (options.length && !options.some((option) => option.value === resizeServerType.value)) {
+    resizeServerType.value = options[0].value
+  }
+})
+
+watch(volumeOptions, (options) => {
+  if (!volumeName.value && options.length) {
+    volumeName.value = options[0].value
+  }
+})
+
+const selectedVolume = computed(() =>
+  volumeOptions.value.find((option) => option.value === volumeName.value),
+)
+
+watch([selectedVolume, volumeState], ([option, state]) => {
+  if (state !== "present" || !option?.size_gb) return
+  const current = Number.parseInt(volumeSizeGb.value, 10)
+  if (!Number.isFinite(current) || current < option.size_gb) {
+    volumeSizeGb.value = String(option.size_gb)
+  }
 })
 
 const formatDate = (iso: string): string => {
@@ -240,6 +300,7 @@ onMounted(async () => {
 
   try {
     server.value = await fetchServer(serverId.value)
+    await fetchServerOptions(serverId.value)
   } catch (e: any) {
     error.value = e.message || 'Failed to load server'
   } finally {
@@ -508,18 +569,39 @@ onMounted(async () => {
                       </p>
                     </div>
                     <form class="mt-4 space-y-3" @submit.prevent="submitRebuild">
-                      <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Server name</Label>
-                          <Input v-model="rebuildServerName" placeholder="server-1" />
-                        </div>
-                        <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Server image</Label>
-                          <Input v-model="rebuildServerImage" placeholder="ubuntu-24.04" />
-                        </div>
+                      <div class="space-y-1.5">
+                        <Label class="text-xs font-medium text-muted-foreground">Server image</Label>
+                        <Select v-if="imageOptions.length" v-model="rebuildServerImage" :disabled="optionsLoading">
+                          <SelectTrigger :class="controlClass">
+                            <SelectValue placeholder="Select image" />
+                          </SelectTrigger>
+                          <SelectContent class="border-border/60 bg-popover text-popover-foreground">
+                            <SelectItem
+                              v-for="option in imageOptions"
+                              :key="option.value"
+                              :value="option.value"
+                              class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                            >
+                              <SelectItemText>{{ option.label }}</SelectItemText>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          v-else
+                          v-model="rebuildServerImage"
+                          :disabled="true"
+                          placeholder="Current image"
+                        />
+                        <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading images...</p>
+                        <p v-else-if="!imageOptions.length" class="text-xs text-muted-foreground">Using current image only.</p>
                       </div>
+                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
                       <div class="flex flex-wrap items-center gap-3">
-                        <Button type="submit" size="sm" :disabled="rebuildState.loading">
+                        <Button
+                          type="submit"
+                          size="sm"
+                          :disabled="rebuildState.loading || (!rebuildServerImage && !imageOptions.length)"
+                        >
                           Create rebuild job
                         </Button>
                         <span v-if="rebuildState.loading" class="text-xs text-muted-foreground">Submitting...</span>
@@ -540,7 +622,29 @@ onMounted(async () => {
                       <div class="grid gap-3 sm:grid-cols-2">
                         <div class="space-y-1.5">
                           <Label class="text-xs font-medium text-muted-foreground">Server type</Label>
-                          <Input v-model="resizeServerType" placeholder="cpx31" />
+                          <Select v-if="serverTypeOptions.length" v-model="resizeServerType" :disabled="optionsLoading">
+                            <SelectTrigger :class="controlClass">
+                              <SelectValue placeholder="Select server type" />
+                            </SelectTrigger>
+                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
+                              <SelectItem
+                                v-for="option in serverTypeOptions"
+                                :key="option.value"
+                                :value="option.value"
+                                class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                              >
+                                <SelectItemText>{{ option.label }}</SelectItemText>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            v-else
+                            v-model="resizeServerType"
+                            :disabled="true"
+                            placeholder="Current server type"
+                          />
+                          <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading server types...</p>
+                          <p v-else-if="!serverTypeOptions.length" class="text-xs text-muted-foreground">Resize options unavailable.</p>
                         </div>
                         <div class="space-y-1.5">
                           <Label class="text-xs font-medium text-muted-foreground">Upgrade disk</Label>
@@ -552,8 +656,9 @@ onMounted(async () => {
                           </div>
                         </div>
                       </div>
+                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
                       <div class="flex flex-wrap items-center gap-3">
-                        <Button type="submit" size="sm" :disabled="resizeState.loading">
+                        <Button type="submit" size="sm" :disabled="resizeState.loading || !serverTypeOptions.length">
                           Create resize job
                         </Button>
                         <span v-if="resizeState.loading" class="text-xs text-muted-foreground">Submitting...</span>
@@ -573,9 +678,37 @@ onMounted(async () => {
                     <form class="mt-4 space-y-3" @submit.prevent="submitUpdateFirewalls">
                       <div class="space-y-1.5">
                         <Label class="text-xs font-medium text-muted-foreground">Firewalls</Label>
-                        <Input v-model="updateFirewallsList" placeholder="fw-core, fw-web" />
+                        <div v-if="firewallOptions.length" class="grid gap-2 sm:grid-cols-2">
+                          <label
+                            v-for="option in firewallOptions"
+                            :key="option.value"
+                            class="flex items-start gap-2 rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80"
+                          >
+                            <input
+                              type="checkbox"
+                              class="mt-0.5 h-4 w-4 rounded border-border/60 text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                              :value="option.value"
+                              :checked="firewallsSelected.includes(option.value)"
+                              @change="toggleFirewallSelection(option.value)"
+                            />
+                            <span>{{ option.label }}</span>
+                          </label>
+                        </div>
+                        <p v-else class="text-xs text-muted-foreground">
+                          No firewall options available.
+                        </p>
+                      </div>
+                      <div v-if="firewallOptions.length" class="flex items-center gap-2">
+                        <Switch v-model:checked="firewallsUseCustom" />
+                        <span class="text-xs text-muted-foreground">Add custom firewall IDs</span>
+                      </div>
+                      <div v-if="showFirewallCustomInput" class="space-y-1.5">
+                        <Label class="text-xs font-medium text-muted-foreground">Custom firewalls</Label>
+                        <Input v-model="firewallsCustom" placeholder="fw-core, fw-web" />
                         <p class="text-xs text-muted-foreground">Comma-separated list.</p>
                       </div>
+                      <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading firewalls...</p>
+                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
                       <div class="flex flex-wrap items-center gap-3">
                         <Button type="submit" size="sm" :disabled="firewallsState.loading">
                           Create firewall update job
@@ -591,26 +724,70 @@ onMounted(async () => {
                     <div>
                       <h3 class="text-sm font-semibold text-foreground">Manage volume</h3>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        Attach or detach a volume for this server.
+                        Create & attach a volume or delete an existing one.
                       </p>
                     </div>
                     <form class="mt-4 space-y-3" @submit.prevent="submitManageVolume">
                       <div class="grid gap-3 sm:grid-cols-2">
                         <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Volume name</Label>
-                          <Input v-model="volumeName" placeholder="data-volume" />
+                          <Label class="text-xs font-medium text-muted-foreground">Volume</Label>
+                          <Select v-if="volumeOptions.length" v-model="volumeName" :disabled="optionsLoading">
+                            <SelectTrigger :class="controlClass">
+                              <SelectValue placeholder="Select volume" />
+                            </SelectTrigger>
+                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
+                              <SelectItem
+                                v-for="option in volumeOptions"
+                                :key="option.value"
+                                :value="option.value"
+                                class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                              >
+                                <SelectItemText>{{ option.label }}</SelectItemText>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div v-else class="space-y-1">
+                            <Input v-model="volumeName" placeholder="data-volume" />
+                            <p class="text-xs text-muted-foreground">No volume list available.</p>
+                          </div>
                         </div>
                         <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">State</Label>
-                          <Input v-model="volumeState" placeholder="present" />
+                          <Label class="text-xs font-medium text-muted-foreground">Action</Label>
+                          <Select v-model="volumeState">
+                            <SelectTrigger :class="controlClass">
+                              <SelectValue placeholder="Select state" />
+                            </SelectTrigger>
+                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
+                              <SelectItem value="present" class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground">
+                                <SelectItemText>Create &amp; attach</SelectItemText>
+                              </SelectItem>
+                              <SelectItem value="absent" class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground">
+                                <SelectItemText>Delete volume</SelectItemText>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p v-if="volumeState === 'absent'" class="text-xs text-destructive">
+                            This deletes the volume from Hetzner Cloud.
+                          </p>
                         </div>
                         <div v-if="volumeState === 'present'" class="space-y-1.5">
                           <Label class="text-xs font-medium text-muted-foreground">Size (GB)</Label>
-                          <Input v-model="volumeSizeGb" placeholder="50" />
+                          <Input
+                            v-model="volumeSizeGb"
+                            type="number"
+                            :min="selectedVolume?.size_gb || 1"
+                            placeholder="50"
+                          />
+                          <p v-if="selectedVolume?.size_gb" class="text-xs text-muted-foreground">
+                            Existing volume size is {{ selectedVolume.size_gb }}GB. You can only increase it.
+                          </p>
                         </div>
                         <div v-if="volumeState === 'present'" class="space-y-1.5">
                           <Label class="text-xs font-medium text-muted-foreground">Location</Label>
-                          <Input v-model="volumeLocation" placeholder="fsn1" />
+                          <div class="rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80">
+                            {{ server.location }}
+                          </div>
+                          <p class="text-xs text-muted-foreground">Volumes are created in the server location.</p>
                         </div>
                         <div v-if="volumeState === 'present'" class="space-y-1.5">
                           <Label class="text-xs font-medium text-muted-foreground">Automount</Label>
@@ -622,6 +799,8 @@ onMounted(async () => {
                           </div>
                         </div>
                       </div>
+                      <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading volume options...</p>
+                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
                       <div class="flex flex-wrap items-center gap-3">
                         <Button type="submit" size="sm" :disabled="volumeStateUi.loading">
                           Create volume job

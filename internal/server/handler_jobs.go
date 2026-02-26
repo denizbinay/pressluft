@@ -210,7 +210,6 @@ func validateJobPayload(req createJobRequest) (string, error) {
 		}
 		volumeName := strings.TrimSpace(parsed.VolumeName)
 		state := strings.TrimSpace(parsed.State)
-		location := strings.TrimSpace(parsed.Location)
 		if volumeName == "" {
 			return "", fmt.Errorf("volume_name is required for manage_volume job")
 		}
@@ -223,9 +222,6 @@ func validateJobPayload(req createJobRequest) (string, error) {
 			}
 			if parsed.SizeGB <= 0 {
 				return "", fmt.Errorf("size_gb is required for manage_volume job when state=present")
-			}
-			if location == "" {
-				return "", fmt.Errorf("location is required for manage_volume job when state=present")
 			}
 		}
 	}

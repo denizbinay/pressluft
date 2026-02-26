@@ -20,7 +20,6 @@
           - state in ['present', 'absent']
           - server_name | length > 0
           - state != 'present' or (size_gb | int > 0)
-          - state != 'present' or (location | length > 0)
 
     - name: Manage volume
       hetzner.hcloud.volume:
@@ -28,6 +27,6 @@
         name: "{{ volume_name }}"
         server: "{{ server_name }}"
         size: "{{ (state == 'present') | ternary(size_gb | int, omit) }}"
-        location: "{{ (state == 'present') | ternary(location, omit) }}"
+        location: "{{ (state == 'present' and (server_name | length == 0)) | ternary(location, omit) }}"
         automount: "{{ (state == 'present') | ternary(automount | bool, omit) }}"
         state: "{{ state }}"

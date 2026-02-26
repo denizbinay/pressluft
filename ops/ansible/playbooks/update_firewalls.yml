@@ -17,7 +17,7 @@
 
     - name: Build firewall list
       ansible.builtin.set_fact:
-        firewalls_list: "{{ firewalls_csv.split(',') | map('trim') | select('length') | list }}"
+        firewalls_list: "{{ firewalls_csv.split(',') | map('trim') | reject('equalto', '') | list }}"
 
     - name: Ensure firewalls list is not empty
       ansible.builtin.assert:
