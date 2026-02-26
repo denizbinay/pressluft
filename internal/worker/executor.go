@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider/hetzner"
 	"pressluft/internal/runner"
@@ -79,6 +80,7 @@ type Executor struct {
 	jobStore      *orchestrator.Store
 	serverStore   ServerStore
 	providerStore ProviderStore
+	activityStore *activity.Store
 	runner        runner.Runner
 	playbookPath  string
 	configurePath string
@@ -106,6 +108,7 @@ func NewExecutor(
 	jobStore *orchestrator.Store,
 	serverStore ServerStore,
 	providerStore ProviderStore,
+	activityStore *activity.Store,
 	runner runner.Runner,
 	config ExecutorConfig,
 	logger *slog.Logger,
@@ -114,6 +117,7 @@ func NewExecutor(
 		jobStore:      jobStore,
 		serverStore:   serverStore,
 		providerStore: providerStore,
+		activityStore: activityStore,
 		runner:        runner,
 		playbookPath:  strings.TrimSpace(config.ProvisionPlaybookPath),
 		configurePath: strings.TrimSpace(config.ConfigurePlaybookPath),
@@ -160,6 +164,19 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	}); err != nil {
 		return fmt.Errorf("transition to running: %w", err)
 	}
+
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
 
 	// Step 1: Validate
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server configuration")
@@ -369,6 +386,30 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 
 	e.emitEvent(ctx, job.ID, "info", "", "succeeded", "Job completed successfully")
 
+	// Emit job completed activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobCompleted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelSuccess,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s completed", jobKindLabel(job.Kind)),
+	})
+
+	// Emit server provisioned activity (special case for provision jobs)
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:    activity.EventServerProvisioned,
+		Category:     activity.CategoryServer,
+		Level:        activity.LevelSuccess,
+		ResourceType: activity.ResourceServer,
+		ResourceID:   job.ServerID,
+		ActorType:    activity.ActorSystem,
+		Title:        fmt.Sprintf("Server '%s' provisioned", server.Name),
+	})
+
 	return nil
 }
 
@@ -408,6 +449,19 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	}); err != nil {
 		return fmt.Errorf("transition to running: %w", err)
 	}
+
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server delete request")
 
@@ -481,6 +535,19 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	}); err != nil {
 		return fmt.Errorf("transition to running: %w", err)
 	}
+
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server rebuild request")
 
@@ -563,6 +630,19 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 		return fmt.Errorf("transition to running: %w", err)
 	}
 
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
+
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server resize request")
 
 	server, err := e.serverStore.GetByID(ctx, job.ServerID)
@@ -641,6 +721,19 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 		return fmt.Errorf("transition to running: %w", err)
 	}
 
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
+
 	e.emitStepStart(ctx, job.ID, "validate", "Validating firewall update request")
 
 	server, err := e.serverStore.GetByID(ctx, job.ServerID)
@@ -718,6 +811,19 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	}); err != nil {
 		return fmt.Errorf("transition to running: %w", err)
 	}
+
+	// Emit job started activity
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating volume request")
 
@@ -842,6 +948,23 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 	}
 
 	e.emitEvent(ctx, job.ID, "info", "", "succeeded", "Job completed successfully")
+
+	// Emit job completed activity
+	input := activity.EmitInput{
+		EventType:    activity.EventJobCompleted,
+		Category:     activity.CategoryJob,
+		Level:        activity.LevelSuccess,
+		ResourceType: activity.ResourceJob,
+		ResourceID:   job.ID,
+		ActorType:    activity.ActorSystem,
+		Title:        fmt.Sprintf("%s completed", jobKindLabel(job.Kind)),
+	}
+	if job.ServerID > 0 {
+		input.ParentResourceType = activity.ResourceServer
+		input.ParentResourceID = job.ServerID
+	}
+	e.emitActivity(ctx, input)
+
 	return nil
 }
 
@@ -865,6 +988,24 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 	}); err != nil {
 		e.logger.Error("failed to transition job to failed", "error", err)
 	}
+
+	// Emit job failed activity with requires_attention flag
+	input := activity.EmitInput{
+		EventType:         activity.EventJobFailed,
+		Category:          activity.CategoryJob,
+		Level:             activity.LevelError,
+		ResourceType:      activity.ResourceJob,
+		ResourceID:        job.ID,
+		ActorType:         activity.ActorSystem,
+		Title:             fmt.Sprintf("%s failed", jobKindLabel(job.Kind)),
+		Message:           errMsg,
+		RequiresAttention: true,
+	}
+	if job.ServerID > 0 {
+		input.ParentResourceType = activity.ResourceServer
+		input.ParentResourceID = job.ServerID
+	}
+	e.emitActivity(ctx, input)
 
 	return fmt.Errorf("job failed: %s", errMsg)
 }
@@ -957,4 +1098,30 @@ func (s *runnerEventSink) Emit(ctx context.Context, event runner.Event) error {
 		s.logger.Error("failed to emit runner event", "job_id", s.jobID, "error", err)
 	}
 	return err
+}
+
+// emitActivity emits an activity event if the activity store is configured.
+func (e *Executor) emitActivity(ctx context.Context, input activity.EmitInput) {
+	if e.activityStore == nil {
+		return
+	}
+	if _, err := e.activityStore.Emit(ctx, input); err != nil {
+		e.logger.Error("failed to emit activity", "event_type", input.EventType, "error", err)
+	}
+}
+
+// jobKindLabel returns a human-readable label for a job kind.
+func jobKindLabel(kind string) string {
+	labels := map[string]string{
+		"provision_server": "Server provisioning",
+		"delete_server":    "Server deletion",
+		"rebuild_server":   "Server rebuild",
+		"resize_server":    "Server resize",
+		"update_firewalls": "Firewall update",
+		"manage_volume":    "Volume management",
+	}
+	if label, ok := labels[kind]; ok {
+		return label
+	}
+	return kind
 }

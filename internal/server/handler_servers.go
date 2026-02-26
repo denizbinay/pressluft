@@ -7,15 +7,18 @@ import (
 	"strconv"
 	"strings"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 	"pressluft/internal/server/profiles"
 )
 
 type serversHandler struct {
-	providerStore *provider.Store
-	serverStore   *ServerStore
-	jobStore      *orchestrator.Store
+	providerStore   *provider.Store
+	serverStore     *ServerStore
+	jobStore        *orchestrator.Store
+	activityStore   *activity.Store
+	activityHandler *activityHandler
 }
 
 func (sh *serversHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +102,11 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 				}
 				sh.handleServerVolumes(w, r, serverID)
 				return
+			case "activity":
+				if sh.activityHandler != nil {
+					sh.activityHandler.handleServerActivity(w, r, serverID)
+					return
+				}
 			}
 		}
 
@@ -127,6 +135,12 @@ func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request
 }
 
 func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Request, serverID int64) {
+	// Get server name before deletion for activity message
+	var serverName string
+	if server, err := sh.serverStore.GetByID(r.Context(), serverID); err == nil {
+		serverName = server.Name
+	}
+
 	if err := sh.serverStore.Delete(r.Context(), serverID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -135,6 +149,24 @@ func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Emit activity for server deletion
+	if sh.activityStore != nil {
+		title := "Server deleted"
+		if serverName != "" {
+			title = fmt.Sprintf("Server '%s' deleted", serverName)
+		}
+		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
+			EventType:    activity.EventServerDeleted,
+			Category:     activity.CategoryServer,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceServer,
+			ResourceID:   serverID,
+			ActorType:    activity.ActorUser,
+			Title:        title,
+		})
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -302,6 +334,19 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Status:    string(job.Status),
 		Message:   "Server provisioning job queued",
 	})
+
+	// Emit activity for server creation
+	if sh.activityStore != nil {
+		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
+			EventType:    activity.EventServerCreated,
+			Category:     activity.CategoryServer,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceServer,
+			ResourceID:   serverID,
+			ActorType:    activity.ActorUser,
+			Title:        fmt.Sprintf("Server '%s' created", req.Name),
+		})
+	}
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"server_id": serverID,

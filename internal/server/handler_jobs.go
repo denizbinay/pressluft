@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 )
 
 type jobsHandler struct {
-	store *orchestrator.Store
+	store         *orchestrator.Store
+	activityStore *activity.Store
 }
 
 type createJobRequest struct {
@@ -146,7 +148,41 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Message:   "Job accepted and queued",
 	})
 
+	// Emit activity for job creation
+	if jh.activityStore != nil {
+		input := activity.EmitInput{
+			EventType:    activity.EventJobCreated,
+			Category:     activity.CategoryJob,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceJob,
+			ResourceID:   job.ID,
+			ActorType:    activity.ActorUser,
+			Title:        fmt.Sprintf("%s job queued", jobKindLabel(req.Kind)),
+		}
+		if req.ServerID > 0 {
+			input.ParentResourceType = activity.ResourceServer
+			input.ParentResourceID = req.ServerID
+		}
+		_, _ = jh.activityStore.Emit(r.Context(), input)
+	}
+
 	respondJSON(w, http.StatusAccepted, job)
+}
+
+// jobKindLabel returns a human-readable label for a job kind.
+func jobKindLabel(kind string) string {
+	labels := map[string]string{
+		"provision_server": "Server provisioning",
+		"delete_server":    "Server deletion",
+		"rebuild_server":   "Server rebuild",
+		"resize_server":    "Server resize",
+		"update_firewalls": "Firewall update",
+		"manage_volume":    "Volume management",
+	}
+	if label, ok := labels[kind]; ok {
+		return label
+	}
+	return kind
 }
 
 func validateJobPayload(req createJobRequest) (string, error) {

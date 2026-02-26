@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/database"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
@@ -56,6 +57,7 @@ func main() {
 	jobStore := orchestrator.NewStore(db.DB)
 	serverStore := server.NewServerStore(db.DB)
 	providerStore := provider.NewStore(db.DB)
+	activityStore := activity.NewStore(db.DB)
 
 	ansibleDir := strings.TrimSpace(os.Getenv("PRESSLUFT_ANSIBLE_DIR"))
 	if ansibleDir == "" {
@@ -95,6 +97,7 @@ func main() {
 		jobStore,
 		worker.NewServerStoreAdapter(serverStore),
 		worker.NewProviderStoreAdapter(providerStore),
+		activityStore,
 		ansibleRunner,
 		worker.ExecutorConfig{
 			ProvisionPlaybookPath: playbookPath,

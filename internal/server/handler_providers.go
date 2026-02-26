@@ -2,15 +2,18 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/provider"
 )
 
 type providerHandler struct {
-	store *provider.Store
+	store         *provider.Store
+	activityStore *activity.Store
 }
 
 // route dispatches /api/providers based on HTTP method.
@@ -101,6 +104,19 @@ func (ph *providerHandler) handleCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Emit activity for provider creation
+	if ph.activityStore != nil {
+		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
+			EventType:    activity.EventProviderAdded,
+			Category:     activity.CategoryProvider,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceProvider,
+			ResourceID:   id,
+			ActorType:    activity.ActorUser,
+			Title:        fmt.Sprintf("Provider '%s' added", req.Name),
+		})
+	}
+
 	respondJSON(w, http.StatusCreated, map[string]any{
 		"id":         id,
 		"validation": result,
@@ -120,10 +136,34 @@ func (ph *providerHandler) handleList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ph *providerHandler) handleDelete(w http.ResponseWriter, r *http.Request, id int64) {
+	// Get provider name before deletion for activity message
+	var providerName string
+	if p, err := ph.store.GetByID(r.Context(), id); err == nil {
+		providerName = p.Name
+	}
+
 	if err := ph.store.Delete(r.Context(), id); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
+
+	// Emit activity for provider deletion
+	if ph.activityStore != nil {
+		title := "Provider removed"
+		if providerName != "" {
+			title = fmt.Sprintf("Provider '%s' removed", providerName)
+		}
+		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
+			EventType:    activity.EventProviderRemoved,
+			Category:     activity.CategoryProvider,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceProvider,
+			ResourceID:   id,
+			ActorType:    activity.ActorUser,
+			Title:        title,
+		})
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

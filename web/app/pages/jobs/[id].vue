@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Card, CardContent } from "@/components/ui/card"
 import type { Job } from '~/composables/useJobs'
+import { useJobs } from "~/composables/useJobs"
 
 const route = useRoute()
 const router = useRouter()
+const { fetchJob } = useJobs()
 
 const jobId = computed(() => {
   const id = Number(route.params.id)
@@ -12,20 +14,61 @@ const jobId = computed(() => {
 
 const isInvalidId = computed(() => jobId.value === null)
 
+const job = ref<Job | null>(null)
+const jobError = ref("")
+
+const jobKindLabel = (kind: string): string => {
+  const labels: Record<string, string> = {
+    provision_server: "Server provisioning",
+    delete_server: "Server deletion",
+    rebuild_server: "Server rebuild",
+    resize_server: "Server resize",
+    update_firewalls: "Firewall update",
+    manage_volume: "Volume management",
+  }
+  return labels[kind] || kind
+}
+
+const jobSubtitle = computed(() => {
+  if (!job.value?.kind) return "Job progress"
+  return `${jobKindLabel(job.value.kind)} progress`
+})
+
 const handleCompleted = (_job: Job) => {}
 
 const handleFailed = (_job: Job, _error: string) => {}
+
+onMounted(async () => {
+  if (!jobId.value) return
+  jobError.value = ""
+  try {
+    job.value = await fetchJob(jobId.value)
+  } catch (e: any) {
+    jobError.value = e.message || "Failed to load job"
+  }
+})
 </script>
 
 <template>
   <div class="space-y-6">
     <!-- Error state for invalid job ID -->
     <template v-if="isInvalidId">
-      <div>
-        <h1 class="text-2xl font-semibold text-foreground">Invalid Job ID</h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          The job ID provided is not valid.
-        </p>
+      <div class="space-y-2">
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+          <NuxtLink to="/activity" class="transition-colors hover:text-foreground">
+            Activity
+          </NuxtLink>
+          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          <span class="text-foreground">Job</span>
+        </div>
+        <div>
+          <h1 class="text-2xl font-semibold text-foreground">Invalid Job ID</h1>
+          <p class="mt-1 text-sm text-muted-foreground">
+            The job ID provided is not valid.
+          </p>
+        </div>
       </div>
 
       <Card
@@ -56,11 +99,36 @@ const handleFailed = (_job: Job, _error: string) => {}
 
     <!-- Valid job ID - show job details -->
     <template v-else>
-      <div>
-        <h1 class="text-2xl font-semibold text-foreground">Job #{{ jobId }}</h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Server provisioning progress
-        </p>
+      <div class="space-y-2">
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+          <NuxtLink to="/activity" class="transition-colors hover:text-foreground">
+            Activity
+          </NuxtLink>
+          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          <template v-if="job?.server_id">
+            <NuxtLink
+              :to="`/servers/${job.server_id}`"
+              class="transition-colors hover:text-foreground"
+            >
+              Server #{{ job.server_id }}
+            </NuxtLink>
+            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </template>
+          <span class="text-foreground">Job #{{ jobId }}</span>
+        </div>
+        <div>
+          <h1 class="text-2xl font-semibold text-foreground">Job #{{ jobId }}</h1>
+          <p class="mt-1 text-sm text-muted-foreground">
+            {{ jobSubtitle }}
+          </p>
+          <p v-if="jobError" class="mt-1 text-xs text-destructive">
+            {{ jobError }}
+          </p>
+        </div>
       </div>
 
       <Card
@@ -78,10 +146,10 @@ const handleFailed = (_job: Job, _error: string) => {}
 
     <div class="flex gap-2">
       <NuxtLink
-        to="/settings?tab=servers"
+        to="/activity"
         class="text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        &larr; Back to Servers
+        &larr; Back to Activity
       </NuxtLink>
     </div>
   </div>

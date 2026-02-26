@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 )
@@ -27,7 +28,13 @@ func NewHandler(db *sql.DB) http.Handler {
 
 	// Provider endpoints (only when database is available)
 	if db != nil {
-		ph := &providerHandler{store: provider.NewStore(db)}
+		// Create activity store once and share it across handlers
+		activityStore := activity.NewStore(db)
+
+		ph := &providerHandler{
+			store:         provider.NewStore(db),
+			activityStore: activityStore,
+		}
 		mux.HandleFunc("/api/providers", ph.route)
 		mux.HandleFunc("/api/providers/", ph.routeWithID)
 		mux.HandleFunc("/api/providers/validate", ph.handleValidate)
@@ -39,13 +46,24 @@ func NewHandler(db *sql.DB) http.Handler {
 			providerStore: provider.NewStore(db),
 			serverStore:   NewServerStore(db),
 			jobStore:      jobStore,
+			activityStore: activityStore,
 		}
 		mux.HandleFunc("/api/servers", sh.route)
 		mux.HandleFunc("/api/servers/", sh.routeWithPath)
 
-		jh := &jobsHandler{store: jobStore}
+		jh := &jobsHandler{
+			store:         jobStore,
+			activityStore: activityStore,
+		}
 		mux.HandleFunc("/api/jobs", jh.route)
 		mux.HandleFunc("/api/jobs/", jh.routeWithID)
+
+		ah := &activityHandler{store: activityStore}
+		mux.HandleFunc("/api/activity", ah.route)
+		mux.HandleFunc("/api/activity/", ah.routeWithID)
+
+		// Inject activity handler into servers handler for /api/servers/{id}/activity
+		sh.activityHandler = ah
 	}
 
 	// Dashboard SPA (catch-all)
