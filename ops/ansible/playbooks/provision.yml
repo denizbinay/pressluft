@@ -4,13 +4,6 @@
   connection: local
   gather_facts: false
   vars:
-    hcloud_token: "{{ hcloud_token }}"
-    server_name: "{{ server_name }}"
-    server_location: "{{ server_location }}"
-    server_type: "{{ server_type }}"
-    server_image: "{{ server_image }}"
-    ssh_key_name: "{{ ssh_key_name }}"
-    ssh_public_key: "{{ ssh_public_key }}"
     artifact_path: "{{ artifact_path | default('') }}"
     ssh_wait_timeout_seconds: "{{ ssh_wait_timeout | default(300) }}"
   tasks:

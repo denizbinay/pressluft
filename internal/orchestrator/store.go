@@ -51,13 +51,14 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 	}
 
 	var (
-		job      Job
-		serverID sql.NullInt64
-		lastErr  sql.NullString
-		payload  sql.NullString
+		job       Job
+		serverID  sql.NullInt64
+		lastErr   sql.NullString
+		payload   sql.NullString
+		commandID sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE id = ?`,
 		id,
@@ -72,6 +73,7 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
+		&commandID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -88,7 +90,67 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 	if payload.Valid {
 		job.Payload = payload.String
 	}
+	job.CommandID = nil
+	if commandID.Valid {
+		job.CommandID = &commandID.String
+	}
 	return job, nil
+}
+
+func (s *Store) SetCommandID(ctx context.Context, jobID int64, commandID string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE jobs SET command_id = ? WHERE id = ?",
+		commandID, jobID,
+	)
+	return err
+}
+
+func (s *Store) GetJobByCommandID(ctx context.Context, commandID string) (*Job, error) {
+	var (
+		job      Job
+		serverID sql.NullInt64
+		lastErr  sql.NullString
+		payload  sql.NullString
+		cmdID    sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+		 FROM jobs
+		 WHERE command_id = ?`,
+		commandID,
+	).Scan(
+		&job.ID,
+		&serverID,
+		&job.Kind,
+		&job.Status,
+		&job.CurrentStep,
+		&job.RetryCount,
+		&lastErr,
+		&payload,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+		&cmdID,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("job not found for command %s", commandID)
+		}
+		return nil, fmt.Errorf("query job by command_id: %w", err)
+	}
+	if serverID.Valid {
+		job.ServerID = serverID.Int64
+	}
+	if lastErr.Valid {
+		job.LastError = lastErr.String
+	}
+	if payload.Valid {
+		job.Payload = payload.String
+	}
+	job.CommandID = nil
+	if cmdID.Valid {
+		job.CommandID = &cmdID.String
+	}
+	return &job, nil
 }
 
 func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput) (Job, error) {
@@ -191,10 +253,11 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 	// Atomic claim: UPDATE with subquery selects oldest queued job and transitions to preparing.
 	// SQLite executes this atomically, preventing race conditions between workers.
 	var (
-		job      Job
-		serverID sql.NullInt64
-		lastErr  sql.NullString
-		payload  sql.NullString
+		job       Job
+		serverID  sql.NullInt64
+		lastErr   sql.NullString
+		payload   sql.NullString
+		commandID sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
 		`UPDATE jobs 
@@ -205,7 +268,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		   ORDER BY created_at ASC 
 		   LIMIT 1
 		 )
-		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at`,
+		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id`,
 		JobStatusPreparing,
 		now,
 		JobStatusQueued,
@@ -220,6 +283,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
+		&commandID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -238,6 +302,10 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 	if payload.Valid {
 		job.Payload = payload.String
 	}
+	job.CommandID = nil
+	if commandID.Valid {
+		job.CommandID = &commandID.String
+	}
 
 	return &job, nil
 }
@@ -246,7 +314,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 // Returns an empty slice (not nil) when no jobs exist.
 func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
 		 FROM jobs
 		 ORDER BY created_at DESC`,
 	)
@@ -262,6 +330,7 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 			serverIDN sql.NullInt64
 			lastErr   sql.NullString
 			payload   sql.NullString
+			commandID sql.NullString
 		)
 		if err := rows.Scan(
 			&job.ID,
@@ -274,6 +343,7 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 			&payload,
 			&job.CreatedAt,
 			&job.UpdatedAt,
+			&commandID,
 		); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
@@ -285,6 +355,10 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 		}
 		if payload.Valid {
 			job.Payload = payload.String
+		}
+		job.CommandID = nil
+		if commandID.Valid {
+			job.CommandID = &commandID.String
 		}
 		out = append(out, job)
 	}
@@ -303,7 +377,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC`,
@@ -321,6 +395,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 			serverIDN sql.NullInt64
 			lastErr   sql.NullString
 			payload   sql.NullString
+			commandID sql.NullString
 		)
 		if err := rows.Scan(
 			&job.ID,
@@ -333,6 +408,7 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 			&payload,
 			&job.CreatedAt,
 			&job.UpdatedAt,
+			&commandID,
 		); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
@@ -344,6 +420,10 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 		}
 		if payload.Valid {
 			job.Payload = payload.String
+		}
+		job.CommandID = nil
+		if commandID.Valid {
+			job.CommandID = &commandID.String
 		}
 		out = append(out, job)
 	}
@@ -366,9 +446,10 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 		serverIDN sql.NullInt64
 		lastErr   sql.NullString
 		payload   sql.NullString
+		commandID sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC
@@ -385,6 +466,7 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 		&payload,
 		&job.CreatedAt,
 		&job.UpdatedAt,
+		&commandID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -400,6 +482,10 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 	}
 	if payload.Valid {
 		job.Payload = payload.String
+	}
+	job.CommandID = nil
+	if commandID.Valid {
+		job.CommandID = &commandID.String
 	}
 	return &job, nil
 }

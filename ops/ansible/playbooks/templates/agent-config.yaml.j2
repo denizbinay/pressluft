@@ -1,0 +1,7 @@
+server_id: {{ server_id }}
+control_plane: {{ control_plane_url }}
+cert_file: /etc/pressluft/agent.crt
+key_file: /etc/pressluft/agent.key
+ca_cert_file: /etc/pressluft/ca.crt
+data_dir: /var/lib/pressluft
+registration_token: {{ registration_token | default('') }}

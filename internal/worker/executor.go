@@ -77,19 +77,20 @@ type StoredProvider struct {
 
 // Executor runs job steps and emits events.
 type Executor struct {
-	jobStore      *orchestrator.Store
-	serverStore   ServerStore
-	providerStore ProviderStore
-	activityStore *activity.Store
-	runner        runner.Runner
-	playbookPath  string
-	configurePath string
-	deletePath    string
-	rebuildPath   string
-	resizePath    string
-	firewallsPath string
-	volumePath    string
-	logger        *slog.Logger
+	jobStore        *orchestrator.Store
+	serverStore     ServerStore
+	providerStore   ProviderStore
+	activityStore   *activity.Store
+	runner          runner.Runner
+	playbookPath    string
+	configurePath   string
+	deletePath      string
+	rebuildPath     string
+	resizePath      string
+	firewallsPath   string
+	volumePath      string
+	controlPlaneURL string
+	logger          *slog.Logger
 }
 
 // ExecutorConfig defines runner configuration.
@@ -101,6 +102,7 @@ type ExecutorConfig struct {
 	ResizePlaybookPath    string
 	FirewallsPlaybookPath string
 	VolumePlaybookPath    string
+	ControlPlaneURL       string
 }
 
 // NewExecutor creates an executor with the given dependencies.
@@ -114,19 +116,20 @@ func NewExecutor(
 	logger *slog.Logger,
 ) *Executor {
 	return &Executor{
-		jobStore:      jobStore,
-		serverStore:   serverStore,
-		providerStore: providerStore,
-		activityStore: activityStore,
-		runner:        runner,
-		playbookPath:  strings.TrimSpace(config.ProvisionPlaybookPath),
-		configurePath: strings.TrimSpace(config.ConfigurePlaybookPath),
-		deletePath:    strings.TrimSpace(config.DeletePlaybookPath),
-		rebuildPath:   strings.TrimSpace(config.RebuildPlaybookPath),
-		resizePath:    strings.TrimSpace(config.ResizePlaybookPath),
-		firewallsPath: strings.TrimSpace(config.FirewallsPlaybookPath),
-		volumePath:    strings.TrimSpace(config.VolumePlaybookPath),
-		logger:        logger,
+		jobStore:        jobStore,
+		serverStore:     serverStore,
+		providerStore:   providerStore,
+		activityStore:   activityStore,
+		runner:          runner,
+		playbookPath:    strings.TrimSpace(config.ProvisionPlaybookPath),
+		configurePath:   strings.TrimSpace(config.ConfigurePlaybookPath),
+		deletePath:      strings.TrimSpace(config.DeletePlaybookPath),
+		rebuildPath:     strings.TrimSpace(config.RebuildPlaybookPath),
+		resizePath:      strings.TrimSpace(config.ResizePlaybookPath),
+		firewallsPath:   strings.TrimSpace(config.FirewallsPlaybookPath),
+		volumePath:      strings.TrimSpace(config.VolumePlaybookPath),
+		controlPlaneURL: strings.TrimSpace(config.ControlPlaneURL),
+		logger:          logger,
 	}
 }
 
@@ -351,12 +354,23 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		return e.failJob(ctx, job, fmt.Sprintf("failed to write configure inventory: %v", err))
 	}
 
+	agentBinaryPath, err := filepath.Abs("bin/pressluft-agent")
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("failed to resolve agent binary path: %v", err))
+	}
+	if _, err := os.Stat(agentBinaryPath); err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("agent binary not found at %q; ensure bin/pressluft-agent exists in the project root", agentBinaryPath))
+	}
+
 	configureRequest := runner.Request{
 		JobID:         job.ID,
 		InventoryPath: configureInventoryPath,
 		PlaybookPath:  e.configurePath,
 		ExtraVars: map[string]string{
-			"profile_path": profile.ArtifactPath,
+			"server_id":         strconv.FormatInt(server.ID, 10),
+			"control_plane_url": e.controlPlaneURL,
+			"profile_path":      profile.ArtifactPath,
+			"agent_binary_path": agentBinaryPath,
 		},
 	}
 

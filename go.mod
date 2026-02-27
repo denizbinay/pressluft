@@ -3,18 +3,20 @@ module pressluft
 go 1.24.0
 
 require (
+	filippo.io/age v1.1.1
+	github.com/google/uuid v1.6.0
 	github.com/hetznercloud/hcloud-go/v2 v2.19.0
 	github.com/pressly/goose/v3 v3.24.1
 	golang.org/x/crypto v0.48.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.5
+	nhooyr.io/websocket v1.8.11
 )
 
 require (
-	filippo.io/age v1.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect

@@ -82,6 +82,8 @@ func main() {
 	firewallsPlaybookPath := "ops/ansible/playbooks/update_firewalls.yml"
 	volumePlaybookPath := "ops/ansible/playbooks/manage_volume.yml"
 
+	controlPlaneURL := strings.TrimSpace(os.Getenv("PRESSLUFT_CONTROL_PLANE_URL"))
+
 	ansibleRunner := ansible.NewAdapter(ansibleBinary, ansibleDir, []string{
 		playbookPath,
 		configurePlaybookPath,
@@ -107,6 +109,7 @@ func main() {
 			ResizePlaybookPath:    resizePlaybookPath,
 			FirewallsPlaybookPath: firewallsPlaybookPath,
 			VolumePlaybookPath:    volumePlaybookPath,
+			ControlPlaneURL:       controlPlaneURL,
 		},
 		logger,
 	)

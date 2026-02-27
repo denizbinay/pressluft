@@ -4,13 +4,9 @@
   connection: local
   gather_facts: false
   vars:
-    api_token: "{{ api_token }}"
-    volume_name: "{{ volume_name }}"
     size_gb: "{{ size_gb | default(0) }}"
     location: "{{ location | default('') }}"
-    state: "{{ state }}"
     automount: "{{ automount | default(false) }}"
-    server_name: "{{ server_name }}"
   tasks:
     - name: Validate required inputs
       ansible.builtin.assert:

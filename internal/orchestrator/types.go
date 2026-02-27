@@ -29,6 +29,7 @@ type Job struct {
 	Payload     string    `json:"payload,omitempty"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
+	CommandID   *string   `json:"command_id,omitempty"`
 }
 
 // JobEvent is an ordered event entry consumed by the dashboard.

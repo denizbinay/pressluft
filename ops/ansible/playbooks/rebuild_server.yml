@@ -3,10 +3,6 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    api_token: "{{ api_token }}"
-    server_name: "{{ server_name }}"
-    server_image: "{{ server_image }}"
   tasks:
     - name: Validate required inputs
       ansible.builtin.assert:

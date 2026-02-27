@@ -3,25 +3,53 @@
   hosts: all
   gather_facts: false
   vars:
-    profile_path: "{{ profile_path }}"
     profile_path_resolved: "{{ profile_path if (profile_path is match('^/')) else (playbook_dir ~ '/../../..' ~ '/' ~ profile_path) }}"
+    registration_token: "{{ agent_registration_token | default('') }}"
   tasks:
-    - name: Load profile vars
-      ansible.builtin.include_vars:
-        file: "{{ profile_path_resolved }}"
-        name: profile
+    - name: Create pressluft directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/pressluft
+        - /var/lib/pressluft
 
-    - name: Run common role
-      ansible.builtin.include_role:
-        name: common
+    - name: Copy agent binary
+      ansible.builtin.copy:
+        src: "{{ agent_binary_path | default('bin/pressluft-agent') }}"
+        dest: /usr/local/bin/pressluft-agent
+        mode: '0755'
+      notify: restart pressluft-agent
 
-    - name: Run profile role
-      ansible.builtin.include_role:
-        name: "{{ profile.artifacts.role }}"
+    - name: Deploy agent config
+      ansible.builtin.template:
+        src: agent-config.yaml.j2
+        dest: /etc/pressluft/agent.yaml
+        mode: '0644'
+      notify: restart pressluft-agent
 
-    - name: Emit configure stats
-      ansible.builtin.set_stats:
-        data:
-          configure_result:
-            profile_key: "{{ profile.key | default('') }}"
-            role: "{{ profile.artifacts.role | default('') }}"
+    - name: Deploy systemd service
+      ansible.builtin.template:
+        src: pressluft-agent.service.j2
+        dest: /etc/systemd/system/pressluft-agent.service
+        mode: '0644'
+      notify:
+        - reload systemd
+        - restart pressluft-agent
+
+    - name: Enable and start agent
+      ansible.builtin.systemd:
+        name: pressluft-agent
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: restart pressluft-agent
+      ansible.builtin.systemd:
+        name: pressluft-agent
+        state: restarted
