@@ -1,150 +1,93 @@
 # Pressluft
 
-Single-binary Go service that serves an embedded Nuxt dashboard and exposes bootstrap-safe API endpoints.
+Self-hosted WordPress hosting panel for web agencies.
 
-## Project Structure
+> **⚠️ Highly experimental.** This project is not ready for production use. But you can change that. Join the team!
 
-- `cmd/main.go`: Go entrypoint
-- `internal/`: internal Go packages (`server`)
-- `web/`: Nuxt application source
-- `ops/`: operations workspace (profiles, ansible, schemas, scripts)
-- `internal/server/dist/`: generated static assets embedded into Go
-- `bin/`: compiled binary output
+![Screenshot](screenshot.png)
 
-## Prerequisites
+## What I'd love to build
 
-- Go 1.22+
-- Node.js 20+
-- npm 10+
+Professional WordPress hosting platforms like WP Engine, Cloudways, Kinsta, and Raidboxes give agencies a complete workflow — staging environments, push-to-live, server management, site monitoring, backups, updates and way more.
 
-## Build
+Pressluft is the attempt to build that same experience as open-source software you run yourself. Self-hosted, on infrastructure you own, with the same kind of polish a professional agency workflow requires.
+
+## What I think it could do
+
+- Provision servers on any major cloud provider and pick a pre-configured stack — e.g. NGINX, OpenLiteSpeed, or WooCommerce-optimized — including hardened WordPress configuration and security defaults out of the box
+- Access server-side optimizations like caching, Redis, image optimization, firewall and more without relying on WordPress plugins
+- Deploy new WordPress sites instantly to existing domains or a sandbox
+- Create staging environments and push changes to live with one click
+- Create automatic remote backups to any S3-compatible storage
+- Migrate existing WordPress sites into the management panel
+- Update plugins, themes, and WordPress core automatically with rollbacks on failure
+- Spin up a local development environment with one command and connect it to your staging site
+
+I'm sure all of you have 101 more features that fit your agency workflow.
+
+## Where we are today
+
+- Provision, delete, rebuild, and resize VPS servers (Hetzner Cloud only so far — add more yourself!)
+- Run Ansible-based provisioning/configuration flows and deploy the Pressluft agent (profile roles are scaffolded and evolving)
+- Deploy a lightweight agent to each server during provisioning — it connects back to the control plane, accepts commands, and reports CPU and memory usage
+- Restart services on managed servers remotely
+- Job queue with real-time step-by-step timeline
+- Account-wide activity log
+
+## Security
+
+Security is a core concern for a tool that manages production infrastructure. Here is what the current implementation does:
+
+- SSH private keys and the certificate authority key are encrypted at rest using [age](https://age-encryption.org)
+- The control plane acts as its own certificate authority (ECDSA P-256)
+- In production, agents authenticate to the control plane using mTLS — each agent gets a client certificate signed by the control plane CA on first registration
+- In dev mode, token-based auth is used instead so you don't need to deal with certificates locally
+
+## Get involved
+
+This should be a community project from WordPress professionals for WordPress professionals. If you've made it this far, you probably know exactly what your workflow needs. Help shape what this becomes.
+
+The codebase is split into three main areas by discipline, so you can contribute in the part you know best without having to work through the whole thing:
+
+- `web/` — a standard Nuxt 3 app. If you know Vue, you can work on the dashboard without touching any Go.
+- `internal/` — the Go backend: API, job orchestration, agent communication, and the security layer. This is where the core business logic lives.
+- `ops/` — Ansible playbooks, server profiles, and scripts. If you are a sysadmin or infrastructure person, this is your world.
+
+Open an issue, start a discussion, send a PR, or write to [deniz@bombig.net](mailto:deniz@bombig.net).
+
+## Get started
+
+Use a Unix-like environment (Ubuntu, macOS, or WSL2). Development is tested on Ubuntu 24.04 in WSL2 on Windows 11. Feedback to other environments welcome!
+
+**Install required tools:**
+
+- [Go 1.24+](https://go.dev/dl/)
+- [Node.js 20+](https://nodejs.org/)
+- [pnpm](https://pnpm.io/installation)
+- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+
+**Set up project dependencies** from the repository root:
 
 ```bash
-make build
+python3 -m venv .venv
+source .venv/bin/activate
+pip install ansible
+ansible-galaxy collection install -r ops/ansible/requirements.yml
 ```
 
-What this does:
-- Installs dashboard dependencies (if missing)
-- Generates static Nuxt files to `web/.output/public`
-- Copies static files to `internal/server/dist` for embedding
-- Builds `bin/pressluft`
-
-## Run
-
-```bash
-./bin/pressluft
-```
-
-Or run build + start in one step:
-
-```bash
-make run
-```
-
-Optional port override:
-
-```bash
-PORT=9090 ./bin/pressluft
-```
-
-## Age Key Management
-
-Pressluft encrypts stored SSH private keys using age. By default it uses
-`~/.pressluft/age.key` for the age identity file.
-
-- If `PRESSLUFT_AGE_KEY_PATH` is not set and the default file is missing,
-  Pressluft generates a new age identity on first run with permissions `0600`.
-- If `PRESSLUFT_AGE_KEY_PATH` is set, the file must already exist and be
-  readable; Pressluft will fail fast if it is missing.
-
-Keep the age identity file local to the host running Pressluft and never log
-or share the private key contents.
-
-## Dev
+## Development
 
 ```bash
 make dev
 ```
 
-This starts:
-- Go backend on `http://localhost:8081`
-- Nuxt dev UI on `http://localhost:8080`
+This starts the Go backend on `http://localhost:8081`, the Nuxt dev server on `http://localhost:8080`, and a Cloudflare quick tunnel so provisioned servers can reach your local control plane.
 
-In dev mode, `make dev` also starts a Cloudflare quick tunnel so provisioned
-agents can reach your local control plane without extra setup.
-
-Prerequisite for the tunnel:
-- Install `cloudflared` (https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
-
-`/api` calls from Nuxt are proxied to the Go backend in dev mode.
-
-Go request logs are emitted in structured form (method, path, status, duration).
-
-Optional overrides:
+## Building
 
 ```bash
-make dev DEV_API_PORT=8082 DEV_UI_PORT=3000
+make build   # control plane — builds bin/pressluft with embedded dashboard
+make agent   # agent binary — statically linked, for deployment to managed servers
+make all     # both
 ```
 
-If you want to use your own tunnel or avoid running `cloudflared`, set:
-
-```bash
-PRESSLUFT_CONTROL_PLANE_URL=https://your-tunnel.example make dev
-```
-
-## Test
-
-```bash
-make test
-```
-
-Runs Go unit tests (`go test ./...`).
-
-## Check
-
-```bash
-make check
-```
-
-Runs first-commit readiness checks in order:
-- format (`go fmt ./...`)
-- lint (`go vet ./...`)
-- test (`go test ./...`)
-- build (`make build`)
-
-## Validation
-
-1. Build succeeds:
-
-```bash
-make build
-```
-
-2. Root dashboard is served:
-
-```bash
-curl -i http://127.0.0.1:8080/
-```
-
-Expected: `HTTP/1.1 200 OK` and HTML response body.
-
-3. Health endpoint responds healthy JSON:
-
-```bash
-curl -i http://127.0.0.1:8080/api/health
-```
-
-Expected body:
-
-```json
-{"status":"healthy"}
-```
-
-See `docs/bootstrap-validation.md` for a concise validation checklist and bootstrap safety constraints.
-
-## Ops Foundation
-
-- Profile contracts live under `ops/profiles/`
-- Ansible convergence scaffolding lives under `ops/ansible/`
-- Profile schema lives at `ops/schemas/profile.schema.json`
-- Orchestration lifecycle scaffolding is available via `/api/jobs` and `/api/jobs/{id}/events`
