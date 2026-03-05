@@ -1,16 +1,21 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 	"pressluft/internal/server/profiles"
+	"pressluft/internal/ws"
+
+	"github.com/google/uuid"
 )
 
 type serversHandler struct {
@@ -19,6 +24,7 @@ type serversHandler struct {
 	jobStore        *orchestrator.Store
 	activityStore   *activity.Store
 	activityHandler *activityHandler
+	hub             *ws.Hub
 }
 
 func (sh *serversHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +51,8 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 		sh.handleCatalog(w, r)
 	case "profiles":
 		sh.handleProfiles(w, r)
+	case "agents":
+		sh.handleAllAgentStatus(w, r)
 	default:
 		// Check for nested paths like /api/servers/{id}/jobs
 		parts := strings.Split(tail, "/")
@@ -107,6 +115,20 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 					sh.activityHandler.handleServerActivity(w, r, serverID)
 					return
 				}
+			case "agent-status":
+				if r.Method != http.MethodGet {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				sh.handleAgentStatus(w, r, serverID)
+				return
+			case "services":
+				if r.Method != http.MethodGet {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				sh.handleListServices(w, r, serverID)
+				return
 			}
 		}
 
@@ -588,4 +610,128 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// handleAllAgentStatus returns agent status for all connected servers.
+// GET /api/servers/agents
+func (sh *serversHandler) handleAllAgentStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if sh.hub == nil {
+		respondJSON(w, http.StatusOK, map[int64]ws.AgentInfo{})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, sh.hub.GetAllAgentInfo())
+}
+
+// handleAgentStatus returns real-time agent connection status and metrics.
+func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Request, serverID int64) {
+	// First verify the server exists
+	server, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// If we have a hub, get real-time status
+	if sh.hub != nil {
+		info := sh.hub.GetAgentInfo(serverID)
+		respondJSON(w, http.StatusOK, info)
+		return
+	}
+
+	// Fallback to stored status from database
+	status := ws.AgentStatusUnknown
+	if server.NodeStatus != "" {
+		status = ws.AgentStatus(server.NodeStatus)
+	}
+
+	respondJSON(w, http.StatusOK, ws.AgentInfo{
+		Connected: false,
+		Status:    status,
+	})
+}
+
+// Service represents a systemd service on the server.
+type Service struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ActiveState string `json:"active_state"`
+	LoadState   string `json:"load_state"`
+}
+
+type servicesResponse struct {
+	ServerID       int64     `json:"server_id"`
+	AgentConnected bool      `json:"agent_connected"`
+	Services       []Service `json:"services"`
+}
+
+// handleListServices returns the list of running services on the server.
+// This requires an active agent connection to fetch real-time data.
+func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Request, serverID int64) {
+	// Verify server exists
+	_, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// Check if agent is connected
+	if sh.hub == nil {
+		respondJSON(w, http.StatusOK, servicesResponse{
+			ServerID:       serverID,
+			AgentConnected: false,
+			Services:       []Service{},
+		})
+		return
+	}
+
+	info := sh.hub.GetAgentInfo(serverID)
+	if !info.Connected {
+		respondJSON(w, http.StatusOK, servicesResponse{
+			ServerID:       serverID,
+			AgentConnected: false,
+			Services:       []Service{},
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	cmd := ws.Command{
+		ID:   uuid.NewString(),
+		Type: "list_services",
+	}
+
+	result, err := sh.hub.SendCommandAndWait(ctx, serverID, cmd)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "failed to fetch services: "+err.Error())
+		return
+	}
+
+	if !result.Success {
+		respondError(w, http.StatusBadGateway, "failed to fetch services: "+result.Error)
+		return
+	}
+
+	var payload struct {
+		Services []Service `json:"services"`
+	}
+	if result.Output != "" {
+		if err := json.Unmarshal([]byte(result.Output), &payload); err != nil {
+			respondError(w, http.StatusBadGateway, "invalid service response")
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, servicesResponse{
+		ServerID:       serverID,
+		AgentConnected: true,
+		Services:       payload.Services,
+	})
 }

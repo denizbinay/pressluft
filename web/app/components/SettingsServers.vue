@@ -23,6 +23,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { useProviders } from "~/composables/useProviders"
 import { useServers, type ServerTypePrice } from "~/composables/useServers"
+import { useAllAgentStatus } from "~/composables/useAgentStatus"
 import type { Job } from "~/composables/useJobs"
 
 const modal = useModal()
@@ -39,6 +40,8 @@ const {
   createServer,
   deleteServer,
 } = useServers()
+
+const { getStatusType, isConnected } = useAllAgentStatus({ pollInterval: 15000 })
 
 // Delete confirmation state
 const deleteConfirmId = ref<number | null>(null)
@@ -366,6 +369,32 @@ const handleDialogUpdate = (value: boolean) => {
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-foreground group-hover:text-foreground">{{ server.name }}</span>
             <Badge :class="statusBadgeClass(server.status)">{{ server.status }}</Badge>
+            <!-- Agent status indicator -->
+            <span
+              v-if="server.status === 'ready'"
+              class="flex items-center gap-1 text-xs"
+              :title="'Agent: ' + getStatusType(server.id)"
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="{
+                  'bg-primary animate-pulse': getStatusType(server.id) === 'online',
+                  'bg-amber-500': getStatusType(server.id) === 'unhealthy',
+                  'bg-muted-foreground/50': getStatusType(server.id) === 'offline',
+                  'bg-muted-foreground/30': getStatusType(server.id) === 'unknown',
+                }"
+              />
+              <span
+                class="hidden sm:inline"
+                :class="{
+                  'text-primary': getStatusType(server.id) === 'online',
+                  'text-amber-500': getStatusType(server.id) === 'unhealthy',
+                  'text-muted-foreground/60': getStatusType(server.id) === 'offline' || getStatusType(server.id) === 'unknown',
+                }"
+              >
+                {{ isConnected(server.id) ? 'Agent' : '' }}
+              </span>
+            </span>
           </div>
           <p class="text-xs text-muted-foreground">
             {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }} · Added {{ formatDate(server.created_at) }}

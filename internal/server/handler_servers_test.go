@@ -219,6 +219,9 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 			status             TEXT    NOT NULL,
 			action_id          TEXT,
 			action_status      TEXT,
+			node_status        TEXT DEFAULT 'unknown',
+			node_last_seen     TEXT,
+			node_version       TEXT,
 			created_at         TEXT    NOT NULL,
 			updated_at         TEXT    NOT NULL,
 			FOREIGN KEY (provider_id) REFERENCES providers(id)
@@ -251,6 +254,7 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 			retry_count  INTEGER NOT NULL DEFAULT 0,
 			last_error   TEXT,
 			payload      TEXT,
+			command_id   TEXT,
 			created_at   TEXT    NOT NULL,
 			updated_at   TEXT    NOT NULL,
 			FOREIGN KEY (server_id) REFERENCES servers(id)

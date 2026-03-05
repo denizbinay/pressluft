@@ -45,7 +45,32 @@ func (c *Completer) HandleResult(result ws.CommandResult) error {
 	}
 
 	_, err = c.store.TransitionJob(ctx, job.ID, transitionInput)
-	return err
+	if err != nil {
+		return err
+	}
+
+	message := "Command completed successfully"
+	level := "info"
+	status := "succeeded"
+	if !result.Success {
+		level = "error"
+		status = "failed"
+		if result.Error != "" {
+			message = result.Error
+		} else {
+			message = "Command failed"
+		}
+	}
+
+	_, _ = c.store.AppendEvent(ctx, job.ID, orchestrator.CreateEventInput{
+		EventType: "step_update",
+		Level:     level,
+		StepKey:   "command",
+		Status:    status,
+		Message:   message,
+	})
+
+	return nil
 }
 
 func (c *Completer) HandleLogEntry(entry ws.LogEntry) error {

@@ -7,7 +7,7 @@ import (
 )
 
 type ServerStore interface {
-	UpdateNodeStatus(serverID int64, status string) error
+	UpdateNodeStatus(ctx context.Context, serverID int64, status, lastSeen, version string) error
 }
 
 type Monitor struct {
@@ -48,15 +48,16 @@ func (m *Monitor) checkConnections() {
 	m.hub.Range(func(serverID int64, conn *Conn) bool {
 		lastSeen := conn.LastSeen()
 		elapsed := now.Sub(lastSeen)
+		version := conn.Version()
 
 		if elapsed > m.offlineThreshold {
 			m.logger.Info("node offline, closing connection", "server_id", serverID, "elapsed", elapsed)
-			_ = m.store.UpdateNodeStatus(serverID, "offline")
+			_ = m.store.UpdateNodeStatus(context.Background(), serverID, "offline", lastSeen.UTC().Format(time.RFC3339), version)
 			conn.Close()
 			m.hub.Unregister(serverID)
 		} else if elapsed > m.unhealthyThreshold {
 			m.logger.Debug("node unhealthy", "server_id", serverID, "elapsed", elapsed)
-			_ = m.store.UpdateNodeStatus(serverID, "unhealthy")
+			_ = m.store.UpdateNodeStatus(context.Background(), serverID, "unhealthy", lastSeen.UTC().Format(time.RFC3339), version)
 		}
 
 		return true

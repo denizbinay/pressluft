@@ -18,7 +18,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"filippo.io/age"
@@ -239,7 +238,13 @@ func loadCAKey(caKeyPath, ageKeyPath string) (*ecdsa.PrivateKey, error) {
 		return nil, err
 	}
 
-	decrypted, err := age.Decrypt(strings.NewReader(string(encryptedKey)), ageId)
+	reader := bytes.NewReader(encryptedKey)
+	var decryptReader io.Reader = reader
+	if bytes.HasPrefix(bytes.TrimSpace(encryptedKey), []byte("-----BEGIN AGE ENCRYPTED FILE-----")) {
+		decryptReader = armor.NewReader(reader)
+	}
+
+	decrypted, err := age.Decrypt(decryptReader, ageId)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt CA key: %w", err)
 	}

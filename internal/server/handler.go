@@ -11,6 +11,7 @@ import (
 	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
+	"pressluft/internal/ws"
 )
 
 const assetDir = "dist"
@@ -21,10 +22,27 @@ var embeddedDist embed.FS
 // NewHandler creates the root HTTP handler. When db is nil the provider
 // endpoints are not registered (useful for tests that only need static assets).
 func NewHandler(db *sql.DB) http.Handler {
+	return NewHandlerWithHub(db, nil, nil, nil)
+}
+
+// NewHandlerWithHub creates the root HTTP handler with an optional WebSocket hub
+// for real-time agent status. When hub is nil, agent status endpoints will return
+// stored database values only.
+func NewHandlerWithHub(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandler *NodeHandler) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health
 	mux.HandleFunc("/api/health", handleHealth)
+
+	// Agent WebSocket
+	if wsHandler != nil {
+		mux.HandleFunc("/ws/agent", wsHandler.handleAgentWebSocket)
+	}
+
+	// Node registration
+	if nodeHandler != nil {
+		mux.HandleFunc("/api/nodes/", nodeHandler.handleNodeRegister)
+	}
 
 	// Provider endpoints (only when database is available)
 	if db != nil {
@@ -47,6 +65,7 @@ func NewHandler(db *sql.DB) http.Handler {
 			serverStore:   NewServerStore(db),
 			jobStore:      jobStore,
 			activityStore: activityStore,
+			hub:           hub,
 		}
 		mux.HandleFunc("/api/servers", sh.route)
 		mux.HandleFunc("/api/servers/", sh.routeWithPath)

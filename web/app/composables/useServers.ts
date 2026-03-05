@@ -51,8 +51,36 @@ export interface StoredServer {
   status: string
   action_id?: string
   action_status?: string
+  node_status?: string
+  node_last_seen?: string
+  node_version?: string
   created_at: string
   updated_at: string
+}
+
+export type AgentStatusType = 'online' | 'unhealthy' | 'offline' | 'unknown'
+
+export interface AgentInfo {
+  connected: boolean
+  status: AgentStatusType
+  last_seen?: string
+  version?: string
+  cpu_percent?: number
+  mem_used_mb?: number
+  mem_total_mb?: number
+}
+
+export interface Service {
+  name: string
+  description: string
+  active_state: string
+  load_state: string
+}
+
+export interface ServicesResponse {
+  server_id: number
+  agent_connected: boolean
+  services: Service[]
 }
 
 export interface CreateServerInput {
@@ -145,6 +173,30 @@ export function useServers() {
     return await res.json() as StoredServer
   }
 
+  const fetchAgentStatus = async (serverId: number): Promise<AgentInfo> => {
+    const res = await fetch(`/api/servers/${serverId}/agent-status`)
+    if (!res.ok) {
+      throw new Error('Failed to fetch agent status')
+    }
+    return await res.json() as AgentInfo
+  }
+
+  const fetchAllAgentStatus = async (): Promise<Record<number, AgentInfo>> => {
+    const res = await fetch('/api/servers/agents')
+    if (!res.ok) {
+      throw new Error('Failed to fetch agent status')
+    }
+    return await res.json() as Record<number, AgentInfo>
+  }
+
+  const fetchServices = async (serverId: number): Promise<ServicesResponse> => {
+    const res = await fetch(`/api/servers/${serverId}/services`)
+    if (!res.ok) {
+      throw new Error('Failed to fetch services')
+    }
+    return await res.json() as ServicesResponse
+  }
+
   return {
     servers: readonly(servers),
     profiles: readonly(profiles),
@@ -157,5 +209,8 @@ export function useServers() {
     fetchCatalog,
     createServer,
     deleteServer,
+    fetchAgentStatus,
+    fetchAllAgentStatus,
+    fetchServices,
   }
 }

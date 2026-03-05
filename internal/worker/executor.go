@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"pressluft/internal/activity"
 	"pressluft/internal/orchestrator"
@@ -82,6 +83,8 @@ type Executor struct {
 	providerStore   ProviderStore
 	activityStore   *activity.Store
 	runner          runner.Runner
+	agentRunner     AgentJobRunner
+	devTokenStore   DevTokenStore
 	playbookPath    string
 	configurePath   string
 	deletePath      string
@@ -103,6 +106,16 @@ type ExecutorConfig struct {
 	FirewallsPlaybookPath string
 	VolumePlaybookPath    string
 	ControlPlaneURL       string
+	DevTokenStore         DevTokenStore
+	AgentRunner           AgentJobRunner
+}
+
+type DevTokenStore interface {
+	Create(serverID int64, expiresIn time.Duration) (string, error)
+}
+
+type AgentJobRunner interface {
+	Run(ctx context.Context, job orchestrator.Job) error
 }
 
 // NewExecutor creates an executor with the given dependencies.
@@ -121,6 +134,8 @@ func NewExecutor(
 		providerStore:   providerStore,
 		activityStore:   activityStore,
 		runner:          runner,
+		agentRunner:     config.AgentRunner,
+		devTokenStore:   config.DevTokenStore,
 		playbookPath:    strings.TrimSpace(config.ProvisionPlaybookPath),
 		configurePath:   strings.TrimSpace(config.ConfigurePlaybookPath),
 		deletePath:      strings.TrimSpace(config.DeletePlaybookPath),
@@ -148,9 +163,38 @@ func (e *Executor) Execute(ctx context.Context, job *orchestrator.Job) error {
 		return e.executeUpdateFirewalls(ctx, job)
 	case "manage_volume":
 		return e.executeManageVolume(ctx, job)
+	case "restart_service":
+		return e.executeAgentJob(ctx, job)
 	default:
 		return e.failJob(ctx, job, fmt.Sprintf("unknown job kind: %s", job.Kind))
 	}
+}
+
+func (e *Executor) executeAgentJob(ctx context.Context, job *orchestrator.Job) error {
+	if job.ServerID <= 0 {
+		return e.failJob(ctx, job, "server_id is required for agent job")
+	}
+	if e.agentRunner == nil {
+		return e.failJob(ctx, job, "agent runner not configured")
+	}
+
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+	})
+
+	if err := e.agentRunner.Run(ctx, *job); err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("agent dispatch failed: %v", err))
+	}
+
+	return nil
 }
 
 // executeProvisionServer runs the server provisioning workflow:
@@ -362,16 +406,26 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		return e.failJob(ctx, job, fmt.Sprintf("agent binary not found at %q; ensure bin/pressluft-agent exists in the project root", agentBinaryPath))
 	}
 
+	extraVars := map[string]string{
+		"server_id":         strconv.FormatInt(server.ID, 10),
+		"control_plane_url": e.controlPlaneURL,
+		"profile_path":      profile.ArtifactPath,
+		"agent_binary_path": agentBinaryPath,
+	}
+
+	devVars, err := e.extraAgentVars(ctx, server.ID)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("failed to prepare agent config: %v", err))
+	}
+	for key, value := range devVars {
+		extraVars[key] = value
+	}
+
 	configureRequest := runner.Request{
 		JobID:         job.ID,
 		InventoryPath: configureInventoryPath,
 		PlaybookPath:  e.configurePath,
-		ExtraVars: map[string]string{
-			"server_id":         strconv.FormatInt(server.ID, 10),
-			"control_plane_url": e.controlPlaneURL,
-			"profile_path":      profile.ArtifactPath,
-			"agent_binary_path": agentBinaryPath,
-		},
+		ExtraVars:     extraVars,
 	}
 
 	if err := e.runner.Run(ctx, configureRequest, &runnerEventSink{jobStore: e.jobStore, jobID: job.ID, logger: e.logger}); err != nil {
@@ -1133,6 +1187,7 @@ func jobKindLabel(kind string) string {
 		"resize_server":    "Server resize",
 		"update_firewalls": "Firewall update",
 		"manage_volume":    "Volume management",
+		"restart_service":  "Service restart",
 	}
 	if label, ok := labels[kind]; ok {
 		return label

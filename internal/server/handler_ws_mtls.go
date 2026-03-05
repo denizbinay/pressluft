@@ -1,3 +1,5 @@
+//go:build !dev
+
 package server
 
 import (
@@ -7,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"pressluft/internal/agentauth"
 	"pressluft/internal/pki"
 	"pressluft/internal/ws"
 
@@ -14,18 +17,20 @@ import (
 )
 
 type WSHandler struct {
-	hub       *ws.Hub
-	wsHandler *ws.Handler
-	pkiStore  *pki.Store
-	logger    *slog.Logger
+	hub        *ws.Hub
+	wsHandler  *ws.Handler
+	pkiStore   *pki.Store
+	tokenStore *agentauth.Store
+	logger     *slog.Logger
 }
 
-func NewWSHandler(hub *ws.Hub, wsHandler *ws.Handler, pkiStore *pki.Store, logger *slog.Logger) *WSHandler {
+func NewWSHandler(hub *ws.Hub, wsHandler *ws.Handler, pkiStore *pki.Store, tokenStore *agentauth.Store, logger *slog.Logger) *WSHandler {
 	return &WSHandler{
-		hub:       hub,
-		wsHandler: wsHandler,
-		pkiStore:  pkiStore,
-		logger:    logger,
+		hub:        hub,
+		wsHandler:  wsHandler,
+		pkiStore:   pkiStore,
+		tokenStore: tokenStore,
+		logger:     logger,
 	}
 }
 

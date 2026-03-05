@@ -70,6 +70,12 @@ This starts:
 - Go backend on `http://localhost:8081`
 - Nuxt dev UI on `http://localhost:8080`
 
+In dev mode, `make dev` also starts a Cloudflare quick tunnel so provisioned
+agents can reach your local control plane without extra setup.
+
+Prerequisite for the tunnel:
+- Install `cloudflared` (https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
+
 `/api` calls from Nuxt are proxied to the Go backend in dev mode.
 
 Go request logs are emitted in structured form (method, path, status, duration).
@@ -78,6 +84,12 @@ Optional overrides:
 
 ```bash
 make dev DEV_API_PORT=8082 DEV_UI_PORT=3000
+```
+
+If you want to use your own tunnel or avoid running `cloudflared`, set:
+
+```bash
+PRESSLUFT_CONTROL_PLANE_URL=https://your-tunnel.example make dev
 ```
 
 ## Test

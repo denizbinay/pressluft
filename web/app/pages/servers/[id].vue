@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { useServers, type StoredServer } from "~/composables/useServers"
+import { useServers, type StoredServer, type AgentInfo, type Service } from "~/composables/useServers"
 import { useJobs } from "~/composables/useJobs"
 import { useServerOptions } from "~/composables/useServerOptions"
+import { useAgentStatus } from "~/composables/useAgentStatus"
 
 interface ServerSection {
   key: string
@@ -19,6 +20,7 @@ interface ServerSection {
 
 const sections: ServerSection[] = [
   { key: 'overview', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', description: 'Server status and quick actions' },
+  { key: 'services', label: 'Services', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01', description: 'Running services and management' },
   { key: 'sites', label: 'Sites', icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9', description: 'Websites hosted on this server' },
   { key: 'settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', description: 'Server configuration and management' },
   { key: 'activity', label: 'Activity', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', description: 'Recent events and job history' },
@@ -32,12 +34,141 @@ const serverId = computed(() => {
   return Number.isNaN(id) ? null : id
 })
 
-const { fetchServer } = useServers()
-const { createJob } = useJobs()
+const { fetchServer, fetchServices } = useServers()
+const { createJob, fetchJob } = useJobs()
 
 const server = ref<StoredServer | null>(null)
 const loading = ref(true)
 const error = ref('')
+
+// Agent status
+const { agentInfo, fetch: fetchAgentStatus, startPolling: startAgentPolling, stopPolling: stopAgentPolling } = useAgentStatus(serverId, { autoStart: false })
+
+// Services
+const services = ref<Service[]>([])
+const servicesLoading = ref(false)
+const servicesError = ref('')
+type ServiceActionStatus = 'idle' | 'queued' | 'running' | 'succeeded' | 'failed'
+
+interface ServiceActionState {
+  status: ServiceActionStatus
+  message: string
+  jobId?: number
+}
+
+const serviceActions = reactive<Record<string, ServiceActionState>>({})
+const serviceMonitors = new Map<string, ReturnType<typeof setInterval>>()
+
+const agentConnected = computed(() => agentInfo.value?.connected ?? false)
+const agentStatus = computed(() => agentInfo.value?.status ?? 'unknown')
+
+const agentStatusLabel = computed(() => {
+  switch (agentStatus.value) {
+    case 'online': return 'Online'
+    case 'unhealthy': return 'Unhealthy'
+    case 'offline': return 'Offline'
+    default: return 'Unknown'
+  }
+})
+
+const memPercent = computed(() => {
+  if (!agentInfo.value?.mem_total_mb) return 0
+  return Math.round((agentInfo.value.mem_used_mb ?? 0) / agentInfo.value.mem_total_mb * 100)
+})
+
+const loadServices = async () => {
+  if (!serverId.value) return
+  servicesLoading.value = true
+  servicesError.value = ''
+  try {
+    const res = await fetchServices(serverId.value)
+    services.value = res.services
+  } catch (e: any) {
+    servicesError.value = e.message
+  } finally {
+    servicesLoading.value = false
+  }
+}
+
+const terminalStatuses = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
+
+const setServiceAction = (serviceName: string, next: Partial<ServiceActionState>) => {
+  const current = serviceActions[serviceName] || { status: 'idle', message: '' }
+  serviceActions[serviceName] = { ...current, ...next }
+}
+
+const clearServiceMonitor = (serviceName: string) => {
+  const monitor = serviceMonitors.get(serviceName)
+  if (monitor) clearInterval(monitor)
+  serviceMonitors.delete(serviceName)
+}
+
+const monitorServiceJob = (serviceName: string, jobId: number) => {
+  clearServiceMonitor(serviceName)
+
+  const monitor = setInterval(async () => {
+    try {
+      const job = await fetchJob(jobId)
+      if (terminalStatuses.has(job.status)) {
+        clearServiceMonitor(serviceName)
+
+        if (job.status === 'succeeded') {
+          setServiceAction(serviceName, { status: 'succeeded', message: 'Service restarted', jobId })
+          loadServices()
+          return
+        }
+
+        const errorMessage = job.last_error
+          ? `Failed: ${job.last_error}`
+          : job.status === 'cancelled'
+            ? 'Restart cancelled'
+            : job.status === 'timed_out'
+              ? 'Restart timed out'
+              : 'Restart failed'
+
+        setServiceAction(serviceName, { status: 'failed', message: errorMessage, jobId })
+        return
+      }
+
+      if (job.status === 'running') {
+        setServiceAction(serviceName, { status: 'running', message: 'Restarting...', jobId })
+      } else if (job.status === 'queued') {
+        setServiceAction(serviceName, { status: 'queued', message: 'Queued for restart', jobId })
+      }
+    } catch (e: any) {
+      clearServiceMonitor(serviceName)
+      setServiceAction(serviceName, {
+        status: 'failed',
+        message: e?.message || 'Failed to fetch job status',
+        jobId,
+      })
+    }
+  }, 1200)
+
+  serviceMonitors.set(serviceName, monitor)
+}
+
+const restartService = async (serviceName: string) => {
+  if (!serverId.value) return
+  if (serviceActions[serviceName]?.status === 'queued' || serviceActions[serviceName]?.status === 'running') {
+    return
+  }
+  setServiceAction(serviceName, { status: 'queued', message: 'Queuing restart...' })
+  try {
+    const job = await createJob({
+      kind: 'restart_service',
+      server_id: serverId.value,
+      payload: { service_name: serviceName },
+    })
+    setServiceAction(serviceName, { status: 'queued', message: 'Queued for restart', jobId: job.id })
+    monitorServiceJob(serviceName, job.id)
+  } catch (e: any) {
+    setServiceAction(serviceName, {
+      status: 'failed',
+      message: e?.message || 'Failed to restart service',
+    })
+  }
+}
 
 const activeSection = computed(() => {
   const tab = route.query.tab as string
@@ -301,11 +432,24 @@ onMounted(async () => {
   try {
     server.value = await fetchServer(serverId.value)
     await fetchServerOptions(serverId.value)
+    // Start agent status polling if server is ready
+    if (server.value?.status === 'ready') {
+      startAgentPolling()
+      loadServices()
+    }
   } catch (e: any) {
     error.value = e.message || 'Failed to load server'
   } finally {
     loading.value = false
   }
+})
+
+onUnmounted(() => {
+  stopAgentPolling()
+  for (const monitor of serviceMonitors.values()) {
+    clearInterval(monitor)
+  }
+  serviceMonitors.clear()
 })
 </script>
 
@@ -358,6 +502,29 @@ onMounted(async () => {
             ]"
           >
             {{ server.status }}
+          </Badge>
+          <!-- Agent status badge -->
+          <Badge
+            v-if="server.status === 'ready'"
+            variant="outline"
+            :class="[
+              'px-2.5 py-1 text-sm border flex items-center gap-1.5',
+              agentStatus === 'online' && 'border-primary/30 bg-primary/10 text-primary',
+              agentStatus === 'unhealthy' && 'border-amber-500/30 bg-amber-500/10 text-amber-600',
+              agentStatus === 'offline' && 'border-border/60 bg-muted/60 text-muted-foreground',
+              agentStatus === 'unknown' && 'border-border/40 bg-muted/40 text-muted-foreground',
+            ]"
+          >
+            <span
+              class="h-1.5 w-1.5 rounded-full"
+              :class="{
+                'bg-primary animate-pulse': agentStatus === 'online',
+                'bg-amber-500': agentStatus === 'unhealthy',
+                'bg-muted-foreground/50': agentStatus === 'offline',
+                'bg-muted-foreground/30': agentStatus === 'unknown',
+              }"
+            />
+            Agent {{ agentStatusLabel }}
           </Badge>
         </div>
         <p class="mt-1 text-sm text-muted-foreground">
@@ -537,12 +704,192 @@ onMounted(async () => {
                   <p class="mt-1 font-mono text-sm text-foreground/80">{{ server.provider_server_id }}</p>
                 </div>
 
+                <!-- Agent Metrics (only show when server is ready) -->
+                <template v-if="server.status === 'ready'">
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <!-- CPU Usage -->
+                    <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                      <div class="flex items-center justify-between">
+                        <p class="text-xs font-medium text-muted-foreground">CPU Usage</p>
+                        <span
+                          v-if="agentConnected"
+                          class="flex items-center gap-1 text-xs text-primary"
+                        >
+                          <span class="h-1 w-1 animate-pulse rounded-full bg-primary" />
+                          Live
+                        </span>
+                      </div>
+                      <template v-if="agentConnected">
+                        <div class="mt-2 flex items-center gap-3">
+                          <div class="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              class="h-2 rounded-full bg-accent transition-all duration-500"
+                              :style="{ width: `${Math.min(agentInfo?.cpu_percent ?? 0, 100)}%` }"
+                            />
+                          </div>
+                          <span class="w-12 text-right text-sm font-medium text-foreground/80">
+                            {{ (agentInfo?.cpu_percent ?? 0).toFixed(1) }}%
+                          </span>
+                        </div>
+                      </template>
+                      <div v-else class="mt-1 text-sm text-muted-foreground/60">
+                        Agent not connected
+                      </div>
+                    </div>
+
+                    <!-- Memory Usage -->
+                    <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                      <div class="flex items-center justify-between">
+                        <p class="text-xs font-medium text-muted-foreground">Memory</p>
+                        <span
+                          v-if="agentConnected"
+                          class="flex items-center gap-1 text-xs text-primary"
+                        >
+                          <span class="h-1 w-1 animate-pulse rounded-full bg-primary" />
+                          Live
+                        </span>
+                      </div>
+                      <template v-if="agentConnected">
+                        <div class="mt-2 flex items-center gap-3">
+                          <div class="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              class="h-2 rounded-full bg-primary transition-all duration-500"
+                              :style="{ width: `${memPercent}%` }"
+                            />
+                          </div>
+                          <span class="w-24 text-right text-sm font-medium text-foreground/80">
+                            {{ agentInfo?.mem_used_mb ?? 0 }} / {{ agentInfo?.mem_total_mb ?? 0 }} MB
+                          </span>
+                        </div>
+                      </template>
+                      <div v-else class="mt-1 text-sm text-muted-foreground/60">
+                        Agent not connected
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Agent info -->
+                  <div v-if="agentConnected && agentInfo?.version" class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+                    <p class="text-xs font-medium text-muted-foreground">Agent Version</p>
+                    <p class="mt-1 font-mono text-sm text-foreground/80">{{ agentInfo.version }}</p>
+                  </div>
+                </template>
+
                 <!-- Quick actions placeholder -->
                 <div class="rounded-lg border border-dashed border-border/50 px-4 py-6 text-center">
                   <p class="text-sm text-muted-foreground">
                     Quick actions (reboot, stop, start, SSH access) will be available here.
                   </p>
                 </div>
+              </div>
+
+              <!-- Services -->
+              <div v-if="activeSection === 'services'" class="space-y-4">
+                <!-- Agent not connected state -->
+                <div v-if="!agentConnected" class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                  <h3 class="text-sm font-medium text-foreground">Agent not connected</h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    Service management requires an active agent connection.
+                  </p>
+                  <p class="mt-3 text-xs text-muted-foreground">
+                    Agent status: {{ agentStatusLabel }}
+                  </p>
+                </div>
+
+                <!-- Services list -->
+                <template v-else>
+                  <div class="flex items-center justify-between">
+                    <p class="text-sm text-muted-foreground">
+                      Running systemd services on this server.
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :disabled="servicesLoading"
+                      class="text-muted-foreground hover:text-foreground"
+                      @click="loadServices"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        :class="{ 'animate-spin': servicesLoading }"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh
+                    </Button>
+                  </div>
+
+                  <div v-if="servicesError" class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {{ servicesError }}
+                  </div>
+
+                  <div v-if="servicesLoading && services.length === 0" class="flex items-center justify-center py-8">
+                    <svg class="h-6 w-6 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </div>
+
+                  <div v-else-if="services.length === 0" class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+                    <p class="text-sm text-muted-foreground">No services found.</p>
+                  </div>
+
+                  <div v-else class="space-y-2">
+                    <div
+                      v-for="service in services"
+                      :key="service.name"
+                      class="flex items-center justify-between rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2">
+                          <span
+                            class="h-2 w-2 rounded-full"
+                            :class="{
+                              'bg-primary': service.active_state === 'running',
+                              'bg-muted-foreground': service.active_state !== 'running',
+                            }"
+                          />
+                          <span class="font-mono text-sm font-medium text-foreground">{{ service.name }}</span>
+                        </div>
+                        <p class="mt-0.5 truncate text-xs text-muted-foreground">{{ service.description }}</p>
+                        <p
+                          v-if="serviceActions[service.name]?.message"
+                          class="mt-0.5 text-xs"
+                          :class="{
+                            'text-destructive': serviceActions[service.name]?.status === 'failed',
+                            'text-primary': serviceActions[service.name]?.status === 'succeeded',
+                            'text-muted-foreground': serviceActions[service.name]?.status !== 'failed' && serviceActions[service.name]?.status !== 'succeeded',
+                          }"
+                        >
+                          {{ serviceActions[service.name].message }}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        :disabled="serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running'"
+                        class="ml-4 text-muted-foreground hover:text-foreground"
+                        @click="restartService(service.name)"
+                      >
+                        <svg
+                          class="h-4 w-4"
+                          :class="{ 'animate-spin': serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running' }"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        {{ serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running' ? 'Restarting...' : 'Restart' }}
+                      </Button>
+                    </div>
+                  </div>
+                </template>
               </div>
 
               <!-- Sites -->
@@ -560,6 +907,16 @@ onMounted(async () => {
 
               <!-- Settings -->
               <div v-if="activeSection === 'settings'" class="space-y-4">
+                <!-- Execution mode indicator -->
+                <div class="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2">
+                  <span
+                    class="h-2 w-2 rounded-full"
+                    :class="agentConnected ? 'bg-primary animate-pulse' : 'bg-muted-foreground'"
+                  />
+                  <span class="text-xs text-muted-foreground">
+                    {{ agentConnected ? 'Jobs will execute via Agent (fast)' : 'Jobs will execute via Ansible (SSH)' }}
+                  </span>
+                </div>
                 <div class="grid gap-4 lg:grid-cols-2">
                   <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
                     <div>

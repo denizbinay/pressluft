@@ -146,6 +146,9 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 			status             TEXT    NOT NULL,
 			action_id          TEXT,
 			action_status      TEXT,
+			node_status        TEXT DEFAULT 'unknown',
+			node_last_seen     TEXT,
+			node_version       TEXT,
 			created_at         TEXT    NOT NULL,
 			updated_at         TEXT    NOT NULL,
 			FOREIGN KEY (provider_id) REFERENCES providers(id)

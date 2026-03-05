@@ -16,13 +16,18 @@ import (
 	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/agentauth"
 	"pressluft/internal/database"
+	"pressluft/internal/dispatch"
 	"pressluft/internal/orchestrator"
+	"pressluft/internal/pki"
 	"pressluft/internal/provider"
+	"pressluft/internal/registration"
 	"pressluft/internal/runner/ansible"
 	"pressluft/internal/security"
 	"pressluft/internal/server"
 	"pressluft/internal/worker"
+	"pressluft/internal/ws"
 
 	// Register provider implementations.
 	_ "pressluft/internal/provider/hetzner"
@@ -58,6 +63,13 @@ func main() {
 	serverStore := server.NewServerStore(db.DB)
 	providerStore := provider.NewStore(db.DB)
 	activityStore := activity.NewStore(db.DB)
+	agentTokenStore := agentauth.NewStore(db.DB)
+	pkiStore := pki.NewStore(db.DB)
+	registrationStore := registration.NewStore(db.DB)
+	ca, err := pki.LoadOrCreateCA(db.DB, ageKeyPath, resolveCAKeyPath())
+	if err != nil {
+		log.Fatalf("load or create CA: %v", err)
+	}
 
 	ansibleDir := strings.TrimSpace(os.Getenv("PRESSLUFT_ANSIBLE_DIR"))
 	if ansibleDir == "" {
@@ -94,6 +106,9 @@ func main() {
 		volumePlaybookPath,
 	})
 
+	hub := ws.NewHub()
+	agentRunner := dispatch.NewAgentRunner(hub, jobStore)
+
 	// Create worker with executor
 	executor := worker.NewExecutor(
 		jobStore,
@@ -110,6 +125,8 @@ func main() {
 			FirewallsPlaybookPath: firewallsPlaybookPath,
 			VolumePlaybookPath:    volumePlaybookPath,
 			ControlPlaneURL:       controlPlaneURL,
+			DevTokenStore:         agentTokenStore,
+			AgentRunner:           agentRunner,
 		},
 		logger,
 	)
@@ -122,9 +139,19 @@ func main() {
 	// Start worker in background
 	go w.Run(ctx)
 
+	resultWaiter := ws.NewResultWaiter()
+	hub.SetResultWaiter(resultWaiter)
+	completer := dispatch.NewCompleter(jobStore, &activityLoggerAdapter{logger: logger}, logger)
+	wsHandler := ws.NewHandler(hub, completer, resultWaiter, logger)
+	wsHTTPHandler := server.NewWSHandler(hub, wsHandler, pkiStore, agentTokenStore, logger)
+	nodeHandler := server.NewNodeHandler(db.DB, pkiStore, registrationStore, ca, logger)
+
+	monitor := ws.NewMonitor(hub, serverStore, logger)
+	go monitor.Start(ctx)
+
 	httpServer := &http.Server{
 		Addr:              resolveAddr(),
-		Handler:           server.WithRequestLogging(server.NewHandler(db.DB), logger),
+		Handler:           server.WithRequestLogging(server.NewHandlerWithHub(db.DB, hub, wsHTTPHandler, nodeHandler), logger),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -169,12 +196,33 @@ func resolveDBPath() string {
 		return p
 	}
 
-	dataDir := os.Getenv("XDG_DATA_HOME")
+	dataDir := resolveDataDir()
+	return filepath.Join(dataDir, "pressluft", "pressluft.db")
+}
+
+func resolveDataDir() string {
+	dataDir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
 	if dataDir == "" {
 		home, _ := os.UserHomeDir()
 		dataDir = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(dataDir, "pressluft", "pressluft.db")
+	return dataDir
+}
+
+func resolveCAKeyPath() string {
+	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_CA_KEY_PATH")); p != "" {
+		return p
+	}
+	return filepath.Join(resolveDataDir(), "pressluft", "ca.key")
+}
+
+type activityLoggerAdapter struct {
+	logger *slog.Logger
+}
+
+func (a *activityLoggerAdapter) Log(ctx context.Context, serverID int64, action string, details string) error {
+	a.logger.Info("agent log", "server_id", serverID, "action", action, "details", details)
+	return nil
 }
 
 func resolveAnsibleBinary(ansibleDir string) (string, error) {

@@ -15,13 +15,15 @@ type Completer interface {
 type Handler struct {
 	hub       *Hub
 	completer Completer
+	waiter    *ResultWaiter
 	logger    *slog.Logger
 }
 
-func NewHandler(hub *Hub, completer Completer, logger *slog.Logger) *Handler {
+func NewHandler(hub *Hub, completer Completer, waiter *ResultWaiter, logger *slog.Logger) *Handler {
 	return &Handler{
 		hub:       hub,
 		completer: completer,
+		waiter:    waiter,
 		logger:    logger,
 	}
 }
@@ -57,13 +59,14 @@ func (h *Handler) handleMessage(ctx context.Context, conn *Conn, env Envelope) {
 }
 
 func (h *Handler) handleHeartbeat(ctx context.Context, conn *Conn, env Envelope) {
-	conn.UpdateLastSeen()
-
 	var hb Heartbeat
 	if err := json.Unmarshal(env.Payload, &hb); err != nil {
 		h.logger.Debug("unmarshal heartbeat error", "error", err)
 		return
 	}
+
+	// Update connection state with heartbeat data including metrics
+	conn.UpdateFromHeartbeat(hb)
 
 	ack := Envelope{
 		Type:    TypeHeartbeatAck,
@@ -77,6 +80,14 @@ func (h *Handler) handleCommandResult(ctx context.Context, conn *Conn, env Envel
 	var result CommandResult
 	if err := json.Unmarshal(env.Payload, &result); err != nil {
 		h.logger.Debug("unmarshal command result error", "error", err)
+		return
+	}
+
+	if h.waiter != nil && h.waiter.Resolve(result) {
+		return
+	}
+
+	if h.completer == nil {
 		return
 	}
 

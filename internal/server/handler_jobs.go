@@ -46,6 +46,10 @@ type manageVolumePayload struct {
 	Automount  *bool  `json:"automount"`
 }
 
+type restartServicePayload struct {
+	ServiceName string `json:"service_name"`
+}
+
 func (jh *jobsHandler) route(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/jobs" {
 		http.NotFound(w, r)
@@ -178,6 +182,7 @@ func jobKindLabel(kind string) string {
 		"resize_server":    "Server resize",
 		"update_firewalls": "Firewall update",
 		"manage_volume":    "Volume management",
+		"restart_service":  "Service restart",
 	}
 	if label, ok := labels[kind]; ok {
 		return label
@@ -259,6 +264,17 @@ func validateJobPayload(req createJobRequest) (string, error) {
 			if parsed.SizeGB <= 0 {
 				return "", fmt.Errorf("size_gb is required for manage_volume job when state=present")
 			}
+		}
+	case "restart_service":
+		if req.ServerID <= 0 {
+			return "", fmt.Errorf("server_id is required for restart_service job")
+		}
+		var parsed restartServicePayload
+		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
+			return "", fmt.Errorf("invalid restart_service payload: %w", err)
+		}
+		if strings.TrimSpace(parsed.ServiceName) == "" {
+			return "", fmt.Errorf("service_name is required for restart_service job")
 		}
 	}
 

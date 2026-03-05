@@ -11,7 +11,7 @@ DEV_UI_HOST ?= 0.0.0.0
 WEB_DIR := web
 EMBED_DIST_DIR := internal/server/dist
 
-.PHONY: build dev run clean format lint test check agent all
+.PHONY: build dev run clean format lint test check agent agent-dev all
 
 build:
 	@if [ ! -d "$(WEB_DIR)/node_modules" ]; then $(NPM) --prefix "$(WEB_DIR)" install; fi
@@ -27,11 +27,14 @@ build:
 agent:
 	CGO_ENABLED=0 $(GO) build -o "$(AGENT_BINARY)" ./cmd/pressluft-agent
 
+agent-dev:
+	CGO_ENABLED=0 $(GO) build -tags dev -o "$(AGENT_BINARY)" ./cmd/pressluft-agent
+
 all: build agent
 
-dev: agent
+dev: agent-dev
 	@if [ ! -d "$(WEB_DIR)/node_modules" ]; then $(NPM) --prefix "$(WEB_DIR)" install; fi
-	@PORT="$(DEV_API_PORT)" $(GO) run ./cmd & GO_PID=$$!; trap 'kill $$GO_PID 2>/dev/null || true' EXIT INT TERM; sleep 1; if ! kill -0 $$GO_PID 2>/dev/null; then echo "Go backend failed to start on port $(DEV_API_PORT). Stop the process using that port or choose another port (e.g. make dev DEV_API_PORT=8082)."; exit 1; fi; NUXT_API_BASE="http://localhost:$(DEV_API_PORT)/api" NUXT_HOST="$(DEV_UI_HOST)" NUXT_PORT="$(DEV_UI_PORT)" $(NPM) --prefix "$(WEB_DIR)" run dev
+	DEV_API_PORT="$(DEV_API_PORT)" DEV_UI_PORT="$(DEV_UI_PORT)" DEV_UI_HOST="$(DEV_UI_HOST)" WEB_DIR="$(WEB_DIR)" NPM="$(NPM)" GO="$(GO)" ./ops/scripts/dev.sh
 
 run: build
 	./$(APP_BINARY)

@@ -357,6 +357,7 @@ func mustOpenActivityHandlerDB(t *testing.T) *sql.DB {
 			retry_count  INTEGER NOT NULL DEFAULT 0,
 			last_error   TEXT,
 			payload      TEXT,
+			command_id   TEXT,
 			created_at   TEXT    NOT NULL,
 			updated_at   TEXT    NOT NULL,
 			FOREIGN KEY (server_id) REFERENCES servers(id)

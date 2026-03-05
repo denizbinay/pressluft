@@ -14,6 +14,7 @@ type Config struct {
 	CACertFile        string `yaml:"ca_cert_file"`
 	DataDir           string `yaml:"data_dir"`
 	RegistrationToken string `yaml:"registration_token"`
+	DevWSToken        string `yaml:"dev_ws_token"`
 }
 
 func LoadConfig(path string) (*Config, error) {

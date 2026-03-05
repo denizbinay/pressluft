@@ -10,10 +10,14 @@ import (
 )
 
 type Conn struct {
-	conn     *websocket.Conn
-	serverID int64
-	lastSeen time.Time
-	mu       sync.Mutex
+	conn       *websocket.Conn
+	serverID   int64
+	lastSeen   time.Time
+	version    string
+	cpuPercent float64
+	memUsedMB  int64
+	memTotalMB int64
+	mu         sync.RWMutex
 }
 
 func NewConn(wsConn *websocket.Conn, serverID int64) *Conn {
@@ -65,7 +69,32 @@ func (c *Conn) UpdateLastSeen() {
 }
 
 func (c *Conn) LastSeen() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastSeen
+}
+
+// UpdateFromHeartbeat updates connection state from a heartbeat message.
+func (c *Conn) UpdateFromHeartbeat(hb Heartbeat) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.lastSeen
+	c.lastSeen = time.Now()
+	c.version = hb.Version
+	c.cpuPercent = hb.CPUPercent
+	c.memUsedMB = hb.MemUsedMB
+	c.memTotalMB = hb.MemTotalMB
+}
+
+// Version returns the agent version.
+func (c *Conn) Version() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.version
+}
+
+// Metrics returns the last known CPU and memory metrics.
+func (c *Conn) Metrics() (cpuPercent float64, memUsedMB, memTotalMB int64) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cpuPercent, c.memUsedMB, c.memTotalMB
 }

@@ -14,6 +14,7 @@ type JobStore interface {
 	TransitionJob(ctx context.Context, id int64, in orchestrator.TransitionInput) (orchestrator.Job, error)
 	GetJob(ctx context.Context, id int64) (orchestrator.Job, error)
 	GetJobByCommandID(ctx context.Context, commandID string) (*orchestrator.Job, error)
+	AppendEvent(ctx context.Context, jobID int64, in orchestrator.CreateEventInput) (orchestrator.JobEvent, error)
 }
 
 type ActivityLogger interface {
@@ -45,6 +46,14 @@ func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 		return err
 	}
 
+	r.appendEvent(ctx, job.ID, orchestrator.CreateEventInput{
+		EventType: "step_update",
+		Level:     "info",
+		StepKey:   "dispatch",
+		Status:    "running",
+		Message:   "Dispatching command to agent",
+	})
+
 	cmd := ws.Command{
 		ID:      commandID,
 		JobID:   job.ID,
@@ -59,6 +68,13 @@ func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 			LastError: "agent not connected",
 		}
 		_, _ = r.store.TransitionJob(ctx, job.ID, transitionInput)
+		r.appendEvent(ctx, job.ID, orchestrator.CreateEventInput{
+			EventType: "step_update",
+			Level:     "error",
+			StepKey:   "dispatch",
+			Status:    "failed",
+			Message:   "Agent not connected",
+		})
 		return nil
 	}
 
@@ -73,10 +89,32 @@ func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 			LastError: "failed to send command",
 		}
 		_, _ = r.store.TransitionJob(ctx, job.ID, transitionInput)
+		r.appendEvent(ctx, job.ID, orchestrator.CreateEventInput{
+			EventType: "step_update",
+			Level:     "error",
+			StepKey:   "dispatch",
+			Status:    "failed",
+			Message:   "Failed to send command to agent",
+		})
 		return nil
 	}
 
+	r.appendEvent(ctx, job.ID, orchestrator.CreateEventInput{
+		EventType: "step_update",
+		Level:     "info",
+		StepKey:   "dispatch",
+		Status:    "running",
+		Message:   "Command sent to agent",
+	})
+
 	return nil
+}
+
+func (r *AgentRunner) appendEvent(ctx context.Context, jobID int64, input orchestrator.CreateEventInput) {
+	if r.store == nil {
+		return
+	}
+	_, _ = r.store.AppendEvent(ctx, jobID, input)
 }
 
 func mustMarshal(v any) []byte {

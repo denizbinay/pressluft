@@ -15,7 +15,7 @@ import (
 	"pressluft/internal/registration"
 )
 
-type Handler struct {
+type NodeHandler struct {
 	db                *sql.DB
 	pkiStore          *pki.Store
 	registrationStore *registration.Store
@@ -23,8 +23,8 @@ type Handler struct {
 	logger            *slog.Logger
 }
 
-func NewNodeHandler(db *sql.DB, pkiStore *pki.Store, registrationStore *registration.Store, ca *pki.CA, logger *slog.Logger) *Handler {
-	return &Handler{
+func NewNodeHandler(db *sql.DB, pkiStore *pki.Store, registrationStore *registration.Store, ca *pki.CA, logger *slog.Logger) *NodeHandler {
+	return &NodeHandler{
 		db:                db,
 		pkiStore:          pkiStore,
 		registrationStore: registrationStore,
@@ -43,7 +43,7 @@ type RegisterResponse struct {
 	CACert      string `json:"ca_certificate"`
 }
 
-func (h *Handler) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
+func (h *NodeHandler) handleNodeRegister(w http.ResponseWriter, r *http.Request) {
 	serverIDStr := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
 	serverIDStr = strings.TrimSuffix(serverIDStr, "/register")
 	serverID, err := strconv.ParseInt(serverIDStr, 10, 64)

@@ -25,6 +25,9 @@ type StoredServer struct {
 	ActionID         string `json:"action_id,omitempty"`
 	ActionStatus     string `json:"action_status,omitempty"`
 	HasKey           bool   `json:"has_key"`
+	NodeStatus       string `json:"node_status,omitempty"`
+	NodeLastSeen     string `json:"node_last_seen,omitempty"`
+	NodeVersion      string `json:"node_version,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
 }
@@ -85,7 +88,7 @@ func (s *ServerStore) Create(ctx context.Context, in CreateServerNodeInput) (int
 
 func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.created_at, s.updated_at,
+		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
 		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
 		 FROM servers s
 		 LEFT JOIN server_keys k ON k.server_id = s.id
@@ -99,42 +102,51 @@ func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	var out []StoredServer
 	for rows.Next() {
 		var (
-			s                StoredServer
+			srv              StoredServer
 			providerServerID sql.NullString
 			ipv4             sql.NullString
 			ipv6             sql.NullString
 			actionID         sql.NullString
 			actionStatus     sql.NullString
+			nodeStatus       sql.NullString
+			nodeLastSeen     sql.NullString
+			nodeVersion      sql.NullString
 			hasKey           int
 		)
 		if err := rows.Scan(
-			&s.ID,
-			&s.ProviderID,
-			&s.ProviderType,
+			&srv.ID,
+			&srv.ProviderID,
+			&srv.ProviderType,
 			&providerServerID,
 			&ipv4,
 			&ipv6,
-			&s.Name,
-			&s.Location,
-			&s.ServerType,
-			&s.Image,
-			&s.ProfileKey,
-			&s.Status,
+			&srv.Name,
+			&srv.Location,
+			&srv.ServerType,
+			&srv.Image,
+			&srv.ProfileKey,
+			&srv.Status,
 			&actionID,
 			&actionStatus,
-			&s.CreatedAt,
-			&s.UpdatedAt,
+			&nodeStatus,
+			&nodeLastSeen,
+			&nodeVersion,
+			&srv.CreatedAt,
+			&srv.UpdatedAt,
 			&hasKey,
 		); err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
 		}
-		s.ProviderServerID = nullStringValue(providerServerID)
-		s.IPv4 = nullStringValue(ipv4)
-		s.IPv6 = nullStringValue(ipv6)
-		s.ActionID = nullStringValue(actionID)
-		s.ActionStatus = nullStringValue(actionStatus)
-		s.HasKey = hasKey != 0
-		out = append(out, s)
+		srv.ProviderServerID = nullStringValue(providerServerID)
+		srv.IPv4 = nullStringValue(ipv4)
+		srv.IPv6 = nullStringValue(ipv6)
+		srv.ActionID = nullStringValue(actionID)
+		srv.ActionStatus = nullStringValue(actionStatus)
+		srv.NodeStatus = nullStringValue(nodeStatus)
+		srv.NodeLastSeen = nullStringValue(nodeLastSeen)
+		srv.NodeVersion = nullStringValue(nodeVersion)
+		srv.HasKey = hasKey != 0
+		out = append(out, srv)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -219,10 +231,13 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 		ipv6             sql.NullString
 		actionID         sql.NullString
 		actionStatus     sql.NullString
+		nodeStatus       sql.NullString
+		nodeLastSeen     sql.NullString
+		nodeVersion      sql.NullString
 		hasKey           int
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.created_at, s.updated_at,
+		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
 		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
 		 FROM servers s
 		 LEFT JOIN server_keys k ON k.server_id = s.id
@@ -243,6 +258,9 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 		&srv.Status,
 		&actionID,
 		&actionStatus,
+		&nodeStatus,
+		&nodeLastSeen,
+		&nodeVersion,
 		&srv.CreatedAt,
 		&srv.UpdatedAt,
 		&hasKey,
@@ -259,6 +277,9 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 	srv.IPv6 = nullStringValue(ipv6)
 	srv.ActionID = nullStringValue(actionID)
 	srv.ActionStatus = nullStringValue(actionStatus)
+	srv.NodeStatus = nullStringValue(nodeStatus)
+	srv.NodeLastSeen = nullStringValue(nodeLastSeen)
+	srv.NodeVersion = nullStringValue(nodeVersion)
 	srv.HasKey = hasKey != 0
 
 	return &srv, nil
@@ -354,6 +375,33 @@ func (s *ServerStore) Delete(ctx context.Context, id int64) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateNodeStatus updates the node_status, node_last_seen, and node_version fields.
+func (s *ServerStore) UpdateNodeStatus(ctx context.Context, id int64, status, lastSeen, version string) error {
+	if id <= 0 {
+		return fmt.Errorf("id must be greater than zero")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE servers SET node_status = ?, node_last_seen = ?, node_version = ?, updated_at = ? WHERE id = ?`,
+		status,
+		lastSeen,
+		version,
+		now,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update node status: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("server %d not found", id)
 	}
 
 	return nil

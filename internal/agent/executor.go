@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os/exec"
 
+	"pressluft/internal/agent/commands"
 	"pressluft/internal/ws"
 )
 
@@ -18,6 +19,8 @@ func (e *Executor) Execute(ctx context.Context, cmd ws.Command) ws.CommandResult
 	switch cmd.Type {
 	case "restart_service":
 		return e.restartService(ctx, cmd)
+	case "list_services":
+		return commands.ListServices(ctx, cmd)
 	default:
 		return ws.CommandResult{CommandID: cmd.ID, Success: false, Error: "unknown command"}
 	}

@@ -4,29 +4,39 @@ import (
 	"context"
 
 	"pressluft/internal/orchestrator"
-	"pressluft/internal/runner"
 	"pressluft/internal/ws"
 )
 
-type Dispatcher struct {
-	ansibleRunner runner.Runner
-	agentRunner   runner.Runner
-	hub           *ws.Hub
+// JobRunner executes jobs using the agent protocol.
+type JobRunner interface {
+	Run(ctx context.Context, job orchestrator.Job) error
 }
 
-func NewDispatcher(ansible, agent runner.Runner, hub *ws.Hub) *Dispatcher {
+type Dispatcher struct {
+	agentRunner *AgentRunner
+	hub         *ws.Hub
+}
+
+func NewDispatcher(agentRunner *AgentRunner, hub *ws.Hub) *Dispatcher {
 	return &Dispatcher{
-		ansibleRunner: ansible,
-		agentRunner:   agent,
-		hub:           hub,
+		agentRunner: agentRunner,
+		hub:         hub,
 	}
 }
 
+// Dispatch sends a job to the appropriate runner.
+// Currently only supports agent jobs; Ansible jobs are handled by the worker.
 func (d *Dispatcher) Dispatch(ctx context.Context, job orchestrator.Job) error {
 	if d.isAgentJob(job.Kind) && d.isAgentConnected(job.ServerID) {
 		return d.agentRunner.Run(ctx, job)
 	}
-	return d.ansibleRunner.Run(ctx, job)
+	// Non-agent jobs should not go through the dispatcher
+	return nil
+}
+
+// CanHandleJob returns true if this job can be handled by the agent.
+func (d *Dispatcher) CanHandleJob(job orchestrator.Job) bool {
+	return d.isAgentJob(job.Kind) && d.isAgentConnected(job.ServerID)
 }
 
 func (d *Dispatcher) isAgentJob(kind string) bool {
@@ -37,6 +47,9 @@ func (d *Dispatcher) isAgentJob(kind string) bool {
 }
 
 func (d *Dispatcher) isAgentConnected(serverID int64) bool {
+	if d.hub == nil {
+		return false
+	}
 	_, ok := d.hub.Get(serverID)
 	return ok
 }
