@@ -20,6 +20,7 @@ import (
 )
 
 const nodeCertificateReissueWindow = 14 * 24 * time.Hour
+const nodeRegistrationBodyLimit int64 = 256 << 10
 
 type nodePKIStore interface {
 	GetValidCertForServer(serverID int64) (*pki.NodeCertificate, error)
@@ -81,6 +82,7 @@ func (h *NodeHandler) handleNodeRegister(w http.ResponseWriter, r *http.Request)
 	}
 	h.logger.Info("agent registration request received", "server_id", serverID)
 
+	r.Body = http.MaxBytesReader(w, r.Body, nodeRegistrationBodyLimit)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "failed to read request body")

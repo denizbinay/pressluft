@@ -197,13 +197,15 @@ func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Requ
 
 	if sh.activityStore != nil {
 		title := fmt.Sprintf("Server '%s' deletion requested", serverRecord.Name)
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventServerStatusChanged,
 			Category:     activity.CategoryServer,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceServer,
 			ResourceID:   serverID,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        title,
 			Message:      "Delete runs asynchronously through the orchestrator until provider-side removal succeeds or fails.",
 		})
@@ -320,8 +322,7 @@ type volumesResponse struct {
 
 func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var req createServerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
 	slog.Default().Info("server action requested", "action", "create_server", "provider_id", req.ProviderID, "server_name", req.Name, "profile_key", req.ProfileKey)
@@ -396,13 +397,15 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Emit activity for server creation
 	if sh.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventServerCreated,
 			Category:     activity.CategoryServer,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceServer,
 			ResourceID:   serverID,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        fmt.Sprintf("Server '%s' created", req.Name),
 		})
 	}

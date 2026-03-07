@@ -117,6 +117,13 @@ func reconcileLegacySchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_command_id ON jobs(command_id) WHERE command_id IS NOT NULL`); err != nil {
 		return fmt.Errorf("ensure jobs command_id index: %w", err)
 	}
+	if err := ensureProvidersColumns(db, []string{
+		"api_token_encrypted TEXT",
+		"api_token_key_id TEXT",
+		"api_token_version INTEGER NOT NULL DEFAULT 0",
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -155,6 +162,49 @@ func ensureJobsColumns(db *sql.DB, definitions []string) error {
 			return fmt.Errorf("add jobs.%s: %w", name, err)
 		}
 		existing[name] = struct{}{}
+	}
+	return nil
+}
+
+func ensureProvidersColumns(db *sql.DB, definitions []string) error {
+	rows, err := db.Query(`PRAGMA table_info(providers)`)
+	if err != nil {
+		return fmt.Errorf("inspect providers schema: %w", err)
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{})
+	foundTable := false
+	for rows.Next() {
+		foundTable = true
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan providers schema: %w", err)
+		}
+		existing[strings.ToLower(name)] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate providers schema: %w", err)
+	}
+	if !foundTable {
+		return nil
+	}
+
+	for _, definition := range definitions {
+		parts := strings.Fields(definition)
+		if len(parts) == 0 {
+			continue
+		}
+		name := strings.ToLower(parts[0])
+		if _, ok := existing[name]; ok {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE providers ADD COLUMN ` + definition); err != nil {
+			return fmt.Errorf("add providers.%s: %w", name, err)
+		}
 	}
 	return nil
 }

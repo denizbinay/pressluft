@@ -39,9 +39,11 @@ import {
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import type { Activity as ActivityEvent } from "~/composables/useActivity"
 import { useActivity } from "~/composables/useActivity"
+import { useAuth } from "~/composables/useAuth"
 
 const route = useRoute()
 const router = useRouter()
+const { user, logout } = useAuth()
 
 const searchOpen = ref(false)
 const searchQuery = ref('')
@@ -111,6 +113,11 @@ const closeSearch = () => {
 const handleSearchSelect = (item: { to: string }) => {
   router.push(item.to)
   closeSearch()
+}
+
+const handleLogout = async () => {
+  await logout()
+  await router.push('/login')
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -346,6 +353,9 @@ watch(
         </div>
 
         <div class="flex items-center gap-2">
+          <span class="hidden text-xs text-muted-foreground md:inline">
+            {{ user?.email }}
+          </span>
           <Button
             variant="ghost"
             class="hidden sm:flex rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -374,6 +384,15 @@ watch(
             aria-label="Help"
           >
              <HelpCircle class="h-4 w-4" aria-hidden="true" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            class="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70"
+            type="button"
+            @click="handleLogout"
+          >
+            Sign out
           </Button>
 
           <DropdownMenu v-model:open="notificationsOpen">

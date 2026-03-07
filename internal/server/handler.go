@@ -5,10 +5,13 @@ import (
 	"embed"
 	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/auth"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/provider"
 	"pressluft/internal/ws"
@@ -29,7 +32,12 @@ func NewHandler(db *sql.DB) http.Handler {
 // for real-time agent status. When hub is nil, agent status endpoints will return
 // stored database values only.
 func NewHandlerWithHub(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandler *NodeHandler) http.Handler {
+	return NewHandlerWithOptions(db, hub, wsHandler, nodeHandler, HandlerOptions{})
+}
+
+func NewHandlerWithOptions(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandler *NodeHandler, options HandlerOptions) http.Handler {
 	mux := http.NewServeMux()
+	operatorMux := http.NewServeMux()
 
 	// Health
 	mux.HandleFunc("/api/health", handleHealth)
@@ -41,7 +49,23 @@ func NewHandlerWithHub(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandle
 
 	// Node registration
 	if nodeHandler != nil {
-		mux.HandleFunc("/api/nodes/", nodeHandler.handleNodeRegister)
+		nodeRegister := http.HandlerFunc(nodeHandler.handleNodeRegister)
+		mux.Handle("/api/nodes/", withRateLimit(nodeRegister, newRateLimiter(10, time.Minute), "node-register"))
+	}
+
+	var authActivityStore *activity.Store
+	if db != nil {
+		authActivityStore = activity.NewStore(db)
+	}
+	authHandler := &authHandler{
+		service:       options.AuthService,
+		activityStore: authActivityStore,
+		logger:        slog.Default(),
+	}
+	if options.AuthService != nil {
+		mux.Handle("/api/auth/me", withOptionalActor(http.HandlerFunc(authHandler.handleMe), options.Authenticator))
+		mux.Handle("/api/auth/logout", withOptionalActor(http.HandlerFunc(authHandler.handleLogout), options.Authenticator))
+		mux.Handle("/api/auth/login", withRateLimit(http.HandlerFunc(authHandler.handleLogin), newRateLimiter(10, time.Minute), "auth-login"))
 	}
 
 	// Provider endpoints (only when database is available)
@@ -53,10 +77,10 @@ func NewHandlerWithHub(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandle
 			store:         provider.NewStore(db),
 			activityStore: activityStore,
 		}
-		mux.HandleFunc("/api/providers", ph.route)
-		mux.HandleFunc("/api/providers/", ph.routeWithID)
-		mux.HandleFunc("/api/providers/validate", ph.handleValidate)
-		mux.HandleFunc("/api/providers/types", ph.handleTypes)
+		operatorMux.HandleFunc("/api/providers", ph.route)
+		operatorMux.HandleFunc("/api/providers/", ph.routeWithID)
+		operatorMux.Handle("/api/providers/validate", withRateLimit(http.HandlerFunc(ph.handleValidate), newRateLimiter(15, time.Minute), "provider-validate"))
+		operatorMux.HandleFunc("/api/providers/types", ph.handleTypes)
 
 		jobStore := orchestrator.NewStore(db)
 		serverStore := NewServerStore(db)
@@ -68,31 +92,33 @@ func NewHandlerWithHub(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHandle
 			activityStore: activityStore,
 			hub:           hub,
 		}
-		mux.HandleFunc("/api/servers", sh.route)
-		mux.HandleFunc("/api/servers/", sh.routeWithPath)
+		operatorMux.Handle("/api/servers", withRateLimit(http.HandlerFunc(sh.route), newRateLimiter(30, time.Minute), "servers"))
+		operatorMux.Handle("/api/servers/", withRateLimit(http.HandlerFunc(sh.routeWithPath), newRateLimiter(60, time.Minute), "servers-path"))
 
 		jh := &jobsHandler{
 			store:         jobStore,
 			serverStore:   serverStore,
 			activityStore: activityStore,
 		}
-		mux.HandleFunc("/api/jobs", jh.route)
-		mux.HandleFunc("/api/jobs/", jh.routeWithID)
+		operatorMux.Handle("/api/jobs", withRateLimit(http.HandlerFunc(jh.route), newRateLimiter(30, time.Minute), "jobs"))
+		operatorMux.HandleFunc("/api/jobs/", jh.routeWithID)
 
 		ah := &activityHandler{store: activityStore}
-		mux.HandleFunc("/api/activity", ah.route)
-		mux.HandleFunc("/api/activity/", ah.routeWithID)
+		operatorMux.HandleFunc("/api/activity", ah.route)
+		operatorMux.HandleFunc("/api/activity/", ah.routeWithID)
 
 		// Inject activity handler into servers handler for /api/servers/{id}/activity
 		sh.activityHandler = ah
 	}
+	mux.Handle("/api/", withOperatorAuth(operatorMux, options.Authenticator))
 
 	// Dashboard SPA (catch-all)
-	mux.Handle("/", newDashboardHandler())
-	return mux
+	dashboard := newDashboardHandler(options.Authenticator)
+	mux.Handle("/", dashboard)
+	return withSecurityHeaders(mux, options.IsDev)
 }
 
-func newDashboardHandler() http.Handler {
+func newDashboardHandler(authenticator auth.Authenticator) http.Handler {
 	distFS, err := fs.Sub(embeddedDist, assetDir)
 	if err != nil {
 		return missingDashboardHandler()
@@ -105,6 +131,24 @@ func newDashboardHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(distFS))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if shouldAllowPublicDashboardPath(r.URL.Path) {
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path == "" {
+				path = "index.html"
+			}
+			if _, statErr := fs.Stat(distFS, path); statErr == nil {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+		if authenticator != nil {
+			actor, err := authenticator.Authenticate(r)
+			if err != nil || !actor.IsAuthenticated() {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			r = r.WithContext(auth.ContextWithActor(r.Context(), actor))
+		}
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" {
 			path = "index.html"
@@ -119,6 +163,14 @@ func newDashboardHandler() http.Handler {
 		indexRequest.URL.Path = "/index.html"
 		fileServer.ServeHTTP(w, indexRequest)
 	})
+}
+
+func shouldAllowPublicDashboardPath(path string) bool {
+	switch path {
+	case "/login", "/favicon.ico", "/robots.txt":
+		return true
+	}
+	return strings.HasPrefix(path, "/_nuxt/")
 }
 
 func missingDashboardHandler() http.Handler {

@@ -19,6 +19,7 @@ import (
 
 	"pressluft/internal/activity"
 	"pressluft/internal/agentauth"
+	"pressluft/internal/auth"
 	"pressluft/internal/database"
 	"pressluft/internal/dispatch"
 	"pressluft/internal/orchestrator"
@@ -76,9 +77,44 @@ func main() {
 	agentTokenStore := agentauth.NewStore(db.DB)
 	pkiStore := pki.NewStore(db.DB)
 	registrationStore := registration.NewStore(db.DB)
+	authStore := auth.NewStore(db.DB)
 	ca, err := pki.LoadOrCreateCA(db.DB, ageKeyPath, resolveCAKeyPath())
 	if err != nil {
 		log.Fatalf("load or create CA: %v", err)
+	}
+	sessionSecretPath := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_KEY_PATH"))
+	sessionSecret, resolvedSessionSecretPath, err := auth.LoadSessionSecret(sessionSecretPath)
+	if err != nil {
+		log.Fatalf("load session secret: %v", err)
+	}
+	logger.Info("session secret ready", "path", resolvedSessionSecretPath)
+
+	idleTimeout, absoluteTimeout, err := resolveSessionTimeouts()
+	if err != nil {
+		log.Fatalf("resolve session timeouts: %v", err)
+	}
+	secureSessionCookies := resolveSecureSessionCookies(executionMode)
+	authService := auth.NewService(authStore, sessionSecret, idleTimeout, absoluteTimeout, secureSessionCookies)
+
+	bootstrapEmail, bootstrapPassword, err := auth.BootstrapCredentials(executionMode)
+	if err != nil && executionMode != platform.ExecutionModeDev {
+		log.Fatalf("resolve bootstrap admin credentials: %v", err)
+	}
+	bootstrapUser, err := authService.EnsureBootstrapAdmin(context.Background(), bootstrapEmail, bootstrapPassword)
+	if err != nil && executionMode != platform.ExecutionModeDev {
+		log.Fatalf("ensure bootstrap admin: %v", err)
+	}
+	if bootstrapUser != nil {
+		logger.Info("bootstrap admin created", "email", bootstrapUser.Email)
+		_, _ = activityStore.Emit(context.Background(), activity.EmitInput{
+			EventType:    activity.EventSecurityBootstrapAdmin,
+			Category:     activity.CategorySecurity,
+			Level:        activity.LevelInfo,
+			ResourceType: activity.ResourceAccount,
+			ActorType:    activity.ActorSystem,
+			ActorID:      fmt.Sprintf("%d", bootstrapUser.ID),
+			Title:        fmt.Sprintf("Bootstrap admin %s created", bootstrapUser.Email),
+		})
 	}
 
 	ansibleDir := strings.TrimSpace(os.Getenv("PRESSLUFT_ANSIBLE_DIR"))
@@ -105,6 +141,9 @@ func main() {
 	volumePlaybookPath := "ops/ansible/playbooks/manage_volume.yml"
 
 	controlPlaneURL := strings.TrimSpace(os.Getenv("PRESSLUFT_CONTROL_PLANE_URL"))
+	if err := providerStore.BackfillEncryptedTokens(context.Background()); err != nil {
+		log.Fatalf("backfill provider tokens: %v", err)
+	}
 
 	ansibleRunner := ansible.NewAdapter(ansibleBinary, ansibleDir, []string{
 		playbookPath,
@@ -161,10 +200,21 @@ func main() {
 	monitor := ws.NewMonitor(hub, serverStore, logger)
 	go monitor.Start(ctx)
 
+	var operatorAuthenticator auth.Authenticator
+	if executionMode == platform.ExecutionModeDev {
+		operatorAuthenticator = auth.NewDevAuthenticator()
+	} else {
+		operatorAuthenticator = auth.NewSessionAuthenticator(authService)
+	}
+
 	httpServer := &http.Server{
 		Addr:              resolveAddr(),
-		Handler:           server.WithRequestLogging(server.NewHandlerWithHub(db.DB, hub, wsHTTPHandler, nodeHandler), logger),
+		Handler:           server.WithRequestLogging(server.NewHandlerWithOptions(db.DB, hub, wsHTTPHandler, nodeHandler, server.HandlerOptions{Authenticator: operatorAuthenticator, AuthService: authService, IsDev: executionMode == platform.ExecutionModeDev}), logger),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20,
 	}
 	listenAndServe := func() error {
 		return httpServer.ListenAndServe()
@@ -325,4 +375,31 @@ func resolveProductionTLSConfig(controlPlaneURL string) (string, string, error) 
 		return "", "", fmt.Errorf("PRESSLUFT_CONTROL_PLANE_URL must be an https URL in production-bootstrap mode")
 	}
 	return tlsCertFile, tlsKeyFile, nil
+}
+
+func resolveSessionTimeouts() (time.Duration, time.Duration, error) {
+	idle := auth.DefaultSessionIdleTimeout
+	absolute := auth.DefaultSessionAbsoluteTimeout
+	if raw := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_IDLE_TIMEOUT")); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, 0, fmt.Errorf("parse PRESSLUFT_SESSION_IDLE_TIMEOUT: %w", err)
+		}
+		idle = parsed
+	}
+	if raw := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_ABSOLUTE_TIMEOUT")); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, 0, fmt.Errorf("parse PRESSLUFT_SESSION_ABSOLUTE_TIMEOUT: %w", err)
+		}
+		absolute = parsed
+	}
+	return idle, absolute, nil
+}
+
+func resolveSecureSessionCookies(mode platform.ExecutionMode) bool {
+	if raw := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_COOKIE_SECURE")); raw != "" {
+		return raw == "1" || strings.EqualFold(raw, "true")
+	}
+	return mode == platform.ExecutionModeProductionBootstrap
 }

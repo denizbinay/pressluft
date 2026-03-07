@@ -129,8 +129,7 @@ func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 
 func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var req createJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
 	if strings.TrimSpace(req.Kind) == "" {
@@ -183,13 +182,15 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Emit activity for job creation
 	if jh.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		input := activity.EmitInput{
 			EventType:    activity.EventJobCreated,
 			Category:     activity.CategoryJob,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceJob,
 			ResourceID:   job.ID,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        fmt.Sprintf("%s job queued", orchestrator.JobKindLabel(req.Kind)),
 		}
 		if req.ServerID > 0 {

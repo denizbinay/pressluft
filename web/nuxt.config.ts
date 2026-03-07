@@ -5,6 +5,12 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
+  runtimeConfig: {
+    public: {
+      apiBase: process.env.NUXT_API_BASE || '/api',
+    },
+  },
+
   css: ['~/assets/css/main.css'],
 
   modules: ['@nuxtjs/google-fonts', '@nuxtjs/color-mode', 'shadcn-nuxt'],

@@ -72,7 +72,7 @@
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        mode: '0755'
+        mode: '0700'
       loop:
         - /etc/pressluft
         - /var/lib/pressluft
@@ -92,13 +92,47 @@
       ansible.builtin.template:
         src: agent-config.yaml.j2
         dest: /etc/pressluft/agent.yaml
-        mode: '0644'
+        mode: '0600'
       notify: restart pressluft-agent
+
+    - name: Deploy production bootstrap token
+      when:
+        - execution_mode == 'production-bootstrap'
+        - registration_token | length > 0
+      ansible.builtin.copy:
+        dest: /etc/pressluft/bootstrap-registration.token
+        mode: '0600'
+        content: "{{ registration_token }}"
+      notify: restart pressluft-agent
+
+    - name: Remove production bootstrap token when absent
+      when:
+        - execution_mode != 'production-bootstrap' or registration_token | length == 0
+      ansible.builtin.file:
+        path: /etc/pressluft/bootstrap-registration.token
+        state: absent
+
+    - name: Deploy dev websocket token
+      when:
+        - execution_mode == 'dev'
+        - dev_ws_token | default('') | length > 0
+      ansible.builtin.copy:
+        dest: /etc/pressluft/dev-ws.token
+        mode: '0600'
+        content: "{{ dev_ws_token }}"
+      notify: restart pressluft-agent
+
+    - name: Remove dev websocket token when absent
+      when:
+        - execution_mode != 'dev' or dev_ws_token | default('') | length == 0
+      ansible.builtin.file:
+        path: /etc/pressluft/dev-ws.token
+        state: absent
 
     - name: Record selected profile contract
       ansible.builtin.copy:
         dest: /etc/pressluft/profile-contract.yaml
-        mode: '0644'
+        mode: '0600'
         content: |
           key: {{ profile_key }}
           artifact_path: {{ profile_path_resolved }}

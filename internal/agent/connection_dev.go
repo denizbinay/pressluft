@@ -15,7 +15,7 @@ import (
 )
 
 func (a *Agent) connectAndRun(ctx context.Context) error {
-	token := strings.TrimSpace(a.config.DevWSToken)
+	token := strings.TrimSpace(a.config.ResolveDevWSToken())
 	if token == "" {
 		return fmt.Errorf("dev_ws_token is required for dev agent")
 	}

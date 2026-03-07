@@ -39,15 +39,15 @@ func Register(config *Config, configPath string) error {
 	case CertificateValid:
 		return ErrExistingValidCertificate
 	case CertificateExpiringSoon:
-		if strings.TrimSpace(config.RegistrationToken) == "" {
+		if strings.TrimSpace(config.ResolveRegistrationToken()) == "" {
 			return fmt.Errorf("client certificate expires at %s and no registration token is available for reissue", state.Leaf.NotAfter.UTC().Format(time.RFC3339))
 		}
 	case CertificateExpired, CertificateMissing:
-		if strings.TrimSpace(config.RegistrationToken) == "" {
+		if strings.TrimSpace(config.ResolveRegistrationToken()) == "" {
 			return fmt.Errorf("registration token is required when no usable client certificate is present")
 		}
 	case CertificateInvalid:
-		if strings.TrimSpace(config.RegistrationToken) == "" {
+		if strings.TrimSpace(config.ResolveRegistrationToken()) == "" {
 			return fmt.Errorf("client certificate is invalid: %w", state.Underlying)
 		}
 	}
@@ -73,7 +73,7 @@ func Register(config *Config, configPath string) error {
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 
 	reqBody, err := json.Marshal(RegisterRequest{
-		Token: config.RegistrationToken,
+		Token: config.ResolveRegistrationToken(),
 		CSR:   string(csrPEM),
 	})
 	if err != nil {

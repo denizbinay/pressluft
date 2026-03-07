@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -71,8 +70,7 @@ type createProviderRequest struct {
 
 func (ph *providerHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var req createProviderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
 
@@ -106,13 +104,15 @@ func (ph *providerHandler) handleCreate(w http.ResponseWriter, r *http.Request) 
 
 	// Emit activity for provider creation
 	if ph.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventProviderAdded,
 			Category:     activity.CategoryProvider,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceProvider,
 			ResourceID:   id,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        fmt.Sprintf("Provider '%s' added", req.Name),
 		})
 	}
@@ -153,13 +153,15 @@ func (ph *providerHandler) handleDelete(w http.ResponseWriter, r *http.Request, 
 		if providerName != "" {
 			title = fmt.Sprintf("Provider '%s' removed", providerName)
 		}
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventProviderRemoved,
 			Category:     activity.CategoryProvider,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceProvider,
 			ResourceID:   id,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        title,
 		})
 	}
@@ -179,8 +181,7 @@ func (ph *providerHandler) handleValidate(w http.ResponseWriter, r *http.Request
 	}
 
 	var req validateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
 

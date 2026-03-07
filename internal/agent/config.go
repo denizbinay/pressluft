@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -14,15 +15,17 @@ import (
 const CertificateReissueWindow = 14 * 24 * time.Hour
 
 type Config struct {
-	ServerID          int64  `yaml:"server_id"`
-	ControlPlane      string `yaml:"control_plane"`
-	CertFile          string `yaml:"cert_file"`
-	KeyFile           string `yaml:"key_file"`
-	CACertFile        string `yaml:"ca_cert_file"`
-	DataDir           string `yaml:"data_dir"`
-	RegistrationToken string `yaml:"registration_token"`
-	DevWSToken        string `yaml:"dev_ws_token"`
-	path              string `yaml:"-"`
+	ServerID              int64  `yaml:"server_id"`
+	ControlPlane          string `yaml:"control_plane"`
+	CertFile              string `yaml:"cert_file"`
+	KeyFile               string `yaml:"key_file"`
+	CACertFile            string `yaml:"ca_cert_file"`
+	DataDir               string `yaml:"data_dir"`
+	RegistrationToken     string `yaml:"registration_token,omitempty"`
+	RegistrationTokenFile string `yaml:"registration_token_file,omitempty"`
+	DevWSToken            string `yaml:"dev_ws_token,omitempty"`
+	DevWSTokenFile        string `yaml:"dev_ws_token_file,omitempty"`
+	path                  string `yaml:"-"`
 }
 
 type CertificateStatus int
@@ -66,7 +69,7 @@ func (c *Config) SaveConfig(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func (c *Config) IsRegistered() bool {
@@ -77,7 +80,34 @@ func (c *Config) IsRegistered() bool {
 
 func (c *Config) ClearRegistrationToken(configPath string) error {
 	c.RegistrationToken = ""
+	if strings.TrimSpace(c.RegistrationTokenFile) != "" {
+		_ = os.Remove(c.RegistrationTokenFile)
+	}
 	return c.SaveConfig(configPath)
+}
+
+func (c *Config) ResolveRegistrationToken() string {
+	if token := strings.TrimSpace(c.RegistrationToken); token != "" {
+		return token
+	}
+	if path := strings.TrimSpace(c.RegistrationTokenFile); path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
+}
+
+func (c *Config) ResolveDevWSToken() string {
+	if token := strings.TrimSpace(c.DevWSToken); token != "" {
+		return token
+	}
+	if path := strings.TrimSpace(c.DevWSTokenFile); path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
 }
 
 func (c *Config) CertificateState(now time.Time) ClientCertificateState {
