@@ -1,29 +1,72 @@
 # Pressluft
 
-Self-hosted WordPress hosting control plane for agencies.
+Self-hosted WordPress hosting panel for web agencies.
+
+> **⚠️ Highly experimental.** This project is not ready for production use. But you can change that. Join the team!
 
 ![Screenshot](screenshot.png)
 
-## Current support
+## What I'd love to build
 
-- Hetzner Cloud is the only real provider integration.
-- `nginx-stack` is the only supported server profile.
-- The control plane can provision/configure/delete servers, run Ansible playbooks, queue jobs, and communicate with agents over WebSockets.
-- Production bootstrap is the HTTPS registration plus `wss` + mTLS path. Dev mode uses the dev WebSocket token path.
+Professional WordPress hosting platforms like WP Engine, Cloudways, Kinsta, and Raidboxes give agencies a complete workflow — staging environments, push-to-live, server management, site monitoring, backups, updates and way more.
 
-## Quickstart
+Pressluft is the attempt to build that same experience as open-source software you run yourself. Self-hosted, on infrastructure you own, with the same kind of polish a professional agency workflow requires.
 
-Use a Unix-like environment. Local development is tested on Ubuntu 24.04 in WSL2.
+## What I think it could do
 
-Required tools:
+- Provision servers on any major cloud provider and pick a pre-configured stack — e.g. NGINX, OpenLiteSpeed, or WooCommerce-optimized — including hardened WordPress configuration and security defaults out of the box
+- Access server-side optimizations like caching, Redis, image optimization, firewall and more without relying on WordPress plugins
+- Deploy new WordPress sites instantly to existing domains or a sandbox
+- Create staging environments and push changes to live with one click
+- Create automatic remote backups to any S3-compatible storage
+- Migrate existing WordPress sites into the management panel
+- Update plugins, themes, and WordPress core automatically with rollbacks on failure
+- Spin up a local development environment with one command and connect it to your staging site
 
-- Go 1.24+
-- Node.js 20+
-- `pnpm`
-- `cloudflared`
-- Python 3 with `venv`
+I'm sure all of you have 101 more features that fit your agency workflow.
 
-Install the Ansible dependency set from the repository root:
+## Where we are today
+
+- Provision, delete, rebuild, and resize VPS servers (Hetzner Cloud only so far — add more yourself!)
+- Run Ansible-based provisioning/configuration flows and deploy the Pressluft agent (profile roles are scaffolded and evolving)
+- Deploy a lightweight agent to each server during provisioning — it connects back to the control plane, accepts commands, and reports CPU and memory usage
+- Restart services on managed servers remotely
+- Job queue with real-time step-by-step timeline
+- Account-wide activity log
+
+## Security
+
+Security is a core concern for a tool that manages production infrastructure. Here is what the current implementation does:
+
+- SSH private keys and the certificate authority key are encrypted at rest using [age](https://age-encryption.org)
+- The control plane acts as its own certificate authority (ECDSA P-256)
+- In production, agents authenticate to the control plane using mTLS — each agent gets a client certificate signed by the control plane CA on first registration
+- In dev mode, token-based auth is used instead so you don't need to deal with certificates locally
+
+## Get involved
+
+This should be a community project from WordPress professionals for WordPress professionals. If you've made it this far, you probably know exactly what your workflow needs. Help shape what this becomes.
+
+The codebase is split into three main areas by discipline, so you can contribute in the part you know best without having to work through the whole thing:
+
+- `web/` — a standard Nuxt 3 app. If you know Vue, you can work on the dashboard without touching any Go.
+- `internal/` — the Go backend: API, job orchestration, agent communication, and the security layer. This is where the core business logic lives.
+- `ops/` — Ansible playbooks, server profiles, and scripts. If you are a sysadmin or infrastructure person, this is your world.
+
+Open an issue, start a discussion, send a PR, or write to [deniz@bombig.net](mailto:deniz@bombig.net).
+
+## Get started
+
+Use a Unix-like environment (Ubuntu, macOS, or WSL2). Development is tested on Ubuntu 24.04 in WSL2 on Windows 11. Feedback to other environments welcome!
+
+**Install required tools:**
+
+- [Go 1.24+](https://go.dev/dl/)
+- [Node.js 20+](https://nodejs.org/)
+- [pnpm](https://pnpm.io/installation)
+- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+
+**Set up project dependencies** from the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -32,30 +75,19 @@ pip install ansible
 ansible-galaxy collection install -r ops/ansible/requirements.yml
 ```
 
-Common entrypoints:
+## Development
 
 ```bash
-make help
 make dev
-make check
-make build
-make agent
 ```
 
-## Machine-readable contracts
+This starts the Go backend on `http://localhost:8081`, the Nuxt dev server on `http://localhost:8080`, and a Cloudflare quick tunnel so provisioned servers can reach your local control plane.
 
-Runtime and environment contracts are generated from code:
+## Building
 
 ```bash
-make contract-json
-make generate-contract
+make build   # control plane — builds bin/pressluft with embedded dashboard
+make agent   # agent binary — statically linked, for deployment to managed servers
+make all     # both
 ```
 
-- `make contract-json` prints the runtime contract and environment variable catalog as JSON.
-- `make generate-contract` refreshes [platform-contract.generated.ts](/home/deniz/projects/pressluft/web/app/lib/platform-contract.generated.ts) from the Go contract package.
-
-## Development notes
-
-- `make dev` starts the Go backend, the Nuxt app, and a Cloudflare quick tunnel when `PRESSLUFT_CONTROL_PLANE_URL` is unset.
-- Quick tunnels are intentionally ephemeral; use a stable public URL if you need durable agent reconnect behavior across control-plane restarts.
-- `make smoke` runs the disposable-environment smoke flow. Each smoke script supports `--help`.
