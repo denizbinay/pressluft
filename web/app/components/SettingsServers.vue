@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogScrollContent,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -34,7 +34,6 @@ import {
   type SupportLevel,
   type SetupState,
 } from "~/lib/platform-contract.generated"
-import type { ServerProfile } from "~/lib/api-contract"
 
 const modal = useModal()
 
@@ -130,6 +129,13 @@ const selectedTypeLabel = computed(() =>
 const selectedProfileStatusClass = computed(() =>
   selectedProfile.value ? profileSupportClass(selectedProfile.value.support_level) : "border-border/60 bg-muted/40 text-muted-foreground"
 )
+
+const selectedProfileSupportText = computed(() => {
+  if (!selectedProfile.value) {
+    return ""
+  }
+  return selectedProfile.value.support_reason || supportLevelLabel(selectedProfile.value.support_level)
+})
 
 const controlClass =
   "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -295,21 +301,6 @@ const profileSupportClass = (supportLevel: SupportLevel): string => {
   if (supportLevel === "supported") return "border-primary/30 bg-primary/10 text-primary"
   if (supportLevel === "experimental") return "border-accent/30 bg-accent/10 text-accent"
   return "border-border/60 bg-muted/60 text-muted-foreground"
-}
-
-const profileCardClass = (profile: ServerProfile): string => {
-  if (profile.key === formProfileKey.value) {
-    if (profile.support_level === "supported") return "border-primary/50 bg-primary/10"
-    if (profile.support_level === "experimental") return "border-accent/50 bg-accent/10"
-    return "border-border/80 bg-muted/50"
-  }
-  if (profile.support_level === "unavailable") return "border-border/50 bg-muted/20 opacity-70"
-  return "border-border/60 bg-card/30 hover:border-border/80 hover:bg-card/50"
-}
-
-const profileReasonText = (profile?: ServerProfile | null): string => {
-  if (!profile) return ""
-  return profile.support_reason || profile.description
 }
 
 const formatMonthlyPrice = (
@@ -541,8 +532,8 @@ const handleDialogUpdate = (value: boolean) => {
       :open="modal.isOpen.value"
       @update:open="handleDialogUpdate"
     >
-      <DialogContent
-        class="border-border/60 bg-popover/90 text-popover-foreground"
+      <DialogScrollContent
+        class="max-h-[85vh] border-border/60 bg-popover/90 p-5 text-popover-foreground sm:max-w-xl sm:p-6"
       >
         <DialogHeader class="text-left">
           <DialogTitle class="text-base font-semibold text-foreground">
@@ -598,53 +589,53 @@ const handleDialogUpdate = (value: boolean) => {
               <Label class="text-sm font-medium text-muted-foreground">
                 Server Profile
               </Label>
-              <div class="grid gap-2">
-                <button
-                  v-for="profile in profiles"
-                  :key="profile.key"
-                  type="button"
-                  :disabled="formLoadingCatalog || profile.support_level === 'unavailable'"
-                  class="w-full rounded-lg border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed"
-                  :class="profileCardClass(profile)"
-                  @click="formProfileKey = profile.key"
-                >
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p class="text-sm font-medium text-foreground">{{ profile.name }}</p>
-                      <p class="text-xs text-muted-foreground">{{ profile.key }}</p>
+              <Select v-model="formProfileKey" :disabled="formLoadingCatalog">
+                <SelectTrigger :class="selectTriggerClass">
+                  <SelectValue placeholder="Select server profile">
+                    <div v-if="selectedProfile" class="flex min-w-0 items-center justify-between gap-2">
+                      <span class="truncate text-sm text-foreground">{{ selectedProfile.name }}</span>
+                      <Badge :class="profileSupportClass(selectedProfile.support_level)">
+                        {{ supportLevelLabel(selectedProfile.support_level) }}
+                      </Badge>
                     </div>
-                    <Badge :class="profileSupportClass(profile.support_level)">
-                      {{ supportLevelLabel(profile.support_level) }}
-                    </Badge>
-                  </div>
-                  <p class="mt-2 text-sm text-muted-foreground">
-                    {{ profile.description }}
-                  </p>
-                  <p class="mt-2 text-xs text-muted-foreground">
-                    Configure guarantee: {{ profile.configure_guarantee }}
-                  </p>
-                  <p v-if="profile.support_reason" class="mt-1 text-xs" :class="profile.support_level === 'unavailable' ? 'text-muted-foreground' : 'text-accent'">
-                    {{ profile.support_reason }}
-                  </p>
-                </button>
-              </div>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent :class="selectContentClass">
+                  <SelectItem
+                    v-for="profile in profiles"
+                    :key="profile.key"
+                    :value="profile.key"
+                    :disabled="profile.support_level === 'unavailable'"
+                    :class="selectItemClass"
+                  >
+                    <div class="flex w-full min-w-0 items-center justify-between gap-2">
+                      <span class="truncate">{{ profile.name }}</span>
+                      <Badge :class="profileSupportClass(profile.support_level)">
+                        {{ supportLevelLabel(profile.support_level) }}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <div
                 v-if="selectedProfile"
                 class="rounded-lg border px-3 py-3"
                 :class="selectedProfileStatusClass"
               >
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-sm font-medium text-foreground">{{ selectedProfile.name }}</span>
-                  <Badge :class="profileSupportClass(selectedProfile.support_level)">
-                    {{ supportLevelLabel(selectedProfile.support_level) }}
-                  </Badge>
-                </div>
-                <p class="mt-2 text-xs text-muted-foreground">
-                  {{ profileReasonText(selectedProfile) }}
-                </p>
-                <p class="mt-1 text-xs text-muted-foreground">
-                  Configure guarantee: {{ selectedProfile.configure_guarantee }}
-                </p>
+                <ul class="space-y-2 text-sm text-muted-foreground">
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Description:</strong> {{ selectedProfile.description }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Configure guarantee:</strong> {{ selectedProfile.configure_guarantee }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Support:</strong> {{ selectedProfileSupportText }}</span>
+                  </li>
+                </ul>
               </div>
               <p v-else class="text-xs text-muted-foreground">
                 No selectable server profile is available for this provider yet.
@@ -712,10 +703,9 @@ const handleDialogUpdate = (value: boolean) => {
                   <Badge :class="profileSupportClass(selectedProfile.support_level)">
                     {{ supportLevelLabel(selectedProfile.support_level) }}
                   </Badge>
-                  <span class="text-xs text-muted-foreground">Configure guarantee: {{ selectedProfile.configure_guarantee }}</span>
                 </div>
                 <p v-if="selectedProfile" class="mt-2 text-xs text-muted-foreground">
-                  {{ profileReasonText(selectedProfile) }}
+                  {{ selectedProfileSupportText }}
                 </p>
               </div>
             </div>
@@ -797,7 +787,7 @@ const handleDialogUpdate = (value: boolean) => {
             Done
           </Button>
         </DialogFooter>
-      </DialogContent>
+      </DialogScrollContent>
     </Dialog>
   </div>
 </template>

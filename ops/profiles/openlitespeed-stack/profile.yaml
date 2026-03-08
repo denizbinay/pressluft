@@ -2,18 +2,18 @@ key: openlitespeed-stack
 name: OpenLiteSpeed Stack
 version: 1.0.0
 description: >
-  Reserved internal profile identifier for a future OpenLiteSpeed-based stack.
-  It does not imply application support today.
+  Planned OpenLiteSpeed-based managed stack for Ubuntu 24.04. It is listed for
+  visibility, but it cannot be provisioned yet.
 
 configure_guarantee: >
-  Selection is blocked. Pressluft does not yet converge or verify an
-  OpenLiteSpeed baseline for this internal profile identifier.
+  Provisioning is blocked until Pressluft can install, configure, and verify
+  this stack end to end.
 
 support:
   level: unavailable
   reason: >
-    Milestone 4 fully supports nginx-stack first and blocks this profile until
-    its stack role and verification contract are implemented.
+    Not ready for provisioning because automated setup and verification for this
+    stack are not implemented yet.
 
 base_image: ubuntu-24.04
 image_policy:

@@ -2,19 +2,19 @@ key: nginx-stack
 name: NGINX Stack
 version: 1.0.0
 description: >
-  Supported Ubuntu 24.04 web baseline built around NGINX, PHP-FPM, Redis, and
-  the Pressluft agent. This is an internal platform identifier, not a WordPress
-  compatibility promise.
+  Default managed Ubuntu 24.04 web stack with NGINX, PHP-FPM, Redis, and the
+  Pressluft agent for standard site hosting.
 
 configure_guarantee: >
-  Successful configure proves the common platform baseline, agent deployment,
-  and the nginx-stack role all converged. Verification confirms required
-  services are active, expected config files exist, expected listeners answer
-  locally, and profile health checks pass before the server is marked ready.
+  A successful configure run applies the base system, deploys the Pressluft
+  agent, configures the NGINX stack, and verifies required services, files,
+  listeners, and health checks before the server is marked ready.
 
 support:
   level: supported
-  reason: ""
+  reason: >
+    Available for managed provisioning and supported for production use in
+    Pressluft.
 
 base_image: ubuntu-24.04
 image_policy:

@@ -2,19 +2,18 @@ key: woocommerce-optimized
 name: WooCommerce Optimized
 version: 1.0.0
 description: >
-  Reserved internal profile identifier for future commerce-oriented tuning. It
-  does not imply WooCommerce compatibility, rewrite support, or performance
-  guarantees today.
+  Planned commerce-focused managed stack for Ubuntu 24.04. It is listed for
+  visibility, but it cannot be provisioned yet.
 
 configure_guarantee: >
-  Selection is blocked. Pressluft does not yet converge or verify this internal
-  profile identifier.
+  Provisioning is blocked until Pressluft can install, configure, and verify
+  the commerce-focused stack end to end.
 
 support:
   level: unavailable
   reason: >
-    Milestone 4 narrows support to one verified baseline profile instead of
-    implying broader app-specific coverage.
+    Not ready for provisioning because its automated setup and verification
+    path is not implemented yet.
 
 base_image: ubuntu-24.04
 image_policy:
