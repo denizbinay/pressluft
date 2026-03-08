@@ -16,11 +16,11 @@ import (
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
 	"pressluft/internal/provider"
-	"pressluft/internal/provider/hetzner"
 	"pressluft/internal/runner"
 	"pressluft/internal/security"
 	serverpkg "pressluft/internal/server"
 	"pressluft/internal/server/profiles"
+	"pressluft/internal/sshutil"
 )
 
 // ServerStore defines the server persistence interface needed by the executor.
@@ -51,26 +51,31 @@ type Executor struct {
 	devTokenStore     DevTokenStore
 	registrationStore RegistrationTokenStore
 	executionMode     platform.ExecutionMode
-	playbookPath      string
+	playbookBasePath  string
 	configurePath     string
-	deletePath        string
-	rebuildPath       string
-	resizePath        string
-	firewallsPath     string
-	volumePath        string
 	controlPlaneURL   string
 	logger            *slog.Logger
 }
 
+// Conventional playbook filenames inside ops/ansible/playbooks/<provider-type>/.
+// Each provider supplies its own set of playbooks following this naming
+// convention, making it obvious where to add playbooks for a new provider.
+const (
+	playbookProvision = "provision.yml"
+	playbookDelete    = "delete.yml"
+	playbookRebuild   = "rebuild.yml"
+	playbookResize    = "resize.yml"
+	playbookFirewalls = "firewalls.yml"
+	playbookVolume    = "volume.yml"
+)
+
 // ExecutorConfig defines runner configuration.
 type ExecutorConfig struct {
-	ProvisionPlaybookPath string
+	// PlaybookBasePath is the root directory containing per-provider playbook
+	// subdirectories. The executor resolves provider-specific playbooks as
+	// <PlaybookBasePath>/<provider-type>/<action>.yml.
+	PlaybookBasePath      string
 	ConfigurePlaybookPath string
-	DeletePlaybookPath    string
-	RebuildPlaybookPath   string
-	ResizePlaybookPath    string
-	FirewallsPlaybookPath string
-	VolumePlaybookPath    string
 	ControlPlaneURL       string
 	ExecutionMode         platform.ExecutionMode
 	DevTokenStore         DevTokenStore
@@ -110,16 +115,17 @@ func NewExecutor(
 		devTokenStore:     config.DevTokenStore,
 		registrationStore: config.RegistrationStore,
 		executionMode:     config.ExecutionMode,
-		playbookPath:      strings.TrimSpace(config.ProvisionPlaybookPath),
+		playbookBasePath:  strings.TrimSpace(config.PlaybookBasePath),
 		configurePath:     strings.TrimSpace(config.ConfigurePlaybookPath),
-		deletePath:        strings.TrimSpace(config.DeletePlaybookPath),
-		rebuildPath:       strings.TrimSpace(config.RebuildPlaybookPath),
-		resizePath:        strings.TrimSpace(config.ResizePlaybookPath),
-		firewallsPath:     strings.TrimSpace(config.FirewallsPlaybookPath),
-		volumePath:        strings.TrimSpace(config.VolumePlaybookPath),
 		controlPlaneURL:   strings.TrimSpace(config.ControlPlaneURL),
 		logger:            logger,
 	}
+}
+
+// providerPlaybook resolves a playbook path for the given provider type.
+// The convention is: <playbookBasePath>/<providerType>/<filename>.
+func (e *Executor) providerPlaybook(providerType, filename string) string {
+	return filepath.Join(e.playbookBasePath, providerType, filename)
 }
 
 // Execute runs all steps for a job. It handles state transitions and event emission.
@@ -216,8 +222,8 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.playbookPath) == "" {
-		return e.failJob(ctx, job, "provision playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	e.emitStepComplete(ctx, job.ID, "validate", "Server configuration validated")
@@ -239,7 +245,7 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		e.logSSHPublicKey("stored", publicKey)
 	} else {
 		var generatedPrivateKey string
-		publicKey, generatedPrivateKey, err = hetzner.GenerateSSHKeyPair(keyName)
+		publicKey, generatedPrivateKey, err = sshutil.GenerateKeyPair(keyName)
 		if err != nil {
 			return e.failJob(ctx, job, fmt.Sprintf("failed to generate SSH key: %v", err))
 		}
@@ -292,9 +298,9 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	request := runner.Request{
 		JobID:         job.ID,
 		InventoryPath: inventoryPath,
-		PlaybookPath:  e.playbookPath,
+		PlaybookPath:  e.providerPlaybook(storedProvider.Type, playbookProvision),
 		ExtraVars: map[string]string{
-			"hcloud_token":    storedProvider.APIToken,
+			"api_token":       storedProvider.APIToken,
 			"server_name":     server.Name,
 			"server_location": server.Location,
 			"server_type":     server.ServerType,
@@ -467,8 +473,8 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.deletePath) == "" {
-		return e.failJob(ctx, job, "delete playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	if _, err := orchestrator.UnmarshalDeleteServerPayload(job.Payload); err != nil {
@@ -484,7 +490,7 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "delete")
 	e.emitStepStart(ctx, job.ID, "delete", "Running delete playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.deletePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookDelete), map[string]string{
 		"api_token":   storedProvider.APIToken,
 		"server_name": serverName,
 	}); err != nil {
@@ -558,8 +564,8 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.rebuildPath) == "" {
-		return e.failJob(ctx, job, "rebuild playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	payload, err := orchestrator.UnmarshalRebuildServerPayload(job.Payload)
@@ -586,7 +592,7 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	e.updateStep(ctx, job.ID, "rebuild")
 	e.emitStepStart(ctx, job.ID, "rebuild", "Running rebuild playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.rebuildPath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookRebuild), map[string]string{
 		"api_token":    storedProvider.APIToken,
 		"server_name":  serverName,
 		"server_image": serverImage,
@@ -668,8 +674,8 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.resizePath) == "" {
-		return e.failJob(ctx, job, "resize playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	payload, err := orchestrator.UnmarshalResizeServerPayload(job.Payload)
@@ -686,7 +692,7 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "resize")
 	e.emitStepStart(ctx, job.ID, "resize", "Running resize playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.resizePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookResize), map[string]string{
 		"api_token":    storedProvider.APIToken,
 		"server_name":  server.Name,
 		"server_type":  serverType,
@@ -756,8 +762,8 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.firewallsPath) == "" {
-		return e.failJob(ctx, job, "firewalls playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	payload, err := orchestrator.UnmarshalUpdateFirewallsPayload(job.Payload)
@@ -781,7 +787,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	e.updateStep(ctx, job.ID, "update_firewalls")
 	e.emitStepStart(ctx, job.ID, "update_firewalls", "Running firewall update playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.firewallsPath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookFirewalls), map[string]string{
 		"api_token":     storedProvider.APIToken,
 		"server_name":   server.Name,
 		"firewalls_csv": firewallsCSV,
@@ -847,8 +853,8 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.volumePath) == "" {
-		return e.failJob(ctx, job, "volume playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	payload, err := orchestrator.UnmarshalManageVolumePayload(job.Payload)
@@ -882,7 +888,7 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 		automountValue = strconv.FormatBool(*payload.Automount)
 	}
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.volumePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookVolume), map[string]string{
 		"api_token":   storedProvider.APIToken,
 		"server_name": server.Name,
 		"volume_name": volumeName,

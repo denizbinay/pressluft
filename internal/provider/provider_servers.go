@@ -38,40 +38,14 @@ type ServerCatalog struct {
 	ServerTypes []ServerTypeOption `json:"server_types"`
 }
 
-// CreateServerRequest is the provider-agnostic server creation payload.
-// ProfileKey is used by Pressluft orchestration and not forwarded directly
-// unless needed by the provider adapter.
-type CreateServerRequest struct {
-	Name       string            `json:"name"`
-	Location   string            `json:"location"`
-	ServerType string            `json:"server_type"`
-	Image      string            `json:"image"`
-	UserData   string            `json:"user_data,omitempty"`
-	Labels     map[string]string `json:"labels,omitempty"`
-}
-
-// CreateServerResult contains identifiers needed for asynchronous tracking.
-type CreateServerResult struct {
-	ProviderServerID string `json:"provider_server_id"`
-	ActionID         string `json:"action_id,omitempty"`
-	Status           string `json:"status"`
-}
-
-// SSHKeyResult contains the result of creating an SSH key at the provider.
-type SSHKeyResult struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
-}
-
-// ServerProvider is implemented by providers that support server lifecycle
-// operations in addition to credential validation.
+// ServerProvider is implemented by providers that expose a catalog of
+// available server locations and types for the provisioning UI.
+// Actual server lifecycle operations (create, delete, rebuild, resize) are
+// handled by provider-specific Ansible playbooks under
+// ops/ansible/playbooks/<provider-type>/.
 type ServerProvider interface {
 	Provider
 	ListServerCatalog(ctx context.Context, token string) (*ServerCatalog, error)
-	CreateServer(ctx context.Context, token string, req CreateServerRequest) (*CreateServerResult, error)
-	CreateSSHKey(ctx context.Context, token, name, publicKey string) (*SSHKeyResult, error)
-	DeleteSSHKey(ctx context.Context, token string, keyID int64) error
 }
 
 // GetServerProvider returns a provider that supports server operations.

@@ -18,17 +18,30 @@ type Adapter struct {
 	binaryPath       string
 	workingDirectory string
 	allowedPlaybooks map[string]struct{}
+	allowedPrefixes  []string
 }
 
+// NewAdapter creates an Ansible adapter that restricts playbook execution to
+// explicitly allowed paths and path prefixes. Prefixes ending in "/" allow
+// any playbook under that directory tree (used for provider-scoped playbooks
+// like "ops/ansible/playbooks/hetzner/provision.yml").
 func NewAdapter(binaryPath, workingDirectory string, allowedPlaybooks []string) *Adapter {
 	allow := make(map[string]struct{}, len(allowedPlaybooks))
+	var prefixes []string
 	for _, p := range allowedPlaybooks {
-		allow[filepath.Clean(p)] = struct{}{}
+		cleaned := filepath.Clean(p)
+		if strings.HasSuffix(p, "/") {
+			// Prefix-based allow: any playbook under this directory.
+			prefixes = append(prefixes, cleaned+string(filepath.Separator))
+		} else {
+			allow[cleaned] = struct{}{}
+		}
 	}
 	return &Adapter{
 		binaryPath:       strings.TrimSpace(binaryPath),
 		workingDirectory: strings.TrimSpace(workingDirectory),
 		allowedPlaybooks: allow,
+		allowedPrefixes:  prefixes,
 	}
 }
 
@@ -87,7 +100,16 @@ func (a *Adapter) validateRequest(req runner.Request) error {
 		return fmt.Errorf("playbook path is required")
 	}
 	if _, ok := a.allowedPlaybooks[playbook]; !ok {
-		return fmt.Errorf("playbook %q is not allowlisted", req.PlaybookPath)
+		allowed := false
+		for _, prefix := range a.allowedPrefixes {
+			if strings.HasPrefix(playbook, prefix) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("playbook %q is not allowlisted", req.PlaybookPath)
+		}
 	}
 	return nil
 }

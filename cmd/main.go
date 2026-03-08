@@ -41,13 +41,8 @@ import (
 const defaultAddr = ":8080"
 
 type playbookPaths struct {
-	provision string
-	configure string
-	delete    string
-	rebuild   string
-	resize    string
-	firewalls string
-	volume    string
+	basePath  string // root for per-provider playbook directories
+	configure string // provider-agnostic configure playbook
 }
 
 func main() {
@@ -135,18 +130,10 @@ func main() {
 			"reconnect_durability", "remote agents configured against Cloudflare quick tunnels will not reconnect after control-plane restart",
 		)
 	}
-	if err := providerStore.BackfillEncryptedTokens(context.Background()); err != nil {
-		log.Fatalf("backfill provider tokens: %v", err)
-	}
 
 	ansibleRunner := ansible.NewAdapter(ansibleBinary, runtimeConfig.AnsibleDir, []string{
-		playbooks.provision,
 		playbooks.configure,
-		playbooks.delete,
-		playbooks.rebuild,
-		playbooks.resize,
-		playbooks.firewalls,
-		playbooks.volume,
+		playbooks.basePath + "/", // allow all provider-scoped playbooks under the base path
 	})
 
 	hub := ws.NewHub()
@@ -160,13 +147,8 @@ func main() {
 		activityStore,
 		ansibleRunner,
 		worker.ExecutorConfig{
-			ProvisionPlaybookPath: playbooks.provision,
+			PlaybookBasePath:      playbooks.basePath,
 			ConfigurePlaybookPath: playbooks.configure,
-			DeletePlaybookPath:    playbooks.delete,
-			RebuildPlaybookPath:   playbooks.rebuild,
-			ResizePlaybookPath:    playbooks.resize,
-			FirewallsPlaybookPath: playbooks.firewalls,
-			VolumePlaybookPath:    playbooks.volume,
 			ControlPlaneURL:       controlPlaneURL,
 			ExecutionMode:         executionMode,
 			DevTokenStore:         agentTokenStore,
@@ -239,13 +221,8 @@ func main() {
 
 func defaultPlaybookPaths() playbookPaths {
 	return playbookPaths{
-		provision: "ops/ansible/playbooks/provision.yml",
+		basePath:  "ops/ansible/playbooks",
 		configure: "ops/ansible/playbooks/configure.yml",
-		delete:    "ops/ansible/playbooks/delete_server.yml",
-		rebuild:   "ops/ansible/playbooks/rebuild_server.yml",
-		resize:    "ops/ansible/playbooks/resize_server.yml",
-		firewalls: "ops/ansible/playbooks/update_firewalls.yml",
-		volume:    "ops/ansible/playbooks/manage_volume.yml",
 	}
 }
 

@@ -19,6 +19,9 @@ import (
 	"pressluft/internal/server"
 
 	_ "modernc.org/sqlite"
+
+	// Register provider implementations for tests that reference provider types.
+	_ "pressluft/internal/provider/hetzner"
 )
 
 func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
@@ -30,7 +33,7 @@ func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
-		DeletePlaybookPath: "delete.yml",
+		PlaybookBasePath: "playbooks",
 	}, logger)
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: 1})
@@ -54,9 +57,9 @@ func TestExecutorDeleteServerFailureLeavesRecoverableStatus(t *testing.T) {
 		1: {ID: 1, ProviderID: 11, Name: "delete-me", Status: platform.ServerStatusDeleting},
 	}}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
-	runner := &fakeRunner{failPlaybooks: map[string]error{"delete.yml": errors.New("provider delete failed")}}
+	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "delete.yml"): errors.New("provider delete failed")}}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
-		DeletePlaybookPath: "delete.yml",
+		PlaybookBasePath: "playbooks",
 	}, logger)
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: 1})
@@ -85,7 +88,7 @@ func TestExecutorRebuildServerSuccessReconfiguresAndUpdatesImage(t *testing.T) {
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
-		RebuildPlaybookPath:   "rebuild.yml",
+		PlaybookBasePath:      "playbooks",
 		ConfigurePlaybookPath: "configure.yml",
 		ControlPlaneURL:       "https://control.example.test",
 	}, logger)
@@ -151,7 +154,7 @@ func TestExecutorRebuildServerRejectsUnavailableProfile(t *testing.T) {
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
-		RebuildPlaybookPath:   "rebuild.yml",
+		PlaybookBasePath:      "playbooks",
 		ConfigurePlaybookPath: "configure.yml",
 		ControlPlaneURL:       "https://control.example.test",
 		ExecutionMode:         platform.ExecutionModeProductionBootstrap,
@@ -182,9 +185,9 @@ func TestExecutorResizeServerFailureMarksFailed(t *testing.T) {
 		1: {ID: 1, ProviderID: 11, Name: "resize-me", ServerType: "cx22", Status: platform.ServerStatusResizing},
 	}}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
-	runner := &fakeRunner{failPlaybooks: map[string]error{"resize.yml": errors.New("provider resize failed")}}
+	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "resize.yml"): errors.New("provider resize failed")}}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
-		ResizePlaybookPath: "resize.yml",
+		PlaybookBasePath: "playbooks",
 	}, logger)
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{

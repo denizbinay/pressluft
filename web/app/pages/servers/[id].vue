@@ -1236,7 +1236,7 @@ onUnmounted(() => {
                             </SelectContent>
                           </Select>
                           <p v-if="volumeState === 'absent'" class="text-xs text-destructive">
-                            This deletes the volume from Hetzner Cloud.
+                            This deletes the volume from your cloud provider.
                           </p>
                         </div>
                         <div v-if="volumeState === 'present'" class="space-y-1.5">

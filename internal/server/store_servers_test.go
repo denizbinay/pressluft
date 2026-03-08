@@ -10,6 +10,7 @@ import (
 
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
+	"pressluft/internal/security"
 
 	_ "modernc.org/sqlite"
 )
@@ -254,7 +255,9 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			type       TEXT    NOT NULL,
 			name       TEXT    NOT NULL,
-			api_token  TEXT    NOT NULL,
+			api_token_encrypted TEXT NOT NULL,
+			api_token_key_id TEXT NOT NULL,
+			api_token_version INTEGER NOT NULL DEFAULT 0,
 			status     TEXT    NOT NULL DEFAULT 'active',
 			created_at TEXT    NOT NULL,
 			updated_at TEXT    NOT NULL
@@ -347,12 +350,19 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 func mustInsertProvider(t *testing.T, db *sql.DB, providerType, name string) int64 {
 	t.Helper()
 
+	encrypted, keyID, version, err := security.EncryptProviderToken("secret-token")
+	if err != nil {
+		t.Fatalf("encrypt provider token: %v", err)
+	}
+
 	res, err := db.Exec(
-		`INSERT INTO providers (type, name, api_token, status, created_at, updated_at)
-		 VALUES (?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO providers (type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
 		providerType,
 		name,
-		"secret-token",
+		encrypted,
+		keyID,
+		version,
 	)
 	if err != nil {
 		t.Fatalf("insert provider: %v", err)

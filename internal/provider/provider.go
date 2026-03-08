@@ -18,10 +18,14 @@ type ValidationResult struct {
 }
 
 // Info describes a provider type for the frontend (display name, docs URL, etc.).
+// Every field is used by the UI to render provider cards and token setup
+// instructions without any provider-specific hardcoding.
 type Info struct {
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	DocsURL string `json:"docs_url"`
+	Type         string `json:"type"`
+	Name         string `json:"name"`
+	DocsURL      string `json:"docs_url"`
+	Abbreviation string `json:"abbreviation"` // short label for provider icon, e.g. "Hz"
+	Description  string `json:"description"`  // one-liner shown under the provider name
 }
 
 // Provider is the interface every cloud provider adapter must satisfy.

@@ -147,6 +147,8 @@ export interface ProviderType {
   type: string
   name: string
   docs_url: string
+  abbreviation: string
+  description: string
 }
 
 export interface RebuildOptionsResponse {

@@ -2,16 +2,11 @@ package hetzner
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/pem"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"golang.org/x/crypto/ssh"
 
 	"pressluft/internal/provider"
 )
@@ -131,114 +126,11 @@ func (h *Hetzner) ListServerCatalog(ctx context.Context, token string) (*provide
 	return catalog, nil
 }
 
-func (h *Hetzner) CreateServer(ctx context.Context, token string, req provider.CreateServerRequest) (*provider.CreateServerResult, error) {
-	if err := validateCreateServerRequest(req); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("api token must not be empty")
-	}
-
-	client := newClient(token)
-
-	serverType, _, err := client.ServerType.GetByName(ctx, req.ServerType)
-	if err != nil {
-		return nil, mapHetznerAPIError(err)
-	}
-	if serverType == nil {
-		return nil, fmt.Errorf("server type %q not found", req.ServerType)
-	}
-
-	location, _, err := client.Location.GetByName(ctx, req.Location)
-	if err != nil {
-		return nil, mapHetznerAPIError(err)
-	}
-	if location == nil {
-		return nil, fmt.Errorf("location %q not found", req.Location)
-	}
-
-	image, _, err := client.Image.GetForArchitecture(ctx, req.Image, serverType.Architecture)
-	if err != nil {
-		return nil, mapHetznerAPIError(err)
-	}
-	if image == nil {
-		return nil, fmt.Errorf("image %q not found for architecture %q", req.Image, serverType.Architecture)
-	}
-
-	result, _, err := client.Server.Create(ctx, hcloud.ServerCreateOpts{
-		Name:       req.Name,
-		ServerType: serverType,
-		Image:      image,
-		Location:   location,
-		UserData:   req.UserData,
-		Labels:     req.Labels,
-	})
-	if err != nil {
-		if hcloud.IsError(err, hcloud.ErrorCodeUniquenessError) {
-			// Idempotency: if server already exists, retrieve it
-			existingServer, _, errGet := client.Server.Get(ctx, req.Name)
-			if errGet == nil && existingServer != nil {
-				return &provider.CreateServerResult{
-					ProviderServerID: strconv.FormatInt(existingServer.ID, 10),
-					Status:           string(existingServer.Status),
-				}, nil
-			}
-		}
-		return nil, mapHetznerAPIError(err)
-	}
-
-	createResult := &provider.CreateServerResult{
-		Status: "provisioning",
-	}
-	if result.Server != nil {
-		createResult.ProviderServerID = strconv.FormatInt(result.Server.ID, 10)
-	}
-	if result.Action != nil {
-		createResult.ActionID = strconv.FormatInt(result.Action.ID, 10)
-		createResult.Status = string(result.Action.Status)
-	}
-
-	return createResult, nil
-}
-
 func newClient(token string) *hcloud.Client {
 	return hcloud.NewClient(
 		hcloud.WithToken(token),
 		hcloud.WithApplication("pressluft", "1.0.0"),
 	)
-}
-
-func mapLocations(in []*hcloud.Location) []provider.ServerLocation {
-	out := make([]provider.ServerLocation, 0, len(in))
-	for _, loc := range in {
-		if loc == nil {
-			continue
-		}
-		out = append(out, provider.ServerLocation{
-			Name:        loc.Name,
-			Description: loc.Description,
-			Country:     loc.Country,
-			City:        loc.City,
-			NetworkZone: string(loc.NetworkZone),
-		})
-	}
-	return out
-}
-
-func validateCreateServerRequest(req provider.CreateServerRequest) error {
-	if strings.TrimSpace(req.Name) == "" {
-		return fmt.Errorf("name is required")
-	}
-	if strings.TrimSpace(req.Location) == "" {
-		return fmt.Errorf("location is required")
-	}
-	if strings.TrimSpace(req.ServerType) == "" {
-		return fmt.Errorf("server_type is required")
-	}
-	if strings.TrimSpace(req.Image) == "" {
-		return fmt.Errorf("image is required")
-	}
-	return nil
 }
 
 func mapHetznerAPIError(err error) error {
@@ -256,93 +148,4 @@ func mapHetznerAPIError(err error) error {
 	default:
 		return fmt.Errorf("hetzner api error: %w", err)
 	}
-}
-
-// CreateSSHKey registers a public SSH key with Hetzner Cloud.
-func (h *Hetzner) CreateSSHKey(ctx context.Context, token, name, publicKey string) (*provider.SSHKeyResult, error) {
-	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("api token must not be empty")
-	}
-	if strings.TrimSpace(name) == "" {
-		return nil, fmt.Errorf("ssh key name must not be empty")
-	}
-	if strings.TrimSpace(publicKey) == "" {
-		return nil, fmt.Errorf("public key must not be empty")
-	}
-
-	client := newClient(token)
-
-	sshKey, _, err := client.SSHKey.Create(ctx, hcloud.SSHKeyCreateOpts{
-		Name:      name,
-		PublicKey: publicKey,
-	})
-	if err != nil {
-		if hcloud.IsError(err, hcloud.ErrorCodeUniquenessError) {
-			// Idempotency: if key already exists, try to retrieve it
-			existingKey, _, errGet := client.SSHKey.Get(ctx, name)
-			if errGet == nil && existingKey != nil {
-				return &provider.SSHKeyResult{
-					ID:          existingKey.ID,
-					Name:        existingKey.Name,
-					Fingerprint: existingKey.Fingerprint,
-				}, nil
-			}
-		}
-		return nil, mapHetznerAPIError(err)
-	}
-
-	return &provider.SSHKeyResult{
-		ID:          sshKey.ID,
-		Name:        sshKey.Name,
-		Fingerprint: sshKey.Fingerprint,
-	}, nil
-}
-
-// DeleteSSHKey removes an SSH key from Hetzner Cloud by its ID.
-func (h *Hetzner) DeleteSSHKey(ctx context.Context, token string, keyID int64) error {
-	if strings.TrimSpace(token) == "" {
-		return fmt.Errorf("api token must not be empty")
-	}
-	if keyID <= 0 {
-		return fmt.Errorf("ssh key id must be positive")
-	}
-
-	client := newClient(token)
-
-	_, err := client.SSHKey.Delete(ctx, &hcloud.SSHKey{ID: keyID})
-	if err != nil {
-		return mapHetznerAPIError(err)
-	}
-
-	return nil
-}
-
-// GenerateSSHKeyPair creates a new Ed25519 SSH key pair.
-// Returns the public key in OpenSSH authorized_keys format and the private key in PEM format.
-func GenerateSSHKeyPair(comment string) (publicKey, privateKey string, err error) {
-	// Generate Ed25519 key pair
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return "", "", fmt.Errorf("generate ed25519 key: %w", err)
-	}
-
-	// Convert public key to OpenSSH authorized_keys format
-	sshPubKey, err := ssh.NewPublicKey(pubKey)
-	if err != nil {
-		return "", "", fmt.Errorf("create ssh public key: %w", err)
-	}
-	authorizedKey := ssh.MarshalAuthorizedKey(sshPubKey)
-	publicKeyStr := strings.TrimSpace(string(authorizedKey))
-	if comment != "" {
-		publicKeyStr = publicKeyStr + " " + comment
-	}
-
-	// Convert private key to PEM format
-	pemBlock, err := ssh.MarshalPrivateKey(privKey, comment)
-	if err != nil {
-		return "", "", fmt.Errorf("marshal private key: %w", err)
-	}
-	privateKeyPEM := pem.EncodeToMemory(pemBlock)
-
-	return publicKeyStr, string(privateKeyPEM), nil
 }

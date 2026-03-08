@@ -13,6 +13,8 @@ import (
 const (
 	providerType = "hetzner"
 	displayName  = "Hetzner Cloud"
+	abbreviation = "Hz"
+	description  = "European cloud infrastructure"
 	docsURL      = "https://docs.hetzner.com/cloud/api/getting-started/generating-api-token"
 )
 
@@ -26,9 +28,11 @@ func init() {
 // Info returns metadata about this provider.
 func (h *Hetzner) Info() provider.Info {
 	return provider.Info{
-		Type:    providerType,
-		Name:    displayName,
-		DocsURL: docsURL,
+		Type:         providerType,
+		Name:         displayName,
+		DocsURL:      docsURL,
+		Abbreviation: abbreviation,
+		Description:  description,
 	}
 }
 
