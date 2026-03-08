@@ -9,6 +9,8 @@ import (
 	"syscall"
 
 	"pressluft/internal/agent"
+	"pressluft/internal/envconfig"
+	"pressluft/internal/platform"
 )
 
 var (
@@ -22,6 +24,15 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+	slog.SetDefault(logger)
+
+	runtimeConfig, err := envconfig.ResolveAgentRuntime(isDevBuild(), *configPath)
+	if err != nil {
+		logger.Error("failed to resolve agent config", "error", err)
+		os.Exit(1)
+	}
+	executionMode := runtimeConfig.ExecutionMode
+	logExecutionMode(logger, executionMode)
 
 	cfg, err := agent.LoadConfig(*configPath)
 	if err != nil {
@@ -53,5 +64,19 @@ func main() {
 	if err := agent.Run(ctx); err != nil && err != context.Canceled {
 		logger.Error("agent error", "error", err)
 		os.Exit(1)
+	}
+}
+
+func logExecutionMode(logger *slog.Logger, mode platform.ExecutionMode) {
+	logger.Info("platform contract loaded",
+		"execution_mode", mode,
+		"contract_package", "pressluft/internal/contract",
+	)
+
+	switch mode {
+	case platform.ExecutionModeDev:
+		logger.Info("development agent transport enabled", "agent_trust", "dev websocket token")
+	case platform.ExecutionModeProductionBootstrap:
+		logger.Warn("production bootstrap path requires control plane TLS and mTLS trust material", "agent_transport", "wss plus mTLS", "status", "experimental")
 	}
 }

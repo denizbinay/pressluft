@@ -11,7 +11,7 @@ export interface ImageOption {
   status?: string
 }
 
-export interface ServerTypeOption {
+export interface ResizeServerTypeOption {
   value: string
   label: string
   cores?: number
@@ -49,7 +49,7 @@ const fetchJson = async (url: string, fallbackMessage: string) => {
 
 export function useServerOptions() {
   const images = ref<ImageOption[]>([])
-  const serverTypes = ref<ServerTypeOption[]>([])
+  const serverTypes = ref<ResizeServerTypeOption[]>([])
   const firewalls = ref<FirewallOption[]>([])
   const volumes = ref<VolumeOption[]>([])
   const loading = ref(false)

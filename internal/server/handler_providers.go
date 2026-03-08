@@ -1,13 +1,13 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/apitypes"
 	"pressluft/internal/provider"
 )
 
@@ -63,21 +63,14 @@ func (ph *providerHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 
 // --- handlers ---------------------------------------------------------------
 
-type createProviderRequest struct {
-	Type     string `json:"type"`
-	Name     string `json:"name"`
-	APIToken string `json:"api_token"`
-}
-
 func (ph *providerHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
-	var req createProviderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	var req apitypes.CreateProviderRequest
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
 
-	if req.Type == "" || req.Name == "" || req.APIToken == "" {
-		respondError(w, http.StatusBadRequest, "type, name, and api_token are required")
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -106,20 +99,22 @@ func (ph *providerHandler) handleCreate(w http.ResponseWriter, r *http.Request) 
 
 	// Emit activity for provider creation
 	if ph.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventProviderAdded,
 			Category:     activity.CategoryProvider,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceProvider,
 			ResourceID:   id,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        fmt.Sprintf("Provider '%s' added", req.Name),
 		})
 	}
 
-	respondJSON(w, http.StatusCreated, map[string]any{
-		"id":         id,
-		"validation": result,
+	respondJSON(w, http.StatusCreated, apitypes.CreateProviderResponse{
+		ID:         id,
+		Validation: *result,
 	})
 }
 
@@ -153,23 +148,20 @@ func (ph *providerHandler) handleDelete(w http.ResponseWriter, r *http.Request, 
 		if providerName != "" {
 			title = fmt.Sprintf("Provider '%s' removed", providerName)
 		}
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = ph.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventProviderRemoved,
 			Category:     activity.CategoryProvider,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceProvider,
 			ResourceID:   id,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        title,
 		})
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-type validateRequest struct {
-	Type     string `json:"type"`
-	APIToken string `json:"api_token"`
 }
 
 func (ph *providerHandler) handleValidate(w http.ResponseWriter, r *http.Request) {
@@ -178,9 +170,12 @@ func (ph *providerHandler) handleValidate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req validateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	var req apitypes.ValidateProviderRequest
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
+		return
+	}
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

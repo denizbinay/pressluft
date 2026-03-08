@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	caLifetimeYears = 10
+	caLifetimeYears  = 10
+	nodeCertLifetime = 90 * 24 * time.Hour
 )
 
 type CA struct {
@@ -123,6 +124,32 @@ func LoadOrCreateCA(db *sql.DB, ageKeyPath, caKeyPath string) (*CA, error) {
 	return &CA{cert: cert, key: key, ageIdentity: ageId, db: db}, nil
 }
 
+// ValidateStoredCA reports whether a CA certificate exists in the database and,
+// if so, whether the corresponding encrypted key can be loaded with the current
+// age identity.
+func ValidateStoredCA(db *sql.DB, ageKeyPath, caKeyPath string) (bool, error) {
+	row := db.QueryRow("SELECT certificate FROM ca_certificates ORDER BY id DESC LIMIT 1")
+	var certPEM []byte
+	err := row.Scan(&certPEM)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lookup CA certificate: %w", err)
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return true, fmt.Errorf("failed to decode CA certificate")
+	}
+	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+		return true, fmt.Errorf("parse CA certificate: %w", err)
+	}
+	if _, err := loadCAKey(caKeyPath, ageKeyPath); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 func (ca *CA) CertPool() *x509.CertPool {
 	pool := x509.NewCertPool()
 	pool.AddCert(ca.cert)
@@ -134,6 +161,15 @@ func (ca *CA) Certificate() *x509.Certificate {
 }
 
 func (ca *CA) SignCSR(csr *x509.CertificateRequest, validityDays int) (*x509.Certificate, error) {
+	if err := csr.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("verify CSR signature: %w", err)
+	}
+	validity := nodeCertLifetime
+	if validityDays > 0 {
+		validity = time.Duration(validityDays) * 24 * time.Hour
+	}
+	now := time.Now().UTC()
+
 	serialNumber, err := generateSerialNumber()
 	if err != nil {
 		return nil, err
@@ -142,8 +178,8 @@ func (ca *CA) SignCSR(csr *x509.CertificateRequest, validityDays int) (*x509.Cer
 	template := &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject:      csr.Subject,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(0, validityDays, 0),
+		NotBefore:    now,
+		NotAfter:     now.Add(validity),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}

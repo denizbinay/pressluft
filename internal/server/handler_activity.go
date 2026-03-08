@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/apitypes"
 )
 
 type activityHandler struct {
@@ -101,7 +102,7 @@ func (ah *activityHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := activityListResponse{
+	response := apitypes.ActivityListResponse{
 		Data:       activities,
 		NextCursor: nextCursor,
 	}
@@ -147,7 +148,7 @@ func (ah *activityHandler) handleMarkAllRead(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	respondJSON(w, http.StatusOK, apitypes.StatusResponse{Status: "ok"})
 }
 
 func (ah *activityHandler) handleUnreadCount(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +165,7 @@ func (ah *activityHandler) handleUnreadCount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]int64{"count": count})
+	respondJSON(w, http.StatusOK, apitypes.UnreadCountResponse{Count: count})
 }
 
 func (ah *activityHandler) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -242,16 +243,11 @@ func (ah *activityHandler) handleServerActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	response := activityListResponse{
+	response := apitypes.ActivityListResponse{
 		Data:       activities,
 		NextCursor: nextCursor,
 	}
 	respondJSON(w, http.StatusOK, response)
-}
-
-type activityListResponse struct {
-	Data       []activity.Activity `json:"data"`
-	NextCursor string              `json:"next_cursor,omitempty"`
 }
 
 func parseActivityFilter(r *http.Request) activity.ListFilter {

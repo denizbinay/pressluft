@@ -4,52 +4,12 @@ import "fmt"
 
 var allowedTransitions = map[JobStatus]map[JobStatus]struct{}{
 	JobStatusQueued: {
-		JobStatusPreparing: {},
-		JobStatusCancelled: {},
-		JobStatusFailed:    {},
-		JobStatusTimedOut:  {},
-	},
-	JobStatusPreparing: {
-		JobStatusRunning:   {},
-		JobStatusFailed:    {},
-		JobStatusCancelled: {},
-		JobStatusTimedOut:  {},
+		JobStatusRunning: {},
+		JobStatusFailed:  {},
 	},
 	JobStatusRunning: {
-		JobStatusWaitingReboot: {},
-		JobStatusVerifying:     {},
-		JobStatusRetrying:      {},
-		JobStatusSucceeded:     {},
-		JobStatusFailed:        {},
-		JobStatusCancelled:     {},
-		JobStatusTimedOut:      {},
-	},
-	JobStatusWaitingReboot: {
-		JobStatusResuming:  {},
-		JobStatusFailed:    {},
-		JobStatusCancelled: {},
-		JobStatusTimedOut:  {},
-	},
-	JobStatusResuming: {
-		JobStatusRunning:   {},
-		JobStatusVerifying: {},
-		JobStatusRetrying:  {},
-		JobStatusFailed:    {},
-		JobStatusCancelled: {},
-		JobStatusTimedOut:  {},
-	},
-	JobStatusVerifying: {
 		JobStatusSucceeded: {},
-		JobStatusRetrying:  {},
 		JobStatusFailed:    {},
-		JobStatusCancelled: {},
-		JobStatusTimedOut:  {},
-	},
-	JobStatusRetrying: {
-		JobStatusRunning:   {},
-		JobStatusFailed:    {},
-		JobStatusCancelled: {},
-		JobStatusTimedOut:  {},
 	},
 }
 
@@ -77,7 +37,7 @@ func ValidateTransition(from, to JobStatus) error {
 // IsTerminalStatus reports whether the status can no longer transition.
 func IsTerminalStatus(status JobStatus) bool {
 	switch status {
-	case JobStatusSucceeded, JobStatusFailed, JobStatusCancelled, JobStatusTimedOut:
+	case JobStatusSucceeded, JobStatusFailed:
 		return true
 	default:
 		return false

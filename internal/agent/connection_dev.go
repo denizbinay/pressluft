@@ -15,12 +15,16 @@ import (
 )
 
 func (a *Agent) connectAndRun(ctx context.Context) error {
-	token := strings.TrimSpace(a.config.DevWSToken)
+	token := strings.TrimSpace(a.config.ResolveDevWSToken())
 	if token == "" {
 		return fmt.Errorf("dev_ws_token is required for dev agent")
 	}
+	wsURL, err := a.config.websocketURL()
+	if err != nil {
+		return err
+	}
 
-	conn, _, err := websocket.Dial(ctx, a.config.ControlPlane+"/ws/agent", &websocket.DialOptions{
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{
 			"Origin":                {a.config.ControlPlane},
 			"X-Pressluft-Dev-Token": {token},
@@ -31,7 +35,7 @@ func (a *Agent) connectAndRun(ctx context.Context) error {
 	}
 	a.conn = conn
 
-	a.logger.Info("connected to control plane")
+	a.logger.Info("agent websocket connected", "server_id", a.config.ServerID, "control_plane", a.config.ControlPlane, "transport", "ws")
 
 	go a.sendHeartbeats(ctx)
 
@@ -43,7 +47,7 @@ func (a *Agent) connectAndRun(ctx context.Context) error {
 
 		var env ws.Envelope
 		if err := json.Unmarshal(data, &env); err != nil {
-			a.logger.Debug("unmarshal error", "error", err)
+			a.logger.Debug("agent websocket envelope decode failed", "server_id", a.config.ServerID, "error", err)
 			continue
 		}
 

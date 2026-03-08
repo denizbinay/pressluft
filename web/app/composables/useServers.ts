@@ -1,106 +1,40 @@
 import { ref, readonly } from 'vue'
+import type {
+  AgentInfo,
+  AgentStatusMapResponse,
+  CreateServerRequest,
+  CreateServerResponse,
+  DeleteServerResponse,
+  ServerCatalogResponse,
+  ServerTypePrice,
+  ServicesResponse,
+  StoredServer,
+} from '~/lib/api-contract'
+export type {
+  AgentInfo,
+  ServerCatalogResponse,
+  ServerTypePrice,
+  ServicesResponse,
+  StoredServer,
+} from '~/lib/api-contract'
+import {
+  parseAgentInfo,
+  parseAgentStatusMapResponse,
+  parseCreateServerResponse,
+  parseDeleteServerResponse,
+  parseServerCatalogResponse,
+  parseServicesResponse,
+  parseStoredServer,
+  parseStoredServers,
+} from '~/lib/api-runtime'
 
-export interface ServerProfile {
-  key: string
-  name: string
-  description: string
-  artifact_path: string
-}
-
-export interface ServerLocation {
-  name: string
-  description: string
-  country?: string
-  city?: string
-  network_zone?: string
-}
-
-export interface ServerTypePrice {
-  location_name: string
-  hourly_gross: string
-  monthly_gross: string
-  currency: string
-}
-
-export interface ServerTypeOption {
-  name: string
-  description: string
-  cores: number
-  memory_gb: number
-  disk_gb: number
-  architecture: string
-  available_at: string[]
-  prices: ServerTypePrice[]
-}
-
-export interface ServerCatalog {
-  locations: ServerLocation[]
-  server_types: ServerTypeOption[]
-}
-
-export interface StoredServer {
-  id: number
-  provider_id: number
-  provider_type: string
-  provider_server_id?: string
-  name: string
-  location: string
-  server_type: string
-  image: string
-  profile_key: string
-  status: string
-  action_id?: string
-  action_status?: string
-  node_status?: string
-  node_last_seen?: string
-  node_version?: string
-  created_at: string
-  updated_at: string
-}
-
-export type AgentStatusType = 'online' | 'unhealthy' | 'offline' | 'unknown'
-
-export interface AgentInfo {
-  connected: boolean
-  status: AgentStatusType
-  last_seen?: string
-  version?: string
-  cpu_percent?: number
-  mem_used_mb?: number
-  mem_total_mb?: number
-}
-
-export interface Service {
-  name: string
-  description: string
-  active_state: string
-  load_state: string
-}
-
-export interface ServicesResponse {
-  server_id: number
-  agent_connected: boolean
-  services: Service[]
-}
-
-export interface CreateServerInput {
-  provider_id: number
-  name: string
-  location: string
-  server_type: string
-  profile_key: string
-}
-
-export interface CreateServerResponse {
-  server_id: number
-  job_id: number
-  status: string
-}
+export type AgentStatusType = AgentInfo['status']
 
 export function useServers() {
+  const { apiFetch } = useApiClient()
   const servers = ref<StoredServer[]>([])
-  const profiles = ref<ServerProfile[]>([])
-  const catalog = ref<ServerCatalog | null>(null)
+  const profiles = ref<ServerCatalogResponse['profiles']>([])
+  const catalog = ref<ServerCatalogResponse['catalog'] | null>(null)
   const loading = ref(false)
   const saving = ref(false)
   const error = ref('')
@@ -109,9 +43,7 @@ export function useServers() {
     loading.value = true
     error.value = ''
     try {
-      const res = await fetch('/api/servers')
-      if (!res.ok) throw new Error(`Failed to fetch servers: ${res.statusText}`)
-      servers.value = await res.json()
+      servers.value = parseStoredServers(await apiFetch('/servers'))
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -123,78 +55,46 @@ export function useServers() {
     error.value = ''
     catalog.value = null
     profiles.value = []
-    const res = await fetch(`/api/servers/catalog?provider_id=${providerId}`)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to fetch server catalog')
-    }
-    const body = await res.json()
+    const body = parseServerCatalogResponse(await apiFetch(`/servers/catalog?provider_id=${providerId}`))
     catalog.value = body.catalog
     profiles.value = body.profiles
   }
 
-  const createServer = async (payload: CreateServerInput): Promise<CreateServerResponse> => {
+  const createServer = async (payload: CreateServerRequest): Promise<CreateServerResponse> => {
     saving.value = true
     error.value = ''
     try {
-      const res = await fetch('/api/servers', {
+      return parseCreateServerResponse(await apiFetch('/servers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error(body.error || 'Failed to create server')
-      }
-      return await res.json() as CreateServerResponse
+        body: payload,
+      }))
     } finally {
       saving.value = false
     }
   }
 
-  const deleteServer = async (serverId: number): Promise<void> => {
+  const deleteServer = async (serverId: number): Promise<DeleteServerResponse> => {
     error.value = ''
-    const res = await fetch(`/api/servers/${serverId}`, {
+    return parseDeleteServerResponse(await apiFetch(`/servers/${serverId}`, {
       method: 'DELETE',
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to delete server')
-    }
+    }))
   }
 
   const fetchServer = async (serverId: number): Promise<StoredServer> => {
     error.value = ''
-    const res = await fetch(`/api/servers/${serverId}`)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to fetch server')
-    }
-    return await res.json() as StoredServer
+    return parseStoredServer(await apiFetch(`/servers/${serverId}`))
   }
 
   const fetchAgentStatus = async (serverId: number): Promise<AgentInfo> => {
-    const res = await fetch(`/api/servers/${serverId}/agent-status`)
-    if (!res.ok) {
-      throw new Error('Failed to fetch agent status')
-    }
-    return await res.json() as AgentInfo
+    return parseAgentInfo(await apiFetch(`/servers/${serverId}/agent-status`))
   }
 
-  const fetchAllAgentStatus = async (): Promise<Record<number, AgentInfo>> => {
-    const res = await fetch('/api/servers/agents')
-    if (!res.ok) {
-      throw new Error('Failed to fetch agent status')
-    }
-    return await res.json() as Record<number, AgentInfo>
+  const fetchAllAgentStatus = async (): Promise<AgentStatusMapResponse> => {
+    return parseAgentStatusMapResponse(await apiFetch('/servers/agents'))
   }
 
   const fetchServices = async (serverId: number): Promise<ServicesResponse> => {
-    const res = await fetch(`/api/servers/${serverId}/services`)
-    if (!res.ok) {
-      throw new Error('Failed to fetch services')
-    }
-    return await res.json() as ServicesResponse
+    return parseServicesResponse(await apiFetch(`/servers/${serverId}/services`))
   }
 
   return {

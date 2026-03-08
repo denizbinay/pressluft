@@ -2,42 +2,50 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
-	"os/exec"
+	"errors"
 
 	"pressluft/internal/agent/commands"
+	"pressluft/internal/agentcommand"
 	"pressluft/internal/ws"
 )
 
-type Executor struct{}
+type commandFunc func(context.Context, ws.Command) ws.CommandResult
+
+type Executor struct {
+	restartService commandFunc
+	listServices   commandFunc
+}
 
 func NewExecutor() *Executor {
-	return &Executor{}
+	return &Executor{
+		restartService: commands.RestartService,
+		listServices:   commands.ListServices,
+	}
 }
 
 func (e *Executor) Execute(ctx context.Context, cmd ws.Command) ws.CommandResult {
-	switch cmd.Type {
-	case "restart_service":
-		return e.restartService(ctx, cmd)
-	case "list_services":
-		return commands.ListServices(ctx, cmd)
-	default:
-		return ws.CommandResult{CommandID: cmd.ID, Success: false, Error: "unknown command"}
-	}
-}
-
-func (e *Executor) restartService(ctx context.Context, cmd ws.Command) ws.CommandResult {
-	var params struct {
-		ServiceName string `json:"service_name"`
-	}
-	if err := json.Unmarshal(cmd.Payload, &params); err != nil {
-		return ws.CommandResult{CommandID: cmd.ID, Success: false, Error: "invalid payload"}
-	}
-
-	out, err := exec.CommandContext(ctx, "systemctl", "restart", params.ServiceName).CombinedOutput()
+	normalizedPayload, err := agentcommand.Validate(cmd.Type, cmd.Payload)
 	if err != nil {
-		return ws.CommandResult{CommandID: cmd.ID, Success: false, Error: err.Error(), Output: string(out)}
+		var validationErr *agentcommand.ValidationError
+		if errors.As(err, &validationErr) {
+			return ws.FailureResult(cmd.ID, validationErr.Code, validationErr.Message, nil, "")
+		}
+		return ws.FailureResult(cmd.ID, agentcommand.ErrorCodeInvalidPayload, err.Error(), nil, "")
+	}
+	cmd.Payload = normalizedPayload
+
+	if timeout := agentcommand.Timeout(cmd.Type); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
-	return ws.CommandResult{CommandID: cmd.ID, Success: true, Output: string(out)}
+	switch cmd.Type {
+	case agentcommand.TypeRestartService:
+		return e.restartService(ctx, cmd)
+	case agentcommand.TypeListServices:
+		return e.listServices(ctx, cmd)
+	default:
+		return ws.FailureResult(cmd.ID, agentcommand.ErrorCodeUnknownCommand, "unknown command", nil, "")
+	}
 }

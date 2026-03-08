@@ -1,4 +1,89 @@
 ---
-- name: Validate bootstrap marker
-  ansible.builtin.debug:
-    msg: "Pressluft common role scaffold executed"
+- name: Validate common baseline contract
+  ansible.builtin.assert:
+    that:
+      - pressluft_profile.baseline.package_update == 'dist'
+      - pressluft_profile.baseline.packages | length > 0
+      - pressluft_profile.baseline.users | length > 0
+      - pressluft_profile.baseline.directories | length > 0
+      - pressluft_profile.baseline.firewall.enabled | bool
+
+- name: Refresh apt cache and apply baseline package policy
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: dist
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name: "{{ pressluft_profile.baseline.packages }}"
+    state: present
+
+- name: Ensure baseline groups exist
+  ansible.builtin.group:
+    name: "{{ item.group }}"
+    system: true
+    state: present
+  loop: "{{ pressluft_profile.baseline.users }}"
+  loop_control:
+    label: "{{ item.group }}"
+
+- name: Ensure baseline users exist
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    group: "{{ item.group }}"
+    home: "{{ item.home }}"
+    shell: "{{ item.shell }}"
+    system: "{{ item.system }}"
+    create_home: false
+    state: present
+  loop: "{{ pressluft_profile.baseline.users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Ensure baseline directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    state: directory
+  loop: "{{ pressluft_profile.baseline.directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Enable unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Configure UFW default incoming policy
+  ansible.builtin.command: "ufw default {{ pressluft_profile.baseline.firewall.default_incoming }} incoming"
+  changed_when: true
+
+- name: Configure UFW default outgoing policy
+  ansible.builtin.command: "ufw default {{ pressluft_profile.baseline.firewall.default_outgoing }} outgoing"
+  changed_when: true
+
+- name: Allow baseline TCP ports through UFW
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  changed_when: true
+  loop: "{{ pressluft_profile.baseline.firewall.allowed_tcp_ports }}"
+  loop_control:
+    label: "{{ item }}/tcp"
+
+- name: Enable UFW
+  ansible.builtin.command: ufw --force enable
+  changed_when: true
+
+- name: Ensure baseline services are enabled and started
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - fail2ban
+    - ssh

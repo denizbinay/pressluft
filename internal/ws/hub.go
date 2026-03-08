@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"pressluft/internal/platform"
 )
 
 type Hub struct {
@@ -83,20 +85,18 @@ func (h *Hub) ConnectedServerIDs() []int64 {
 
 func (h *Hub) Range(fn func(serverID int64, conn *Conn) bool) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	snapshot := make(map[int64]*Conn, len(h.conns))
 	for id, conn := range h.conns {
+		snapshot[id] = conn
+	}
+	h.mu.RUnlock()
+
+	for id, conn := range snapshot {
 		if !fn(id, conn) {
 			break
 		}
 	}
 }
-
-// Thresholds for agent status (matching monitor.go)
-const (
-	unhealthyThreshold = 45 * time.Second
-	offlineThreshold   = 150 * time.Second
-)
 
 // GetAgentInfo returns the real-time status and metrics for a server's agent.
 // If the agent is not connected, it returns a disconnected status.
@@ -108,7 +108,7 @@ func (h *Hub) GetAgentInfo(serverID int64) AgentInfo {
 	if !ok {
 		return AgentInfo{
 			Connected: false,
-			Status:    AgentStatusOffline,
+			Status:    platform.NodeStatusOffline,
 		}
 	}
 
@@ -127,13 +127,13 @@ func (h *Hub) GetAgentInfo(serverID int64) AgentInfo {
 
 	// Determine status based on time since last heartbeat
 	switch {
-	case elapsed > offlineThreshold:
-		info.Status = AgentStatusOffline
+	case elapsed > time.Duration(platform.NodeOfflineThresholdSeconds)*time.Second:
+		info.Status = platform.NodeStatusOffline
 		info.Connected = false
-	case elapsed > unhealthyThreshold:
-		info.Status = AgentStatusUnhealthy
+	case elapsed > time.Duration(platform.NodeUnhealthyThresholdSeconds)*time.Second:
+		info.Status = platform.NodeStatusUnhealthy
 	default:
-		info.Status = AgentStatusOnline
+		info.Status = platform.NodeStatusOnline
 	}
 
 	return info
@@ -162,13 +162,13 @@ func (h *Hub) GetAllAgentInfo() map[int64]AgentInfo {
 		}
 
 		switch {
-		case elapsed > offlineThreshold:
-			info.Status = AgentStatusOffline
+		case elapsed > time.Duration(platform.NodeOfflineThresholdSeconds)*time.Second:
+			info.Status = platform.NodeStatusOffline
 			info.Connected = false
-		case elapsed > unhealthyThreshold:
-			info.Status = AgentStatusUnhealthy
+		case elapsed > time.Duration(platform.NodeUnhealthyThresholdSeconds)*time.Second:
+			info.Status = platform.NodeStatusUnhealthy
 		default:
-			info.Status = AgentStatusOnline
+			info.Status = platform.NodeStatusOnline
 		}
 
 		result[serverID] = info

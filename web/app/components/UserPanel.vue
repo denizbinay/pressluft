@@ -17,15 +17,18 @@ const props = defineProps<{
 const router = useRouter()
 const colorMode = useColorMode()
 const { state } = useSidebar()
+const { user, logout } = useAuth()
 
-// Mock user data - would come from auth in real app
-const user = ref({
-  name: "Admin User",
-  email: "admin@pressluft.io",
+const displayName = computed(() => {
+  const email = user.value?.email?.trim()
+  if (!email) return "Operator"
+  return email
 })
 
+const displayEmail = computed(() => user.value?.email?.trim() || "No session")
+
 const initials = computed(() =>
-  user.value.name
+  displayName.value
     .split(" ")
     .filter(Boolean)
     .map((part) => part[0])
@@ -68,14 +71,20 @@ const toggleThemePreference = () => {
   colorMode.preference = next
 }
 
-const handleItemClick = (item: MenuItem) => {
+const handleItemClick = async (item: MenuItem) => {
   if (item.id === "theme") {
     toggleThemePreference()
     return
   }
 
+  if (item.id === "sign-out") {
+    await logout()
+    await router.push("/login")
+    return
+  }
+
   if (item.to) {
-    router.push(item.to)
+    await router.push(item.to)
   }
 }
 
@@ -111,11 +120,11 @@ const iconPath = (icon: MenuIcon): string => {
           <span
             class="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground"
           >
-            {{ initials || "AU" }}
+            {{ initials || "OP" }}
           </span>
           <span v-if="!isCollapsed" class="min-w-0 flex-1 text-left">
-            <span class="block text-sm font-medium text-foreground">{{ user.name }}</span>
-            <span class="block truncate text-xs text-muted-foreground">{{ user.email }}</span>
+            <span class="block text-sm font-medium text-foreground">{{ displayName }}</span>
+            <span class="block truncate text-xs text-muted-foreground">{{ displayEmail }}</span>
           </span>
           <svg
             v-if="!isCollapsed"
@@ -139,8 +148,8 @@ const iconPath = (icon: MenuIcon): string => {
     >
       <div :class="cn(isCollapsed ? 'w-48' : 'w-56')">
         <div class="px-3 py-2">
-          <p class="text-xs font-medium text-foreground">{{ user.name }}</p>
-          <p class="text-xs text-muted-foreground">{{ user.email }}</p>
+          <p class="text-xs font-medium text-foreground">{{ displayName }}</p>
+          <p class="text-xs text-muted-foreground">{{ displayEmail }}</p>
         </div>
         <DropdownMenuSeparator class="mx-0 my-0 h-px bg-border/60" />
 

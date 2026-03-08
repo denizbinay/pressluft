@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"pressluft/internal/ws"
 
@@ -15,6 +16,14 @@ import (
 )
 
 func (a *Agent) connectAndRun(ctx context.Context) error {
+	wsURL, err := a.config.websocketURL()
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(wsURL, "wss://") {
+		return fmt.Errorf("production agent transport requires wss control_plane URL")
+	}
+
 	cert, err := LoadClientCert(a.config)
 	if err != nil {
 		return fmt.Errorf("load client cert: %w", err)
@@ -36,7 +45,7 @@ func (a *Agent) connectAndRun(ctx context.Context) error {
 		},
 	}
 
-	conn, _, err := websocket.Dial(ctx, a.config.ControlPlane+"/ws/agent", &websocket.DialOptions{
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPClient: httpClient,
 		HTTPHeader: http.Header{
 			"Origin": {a.config.ControlPlane},
@@ -47,7 +56,7 @@ func (a *Agent) connectAndRun(ctx context.Context) error {
 	}
 	a.conn = conn
 
-	a.logger.Info("connected to control plane")
+	a.logger.Info("agent websocket connected", "server_id", a.config.ServerID, "control_plane", a.config.ControlPlane, "transport", "wss+mTLS")
 
 	go a.sendHeartbeats(ctx)
 
@@ -59,7 +68,7 @@ func (a *Agent) connectAndRun(ctx context.Context) error {
 
 		var env ws.Envelope
 		if err := json.Unmarshal(data, &env); err != nil {
-			a.logger.Debug("unmarshal error", "error", err)
+			a.logger.Debug("agent websocket envelope decode failed", "server_id", a.config.ServerID, "error", err)
 			continue
 		}
 

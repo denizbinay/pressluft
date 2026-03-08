@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/agentcommand"
+	"pressluft/internal/apitypes"
 	"pressluft/internal/orchestrator"
+	"pressluft/internal/platform"
 	"pressluft/internal/provider"
 	"pressluft/internal/server/profiles"
 	"pressluft/internal/ws"
@@ -153,17 +157,13 @@ func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, server)
+	respondJSON(w, http.StatusOK, apiStoredServer(*server))
 }
 
 func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Request, serverID int64) {
-	// Get server name before deletion for activity message
-	var serverName string
-	if server, err := sh.serverStore.GetByID(r.Context(), serverID); err == nil {
-		serverName = server.Name
-	}
-
-	if err := sh.serverStore.Delete(r.Context(), serverID); err != nil {
+	slog.Default().Info("server action requested", "action", "delete_server", "server_id", serverID)
+	serverRecord, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
 			return
@@ -172,24 +172,55 @@ func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Emit activity for server deletion
-	if sh.activityStore != nil {
-		title := "Server deleted"
-		if serverName != "" {
-			title = fmt.Sprintf("Server '%s' deleted", serverName)
+	_, job, err := sh.serverStore.QueueServerJob(r.Context(), QueueServerJobInput{
+		ServerID: serverID,
+		Kind:     string(orchestrator.JobKindDeleteServer),
+		Payload:  fmt.Sprintf(`{"server_name":%q}`, serverRecord.Name),
+	})
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "not found"):
+			respondError(w, http.StatusNotFound, err.Error())
+		case err == ErrServerDeleting || err == ErrServerDeleted || strings.Contains(err.Error(), ErrServerActionConflict.Error()):
+			respondError(w, http.StatusConflict, err.Error())
+		default:
+			respondError(w, http.StatusInternalServerError, err.Error())
 		}
+		return
+	}
+
+	_, _ = sh.jobStore.AppendEvent(r.Context(), job.ID, orchestrator.CreateEventInput{
+		EventType: "job_created",
+		Level:     "info",
+		Status:    string(job.Status),
+		Message:   "Server deletion job queued",
+	})
+
+	if sh.activityStore != nil {
+		title := fmt.Sprintf("Server '%s' deletion requested", serverRecord.Name)
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
-			EventType:    activity.EventServerDeleted,
+			EventType:    activity.EventServerStatusChanged,
 			Category:     activity.CategoryServer,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceServer,
 			ResourceID:   serverID,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        title,
+			Message:      "Delete runs asynchronously through the orchestrator until provider-side removal succeeds or fails.",
 		})
 	}
+	slog.Default().Info("server action queued", "action", "delete_server", "server_id", serverID, "job_id", job.ID, "server_status", platform.ServerStatusDeleting)
 
-	w.WriteHeader(http.StatusNoContent)
+	respondJSON(w, http.StatusAccepted, apitypes.DeleteServerResponse{
+		ServerID:    serverID,
+		JobID:       job.ID,
+		Status:      platform.ServerStatusDeleting,
+		JobStatus:   job.Status,
+		Async:       true,
+		Description: "Server deletion queued",
+	})
 }
 
 func (sh *serversHandler) handleListServerJobs(w http.ResponseWriter, r *http.Request, serverID int64) {
@@ -208,9 +239,14 @@ func (sh *serversHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if servers == nil {
-		servers = []StoredServer{}
+		respondJSON(w, http.StatusOK, []apitypes.StoredServer{})
+		return
 	}
-	respondJSON(w, http.StatusOK, servers)
+	payload := make([]apitypes.StoredServer, 0, len(servers))
+	for _, srv := range servers {
+		payload = append(payload, apiStoredServer(srv))
+	}
+	respondJSON(w, http.StatusOK, payload)
 }
 
 func (sh *serversHandler) handleProfiles(w http.ResponseWriter, r *http.Request) {
@@ -251,51 +287,18 @@ func (sh *serversHandler) handleCatalog(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]any{
-		"catalog":  catalog,
-		"profiles": profiles.All(),
+	respondJSON(w, http.StatusOK, apitypes.ServerCatalogResponse{
+		Catalog:  *catalog,
+		Profiles: profiles.All(),
 	})
 }
 
-type createServerRequest struct {
-	ProviderID int64  `json:"provider_id"`
-	Name       string `json:"name"`
-	Location   string `json:"location"`
-	ServerType string `json:"server_type"`
-	ProfileKey string `json:"profile_key"`
-}
-
-type rebuildOptionsResponse struct {
-	ServerID     int64                        `json:"server_id"`
-	ServerType   string                       `json:"server_type"`
-	Architecture string                       `json:"architecture"`
-	Images       []provider.ServerImageOption `json:"images"`
-}
-
-type resizeOptionsResponse struct {
-	ServerID     int64                       `json:"server_id"`
-	Location     string                      `json:"location"`
-	ServerType   string                      `json:"server_type"`
-	Architecture string                      `json:"architecture"`
-	ServerTypes  []provider.ServerTypeOption `json:"server_types"`
-}
-
-type firewallsResponse struct {
-	ServerID  int64                     `json:"server_id"`
-	Firewalls []provider.FirewallOption `json:"firewalls"`
-}
-
-type volumesResponse struct {
-	ServerID int64                   `json:"server_id"`
-	Volumes  []provider.VolumeOption `json:"volumes"`
-}
-
 func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
-	var req createServerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	var req apitypes.CreateServerRequest
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
+	slog.Default().Info("server action requested", "action", "create_server", "provider_id", req.ProviderID, "server_name", req.Name, "profile_key", req.ProfileKey)
 
 	if err := validateCreateServerHTTPRequest(req); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
@@ -305,6 +308,14 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	profile, ok := profiles.Get(req.ProfileKey)
 	if !ok {
 		respondError(w, http.StatusBadRequest, "unsupported profile_key: "+req.ProfileKey)
+		return
+	}
+	if !profile.Selectable() {
+		reason := strings.TrimSpace(profile.SupportReason)
+		if reason == "" {
+			reason = "profile is not selectable in the current platform contract"
+		}
+		respondError(w, http.StatusBadRequest, reason)
 		return
 	}
 
@@ -329,7 +340,7 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		ServerType:   req.ServerType,
 		Image:        profile.Image,
 		ProfileKey:   req.ProfileKey,
-		Status:       "pending",
+		Status:       platform.ServerStatusPending,
 	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create server record: "+err.Error())
@@ -344,7 +355,7 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		// Rollback: mark server as failed since we couldn't create the job
-		_ = sh.serverStore.UpdateStatus(r.Context(), serverID, "failed")
+		_ = sh.serverStore.UpdateStatus(r.Context(), serverID, platform.ServerStatusFailed)
 		respondError(w, http.StatusInternalServerError, "failed to create provisioning job: "+err.Error())
 		return
 	}
@@ -359,22 +370,25 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Emit activity for server creation
 	if sh.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
 			EventType:    activity.EventServerCreated,
 			Category:     activity.CategoryServer,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceServer,
 			ResourceID:   serverID,
-			ActorType:    activity.ActorUser,
+			ActorType:    actorType,
+			ActorID:      actorID,
 			Title:        fmt.Sprintf("Server '%s' created", req.Name),
 		})
 	}
 
-	respondJSON(w, http.StatusAccepted, map[string]any{
-		"server_id": serverID,
-		"job_id":    job.ID,
-		"status":    "pending",
+	respondJSON(w, http.StatusAccepted, apitypes.CreateServerResponse{
+		ServerID: serverID,
+		JobID:    job.ID,
+		Status:   platform.ServerStatusPending,
 	})
+	slog.Default().Info("server action queued", "action", "create_server", "server_id", serverID, "job_id", job.ID, "server_status", platform.ServerStatusPending)
 }
 
 func (sh *serversHandler) handleRebuildOptions(w http.ResponseWriter, r *http.Request, serverID int64) {
@@ -420,7 +434,7 @@ func (sh *serversHandler) handleRebuildOptions(w http.ResponseWriter, r *http.Re
 		images = []provider.ServerImageOption{}
 	}
 
-	respondJSON(w, http.StatusOK, rebuildOptionsResponse{
+	respondJSON(w, http.StatusOK, apitypes.RebuildOptionsResponse{
 		ServerID:     server.ID,
 		ServerType:   server.ServerType,
 		Architecture: architecture,
@@ -462,7 +476,7 @@ func (sh *serversHandler) handleResizeOptions(w http.ResponseWriter, r *http.Req
 		serverTypes = []provider.ServerTypeOption{}
 	}
 
-	respondJSON(w, http.StatusOK, resizeOptionsResponse{
+	respondJSON(w, http.StatusOK, apitypes.ResizeOptionsResponse{
 		ServerID:     server.ID,
 		Location:     server.Location,
 		ServerType:   server.ServerType,
@@ -498,7 +512,7 @@ func (sh *serversHandler) handleServerFirewalls(w http.ResponseWriter, r *http.R
 		firewalls = []provider.FirewallOption{}
 	}
 
-	respondJSON(w, http.StatusOK, firewallsResponse{
+	respondJSON(w, http.StatusOK, apitypes.FirewallsResponse{
 		ServerID:  server.ID,
 		Firewalls: firewalls,
 	})
@@ -531,7 +545,7 @@ func (sh *serversHandler) handleServerVolumes(w http.ResponseWriter, r *http.Req
 		volumes = []provider.VolumeOption{}
 	}
 
-	respondJSON(w, http.StatusOK, volumesResponse{
+	respondJSON(w, http.StatusOK, apitypes.VolumesResponse{
 		ServerID: server.ID,
 		Volumes:  volumes,
 	})
@@ -549,7 +563,7 @@ func parseProviderIDQuery(r *http.Request) (int64, error) {
 	return id, nil
 }
 
-func validateCreateServerHTTPRequest(req createServerRequest) error {
+func validateCreateServerHTTPRequest(req apitypes.CreateServerRequest) error {
 	if req.ProviderID <= 0 {
 		return fmt.Errorf("provider_id must be a positive integer")
 	}
@@ -620,12 +634,24 @@ func (sh *serversHandler) handleAllAgentStatus(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if sh.hub == nil {
-		respondJSON(w, http.StatusOK, map[int64]ws.AgentInfo{})
+	servers, err := sh.serverStore.List(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, sh.hub.GetAllAgentInfo())
+	result := make(apitypes.AgentStatusMapResponse, len(servers))
+	for _, server := range servers {
+		result[server.ID] = storedAgentInfo(server)
+	}
+
+	if sh.hub != nil {
+		for serverID, info := range sh.hub.GetAllAgentInfo() {
+			result[serverID] = info
+		}
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleAgentStatus returns real-time agent connection status and metrics.
@@ -637,37 +663,15 @@ func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// If we have a hub, get real-time status
 	if sh.hub != nil {
-		info := sh.hub.GetAgentInfo(serverID)
-		respondJSON(w, http.StatusOK, info)
-		return
+		if _, ok := sh.hub.Get(serverID); ok {
+			info := sh.hub.GetAgentInfo(serverID)
+			respondJSON(w, http.StatusOK, info)
+			return
+		}
 	}
 
-	// Fallback to stored status from database
-	status := ws.AgentStatusUnknown
-	if server.NodeStatus != "" {
-		status = ws.AgentStatus(server.NodeStatus)
-	}
-
-	respondJSON(w, http.StatusOK, ws.AgentInfo{
-		Connected: false,
-		Status:    status,
-	})
-}
-
-// Service represents a systemd service on the server.
-type Service struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	ActiveState string `json:"active_state"`
-	LoadState   string `json:"load_state"`
-}
-
-type servicesResponse struct {
-	ServerID       int64     `json:"server_id"`
-	AgentConnected bool      `json:"agent_connected"`
-	Services       []Service `json:"services"`
+	respondJSON(w, http.StatusOK, storedAgentInfo(*server))
 }
 
 // handleListServices returns the list of running services on the server.
@@ -682,30 +686,34 @@ func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Requ
 
 	// Check if agent is connected
 	if sh.hub == nil {
-		respondJSON(w, http.StatusOK, servicesResponse{
+		respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
 			ServerID:       serverID,
 			AgentConnected: false,
-			Services:       []Service{},
+			Services:       []agentcommand.Service{},
 		})
 		return
 	}
 
 	info := sh.hub.GetAgentInfo(serverID)
 	if !info.Connected {
-		respondJSON(w, http.StatusOK, servicesResponse{
+		respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
 			ServerID:       serverID,
 			AgentConnected: false,
-			Services:       []Service{},
+			Services:       []agentcommand.Service{},
 		})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	timeout := agentcommand.Timeout(agentcommand.TypeListServices)
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	cmd := ws.Command{
 		ID:   uuid.NewString(),
-		Type: "list_services",
+		Type: agentcommand.TypeListServices,
 	}
 
 	result, err := sh.hub.SendCommandAndWait(ctx, serverID, cmd)
@@ -720,18 +728,63 @@ func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Requ
 	}
 
 	var payload struct {
-		Services []Service `json:"services"`
+		Services []agentcommand.Service `json:"services"`
 	}
-	if result.Output != "" {
-		if err := json.Unmarshal([]byte(result.Output), &payload); err != nil {
+	if len(result.Payload) > 0 {
+		if err := json.Unmarshal(result.Payload, &payload); err != nil {
 			respondError(w, http.StatusBadGateway, "invalid service response")
 			return
 		}
 	}
 
-	respondJSON(w, http.StatusOK, servicesResponse{
+	respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
 		ServerID:       serverID,
 		AgentConnected: true,
 		Services:       payload.Services,
 	})
+}
+
+func storedAgentInfo(server StoredServer) ws.AgentInfo {
+	status := platform.NodeStatusUnknown
+	if server.NodeStatus != platform.NodeStatus("") {
+		status = server.NodeStatus
+	}
+	info := ws.AgentInfo{
+		Connected: status == platform.NodeStatusOnline,
+		Status:    status,
+		Version:   server.NodeVersion,
+	}
+	if server.NodeLastSeen != "" {
+		if parsed, err := time.Parse(time.RFC3339, server.NodeLastSeen); err == nil {
+			info.LastSeen = parsed
+		}
+	}
+	return info
+}
+
+func apiStoredServer(in StoredServer) apitypes.StoredServer {
+	return apitypes.StoredServer{
+		ID:               in.ID,
+		ProviderID:       in.ProviderID,
+		ProviderType:     in.ProviderType,
+		ProviderServerID: in.ProviderServerID,
+		IPv4:             in.IPv4,
+		IPv6:             in.IPv6,
+		Name:             in.Name,
+		Location:         in.Location,
+		ServerType:       in.ServerType,
+		Image:            in.Image,
+		ProfileKey:       in.ProfileKey,
+		Status:           in.Status,
+		SetupState:       in.SetupState,
+		SetupLastError:   in.SetupLastError,
+		ActionID:         in.ActionID,
+		ActionStatus:     in.ActionStatus,
+		HasKey:           in.HasKey,
+		NodeStatus:       in.NodeStatus,
+		NodeLastSeen:     in.NodeLastSeen,
+		NodeVersion:      in.NodeVersion,
+		CreatedAt:        in.CreatedAt,
+		UpdatedAt:        in.UpdatedAt,
+	}
 }

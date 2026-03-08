@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner'
 
 const {
   providers,
+  providerTypes,
   loading,
   fetchProviders,
   fetchProviderTypes,
@@ -22,7 +23,7 @@ const {
 const modal = useModal()
 
 // Form state
-const formType = ref('hetzner')
+const formType = ref('')
 const formName = ref('')
 const formToken = ref('')
 const formStep = ref<'configure' | 'validated'>('configure')
@@ -34,12 +35,21 @@ const formValidation = ref<ValidationResult | null>(null)
 // Delete confirmation
 const deletingId = ref<number | null>(null)
 
+// The currently selected provider type metadata (driven by providerTypes from the API).
+const selectedProviderType = computed(() =>
+  providerTypes.value.find(pt => pt.type === formType.value),
+)
+
 onMounted(async () => {
   await Promise.all([fetchProviders(), fetchProviderTypes()])
+  // Default to the first available provider type.
+  if (providerTypes.value.length > 0 && !formType.value) {
+    formType.value = providerTypes.value[0].type
+  }
 })
 
 const resetForm = () => {
-  formType.value = 'hetzner'
+  formType.value = providerTypes.value[0]?.type ?? ''
   formName.value = ''
   formToken.value = ''
   formStep.value = 'configure'
@@ -114,8 +124,11 @@ const handleDelete = async (id: number) => {
 }
 
 const providerDisplayName = (type_: string): string => {
-  const names: Record<string, string> = { hetzner: 'Hetzner Cloud' }
-  return names[type_] || type_
+  return providerTypes.value.find(pt => pt.type === type_)?.name ?? type_
+}
+
+const providerAbbreviation = (type_: string): string => {
+  return providerTypes.value.find(pt => pt.type === type_)?.abbreviation ?? type_.slice(0, 2).toUpperCase()
 }
 
 const formatDate = (iso: string): string => {
@@ -205,9 +218,8 @@ const validationClass = (result: ValidationResult) => cn(
         class="flex items-center justify-between rounded-lg border border-border/60 bg-card/30 px-4 py-3 transition-colors hover:bg-card/50"
       >
         <div class="flex items-center gap-3">
-          <!-- Hetzner logo placeholder -->
           <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-muted/80 text-xs font-bold text-muted-foreground">
-            {{ p.type === 'hetzner' ? 'Hz' : p.type.slice(0, 2).toUpperCase() }}
+            {{ providerAbbreviation(p.type) }}
           </div>
           <div>
             <div class="flex items-center gap-2">
@@ -262,48 +274,50 @@ const validationClass = (result: ValidationResult) => cn(
           <div class="space-y-5">
             <!-- Step 1: Configure -->
             <template v-if="formStep === 'configure'">
-              <!-- Provider type (only Hetzner for now) -->
+              <!-- Provider type selector -->
               <div class="space-y-1.5">
                 <Label class="text-sm font-medium text-muted-foreground">Provider</Label>
-                <div class="flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 px-3.5 py-2.5">
+                <div v-if="providerTypes.length <= 1 && selectedProviderType" class="flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 px-3.5 py-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-xs font-bold text-foreground">
-                    Hz
+                    {{ selectedProviderType.abbreviation }}
                   </div>
                   <div>
-                    <span class="text-sm font-medium text-foreground">Hetzner Cloud</span>
-                    <p class="text-xs text-muted-foreground">European cloud infrastructure</p>
+                    <span class="text-sm font-medium text-foreground">{{ selectedProviderType.name }}</span>
+                    <p class="text-xs text-muted-foreground">{{ selectedProviderType.description }}</p>
                   </div>
+                </div>
+                <div v-else class="grid gap-2" :class="providerTypes.length > 2 ? 'grid-cols-2' : ''">
+                  <button
+                    v-for="pt in providerTypes"
+                    :key="pt.type"
+                    type="button"
+                    class="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-colors"
+                    :class="formType === pt.type ? 'border-accent/30 bg-accent/5' : 'border-border/60 hover:border-border hover:bg-muted/30'"
+                    @click="formType = pt.type"
+                  >
+                    <div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-xs font-bold text-foreground">
+                      {{ pt.abbreviation }}
+                    </div>
+                    <div>
+                      <span class="text-sm font-medium text-foreground">{{ pt.name }}</span>
+                      <p class="text-xs text-muted-foreground">{{ pt.description }}</p>
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              <!-- Tutorial -->
-              <div class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3">
-                <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">How to get your API token</h4>
-                <ol class="mt-2 space-y-1.5 text-sm text-muted-foreground">
-                  <li class="flex gap-2">
-                    <span class="shrink-0 font-mono text-xs text-accent">1.</span>
-                    <span>Log in to the <a href="https://console.hetzner.cloud" target="_blank" rel="noopener" class="text-accent underline decoration-accent/30 hover:decoration-accent">Hetzner Cloud Console</a></span>
-                  </li>
-                  <li class="flex gap-2">
-                    <span class="shrink-0 font-mono text-xs text-accent">2.</span>
-                    <span>Select your project, then go to <strong class="text-foreground">Security</strong> &rarr; <strong class="text-foreground">API Tokens</strong></span>
-                  </li>
-                  <li class="flex gap-2">
-                    <span class="shrink-0 font-mono text-xs text-accent">3.</span>
-                    <span>Click <strong class="text-foreground">Generate API Token</strong> and select <strong class="text-foreground">Read &amp; Write</strong></span>
-                  </li>
-                  <li class="flex gap-2">
-                    <span class="shrink-0 font-mono text-xs text-accent">4.</span>
-                    <span>Copy the token immediately &mdash; it&rsquo;s only shown once</span>
-                  </li>
-                </ol>
+              <!-- Token setup instructions (driven by provider docs_url) -->
+              <div v-if="selectedProviderType" class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3">
+                <p class="text-sm text-muted-foreground">
+                  Create a <strong class="text-foreground">Read &amp; Write</strong> API token in your {{ selectedProviderType.name }} dashboard, then paste it below.
+                </p>
                 <a
-                  href="https://docs.hetzner.com/cloud/api/getting-started/generating-api-token"
+                  :href="selectedProviderType.docs_url"
                   target="_blank"
                   rel="noopener"
-                  class="mt-2.5 inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80"
+                  class="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80"
                 >
-                  Official documentation
+                  How to create an API token
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
@@ -316,7 +330,7 @@ const validationClass = (result: ValidationResult) => cn(
                 <Input
                   v-model="formToken"
                   type="password"
-                  placeholder="Paste your Hetzner API token"
+                  :placeholder="`Paste your ${selectedProviderType?.name ?? 'provider'} API token`"
                   :class="inputClass(!!formError)"
                 />
                 <p v-if="formError" class="text-xs text-destructive">{{ formError }}</p>
@@ -373,7 +387,7 @@ const validationClass = (result: ValidationResult) => cn(
                 <p v-if="formError" class="text-xs text-destructive">{{ formError }}</p>
               </div>
               <p class="text-xs text-muted-foreground">
-                Give this connection a name to identify it later. This is especially useful if you connect multiple Hetzner projects.
+                Give this connection a name to identify it later. This is especially useful if you connect multiple projects.
               </p>
             </template>
           </div>

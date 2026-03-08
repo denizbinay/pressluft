@@ -4,30 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
-	"os/exec"
 	"strings"
 
+	"pressluft/internal/agentcommand"
 	"pressluft/internal/ws"
 )
-
-// Service represents a systemd service.
-type Service struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	ActiveState string `json:"active_state"`
-	LoadState   string `json:"load_state"`
-}
-
-// ListServicesResult is the response payload for list_services command.
-type ListServicesResult struct {
-	Services []Service `json:"services"`
-}
 
 // ListServices returns a list of running systemd services.
 func ListServices(ctx context.Context, cmd ws.Command) ws.CommandResult {
 	// Get running services using systemctl
-	out, err := exec.CommandContext(ctx,
+	out, err := commandContext(ctx,
 		"systemctl", "list-units",
 		"--type=service",
 		"--state=running",
@@ -35,28 +21,17 @@ func ListServices(ctx context.Context, cmd ws.Command) ws.CommandResult {
 		"--no-pager",
 	).Output()
 	if err != nil {
-		return ws.CommandResult{
-			CommandID: cmd.ID,
-			Success:   false,
-			Error:     "failed to list services: " + err.Error(),
-		}
+		return ws.FailureResult(cmd.ID, agentcommand.ErrorCodeExecutionFailed, "failed to list services", nil, err.Error())
 	}
 
 	services := parseSystemctlOutput(out)
-
-	payload, _ := json.Marshal(ListServicesResult{Services: services})
-
-	return ws.CommandResult{
-		CommandID: cmd.ID,
-		Success:   true,
-		Output:    string(payload),
-	}
+	return ws.SuccessResult(cmd.ID, agentcommand.ListServicesResult{Services: services}, "")
 }
 
 // parseSystemctlOutput parses the output of systemctl list-units.
 // Each line format: UNIT LOAD ACTIVE SUB DESCRIPTION
-func parseSystemctlOutput(output []byte) []Service {
-	var services []Service
+func parseSystemctlOutput(output []byte) []agentcommand.Service {
+	var services []agentcommand.Service
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 
 	for scanner.Scan() {
@@ -80,7 +55,7 @@ func parseSystemctlOutput(output []byte) []Service {
 		// Extract service name (remove .service suffix)
 		name := strings.TrimSuffix(unit, ".service")
 
-		services = append(services, Service{
+		services = append(services, agentcommand.Service{
 			Name:        name,
 			Description: description,
 			LoadState:   loadState,

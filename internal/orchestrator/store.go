@@ -21,11 +21,14 @@ func (s *Store) CreateJob(ctx context.Context, in CreateJobInput) (Job, error) {
 	if strings.TrimSpace(in.Kind) == "" {
 		return Job{}, fmt.Errorf("kind is required")
 	}
+	if !IsKnownJobKind(in.Kind) {
+		return Job{}, fmt.Errorf("unsupported job kind: %s", in.Kind)
+	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := nowRFC3339().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, payload, created_at, updated_at)
-		 VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
+		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at)
+		 VALUES (?, ?, ?, '', 0, NULL, ?, NULL, NULL, NULL, ?, ?)`,
 		nullableInt64(in.ServerID),
 		in.Kind,
 		JobStatusQueued,
@@ -50,49 +53,18 @@ func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
 		return Job{}, fmt.Errorf("id must be greater than zero")
 	}
 
-	var (
-		job       Job
-		serverID  sql.NullInt64
-		lastErr   sql.NullString
-		payload   sql.NullString
-		commandID sql.NullString
-	)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE id = ?`,
 		id,
-	).Scan(
-		&job.ID,
-		&serverID,
-		&job.Kind,
-		&job.Status,
-		&job.CurrentStep,
-		&job.RetryCount,
-		&lastErr,
-		&payload,
-		&job.CreatedAt,
-		&job.UpdatedAt,
-		&commandID,
 	)
+	job, err := scanJob(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Job{}, fmt.Errorf("job %d not found", id)
 		}
 		return Job{}, fmt.Errorf("query job: %w", err)
-	}
-	if serverID.Valid {
-		job.ServerID = serverID.Int64
-	}
-	if lastErr.Valid {
-		job.LastError = lastErr.String
-	}
-	if payload.Valid {
-		job.Payload = payload.String
-	}
-	job.CommandID = nil
-	if commandID.Valid {
-		job.CommandID = &commandID.String
 	}
 	return job, nil
 }
@@ -106,49 +78,18 @@ func (s *Store) SetCommandID(ctx context.Context, jobID int64, commandID string)
 }
 
 func (s *Store) GetJobByCommandID(ctx context.Context, commandID string) (*Job, error) {
-	var (
-		job      Job
-		serverID sql.NullInt64
-		lastErr  sql.NullString
-		payload  sql.NullString
-		cmdID    sql.NullString
-	)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE command_id = ?`,
 		commandID,
-	).Scan(
-		&job.ID,
-		&serverID,
-		&job.Kind,
-		&job.Status,
-		&job.CurrentStep,
-		&job.RetryCount,
-		&lastErr,
-		&payload,
-		&job.CreatedAt,
-		&job.UpdatedAt,
-		&cmdID,
 	)
+	job, err := scanJob(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("job not found for command %s", commandID)
 		}
 		return nil, fmt.Errorf("query job by command_id: %w", err)
-	}
-	if serverID.Valid {
-		job.ServerID = serverID.Int64
-	}
-	if lastErr.Valid {
-		job.LastError = lastErr.String
-	}
-	if payload.Valid {
-		job.Payload = payload.String
-	}
-	job.CommandID = nil
-	if cmdID.Valid {
-		job.CommandID = &cmdID.String
 	}
 	return &job, nil
 }
@@ -162,16 +103,51 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput)
 		return Job{}, err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	spec, ok := JobKindPolicy(current.Kind)
+	if !ok {
+		return Job{}, fmt.Errorf("unsupported job kind: %s", current.Kind)
+	}
+
+	now := nowRFC3339()
+	nowText := now.Format(time.RFC3339)
+	currentStep := strings.TrimSpace(in.CurrentStep)
+	if currentStep == "" {
+		currentStep = current.CurrentStep
+	}
+	lastError := strings.TrimSpace(in.LastError)
+	startedAt := nullableString(current.StartedAt)
+	finishedAt := nullableString(current.FinishedAt)
+	timeoutAt := nullableString(current.TimeoutAt)
+
+	switch in.ToStatus {
+	case JobStatusRunning:
+		if startedAt == nil {
+			startedAt = nowText
+		}
+		finishedAt = nil
+		if spec.Timeout > 0 {
+			timeoutAt = now.Add(spec.Timeout).UTC().Format(time.RFC3339)
+		} else {
+			timeoutAt = nil
+		}
+		lastError = ""
+	case JobStatusSucceeded, JobStatusFailed:
+		finishedAt = nowText
+		timeoutAt = nil
+	}
+
 	_, err = s.db.ExecContext(ctx,
 		`UPDATE jobs
-		 SET status = ?, current_step = ?, retry_count = ?, last_error = ?, updated_at = ?
+		 SET status = ?, current_step = ?, retry_count = ?, last_error = ?, started_at = ?, finished_at = ?, timeout_at = ?, updated_at = ?
 		 WHERE id = ?`,
 		in.ToStatus,
-		strings.TrimSpace(in.CurrentStep),
+		currentStep,
 		in.RetryCount,
-		nullableString(in.LastError),
-		now,
+		nullableString(lastError),
+		startedAt,
+		finishedAt,
+		timeoutAt,
+		nowText,
 		id,
 	)
 	if err != nil {
@@ -179,6 +155,10 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput)
 	}
 
 	return s.GetJob(ctx, id)
+}
+
+func (s *Store) MarkJobTimedOut(ctx context.Context, id int64, message string) (Job, bool, error) {
+	return s.failActiveJob(ctx, id, JobEventTypeTimedOut, "error", message)
 }
 
 func (s *Store) AppendEvent(ctx context.Context, jobID int64, in CreateEventInput) (JobEvent, error) {
@@ -201,120 +181,83 @@ func (s *Store) AppendEvent(ctx context.Context, jobID int64, in CreateEventInpu
 	}
 	defer tx.Rollback()
 
-	var seq int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(seq), 0) + 1 FROM job_events WHERE job_id = ?`,
-		jobID,
-	).Scan(&seq); err != nil {
-		return JobEvent{}, fmt.Errorf("next event seq: %w", err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO job_events (job_id, seq, event_type, level, step_key, status, message, payload, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		jobID,
-		seq,
-		in.EventType,
-		in.Level,
-		nullableString(in.StepKey),
-		nullableString(in.Status),
-		in.Message,
-		nullableString(in.Payload),
-		now,
-	)
+	event, err := appendEventTx(ctx, tx, jobID, in)
 	if err != nil {
-		return JobEvent{}, fmt.Errorf("insert event: %w", err)
+		return JobEvent{}, err
 	}
-
 	if err := tx.Commit(); err != nil {
 		return JobEvent{}, fmt.Errorf("commit event tx: %w", err)
 	}
-
-	return JobEvent{
-		JobID:      jobID,
-		Seq:        seq,
-		EventType:  in.EventType,
-		Level:      in.Level,
-		StepKey:    strings.TrimSpace(in.StepKey),
-		Status:     strings.TrimSpace(in.Status),
-		Message:    in.Message,
-		Payload:    strings.TrimSpace(in.Payload),
-		OccurredAt: now,
-	}, nil
+	return event, nil
 }
 
-// ClaimNextJob atomically claims the oldest queued job by transitioning it to "preparing".
-// Returns nil, nil if no jobs are available (not an error).
-// Uses SQLite-compatible atomic UPDATE with subquery to prevent race conditions.
+// ClaimNextJob atomically claims the oldest queued job by transitioning it to running.
+// Returns nil, nil if no jobs are available.
 func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin claim tx: %w", err)
+	}
+	defer tx.Rollback()
 
-	// Atomic claim: UPDATE with subquery selects oldest queued job and transitions to preparing.
-	// SQLite executes this atomically, preventing race conditions between workers.
-	var (
-		job       Job
-		serverID  sql.NullInt64
-		lastErr   sql.NullString
-		payload   sql.NullString
-		commandID sql.NullString
-	)
-	err := s.db.QueryRowContext(ctx,
-		`UPDATE jobs 
-		 SET status = ?, updated_at = ?
-		 WHERE id = (
-		   SELECT id FROM jobs 
-		   WHERE status = ? 
-		   ORDER BY created_at ASC 
-		   LIMIT 1
-		 )
-		 RETURNING id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id`,
-		JobStatusPreparing,
-		now,
+	row := tx.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
+		 FROM jobs
+		 WHERE status = ?
+		 ORDER BY created_at ASC
+		 LIMIT 1`,
 		JobStatusQueued,
-	).Scan(
-		&job.ID,
-		&serverID,
-		&job.Kind,
-		&job.Status,
-		&job.CurrentStep,
-		&job.RetryCount,
-		&lastErr,
-		&payload,
-		&job.CreatedAt,
-		&job.UpdatedAt,
-		&commandID,
 	)
+	job, err := scanJob(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// No queued jobs available - not an error
 			return nil, nil
 		}
+		return nil, fmt.Errorf("select queued job: %w", err)
+	}
+
+	spec, ok := JobKindPolicy(job.Kind)
+	if !ok {
+		return nil, fmt.Errorf("unsupported job kind: %s", job.Kind)
+	}
+
+	now := time.Now().UTC()
+	timeoutAt := sql.NullString{}
+	if spec.Timeout > 0 {
+		timeoutAt = sql.NullString{String: now.Add(spec.Timeout).Format(time.RFC3339), Valid: true}
+	}
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs
+		 SET status = ?, started_at = COALESCE(started_at, ?), finished_at = NULL, timeout_at = ?, updated_at = ?
+		 WHERE id = ? AND status = ?`,
+		JobStatusRunning,
+		now.Format(time.RFC3339),
+		nullableNullString(timeoutAt),
+		now.Format(time.RFC3339),
+		job.ID,
+		JobStatusQueued,
+	)
+	if err != nil {
 		return nil, fmt.Errorf("claim next job: %w", err)
 	}
-
-	if serverID.Valid {
-		job.ServerID = serverID.Int64
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return nil, nil
 	}
-	if lastErr.Valid {
-		job.LastError = lastErr.String
-	}
-	if payload.Valid {
-		job.Payload = payload.String
-	}
-	job.CommandID = nil
-	if commandID.Valid {
-		job.CommandID = &commandID.String
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit claim tx: %w", err)
 	}
 
-	return &job, nil
+	claimed, err := s.GetJob(ctx, job.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &claimed, nil
 }
 
 // ListAllJobs returns all jobs, ordered by created_at DESC.
-// Returns an empty slice (not nil) when no jobs exist.
 func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
 		 FROM jobs
 		 ORDER BY created_at DESC`,
 	)
@@ -323,61 +266,17 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 	}
 	defer rows.Close()
 
-	out := make([]Job, 0)
-	for rows.Next() {
-		var (
-			job       Job
-			serverIDN sql.NullInt64
-			lastErr   sql.NullString
-			payload   sql.NullString
-			commandID sql.NullString
-		)
-		if err := rows.Scan(
-			&job.ID,
-			&serverIDN,
-			&job.Kind,
-			&job.Status,
-			&job.CurrentStep,
-			&job.RetryCount,
-			&lastErr,
-			&payload,
-			&job.CreatedAt,
-			&job.UpdatedAt,
-			&commandID,
-		); err != nil {
-			return nil, fmt.Errorf("scan job: %w", err)
-		}
-		if serverIDN.Valid {
-			job.ServerID = serverIDN.Int64
-		}
-		if lastErr.Valid {
-			job.LastError = lastErr.String
-		}
-		if payload.Valid {
-			job.Payload = payload.String
-		}
-		job.CommandID = nil
-		if commandID.Valid {
-			job.CommandID = &commandID.String
-		}
-		out = append(out, job)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate jobs: %w", err)
-	}
-
-	return out, nil
+	return scanJobs(rows)
 }
 
 // ListJobsByServer returns all jobs for a given server, ordered by created_at DESC.
-// Returns an empty slice (not nil) when no jobs exist for the server.
 func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server_id must be greater than zero")
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC`,
@@ -388,104 +287,29 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 	}
 	defer rows.Close()
 
-	out := make([]Job, 0)
-	for rows.Next() {
-		var (
-			job       Job
-			serverIDN sql.NullInt64
-			lastErr   sql.NullString
-			payload   sql.NullString
-			commandID sql.NullString
-		)
-		if err := rows.Scan(
-			&job.ID,
-			&serverIDN,
-			&job.Kind,
-			&job.Status,
-			&job.CurrentStep,
-			&job.RetryCount,
-			&lastErr,
-			&payload,
-			&job.CreatedAt,
-			&job.UpdatedAt,
-			&commandID,
-		); err != nil {
-			return nil, fmt.Errorf("scan job: %w", err)
-		}
-		if serverIDN.Valid {
-			job.ServerID = serverIDN.Int64
-		}
-		if lastErr.Valid {
-			job.LastError = lastErr.String
-		}
-		if payload.Valid {
-			job.Payload = payload.String
-		}
-		job.CommandID = nil
-		if commandID.Valid {
-			job.CommandID = &commandID.String
-		}
-		out = append(out, job)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate jobs: %w", err)
-	}
-
-	return out, nil
+	return scanJobs(rows)
 }
 
 // GetLatestJobForServer returns the most recent job for a server.
-// Returns nil, nil if no jobs exist for the server (not an error).
 func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server_id must be greater than zero")
 	}
 
-	var (
-		job       Job
-		serverIDN sql.NullInt64
-		lastErr   sql.NullString
-		payload   sql.NullString
-		commandID sql.NullString
-	)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, created_at, updated_at, command_id
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
 		 FROM jobs
 		 WHERE server_id = ?
 		 ORDER BY created_at DESC
 		 LIMIT 1`,
 		serverID,
-	).Scan(
-		&job.ID,
-		&serverIDN,
-		&job.Kind,
-		&job.Status,
-		&job.CurrentStep,
-		&job.RetryCount,
-		&lastErr,
-		&payload,
-		&job.CreatedAt,
-		&job.UpdatedAt,
-		&commandID,
 	)
+	job, err := scanJob(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get latest job for server: %w", err)
-	}
-	if serverIDN.Valid {
-		job.ServerID = serverIDN.Int64
-	}
-	if lastErr.Valid {
-		job.LastError = lastErr.String
-	}
-	if payload.Valid {
-		job.Payload = payload.String
-	}
-	job.CommandID = nil
-	if commandID.Valid {
-		job.CommandID = &commandID.String
 	}
 	return &job, nil
 }
@@ -513,41 +337,10 @@ func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, lim
 	}
 	defer rows.Close()
 
-	out := make([]JobEvent, 0, limit)
-	for rows.Next() {
-		var (
-			e       JobEvent
-			stepKey sql.NullString
-			status  sql.NullString
-			payload sql.NullString
-		)
-		if err := rows.Scan(
-			&e.JobID,
-			&e.Seq,
-			&e.EventType,
-			&e.Level,
-			&stepKey,
-			&status,
-			&e.Message,
-			&payload,
-			&e.OccurredAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
-		}
-		e.StepKey = nullString(stepKey)
-		e.Status = nullString(status)
-		e.Payload = nullString(payload)
-		out = append(out, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate events: %w", err)
-	}
-
-	return out, nil
+	return scanEvents(rows)
 }
 
 // ListAllEvents returns all events for a job, ordered by sequence.
-// Used for historical view of completed jobs.
 func (s *Store) ListAllEvents(ctx context.Context, jobID int64) ([]JobEvent, error) {
 	if jobID <= 0 {
 		return nil, fmt.Errorf("job_id must be greater than zero")
@@ -565,6 +358,160 @@ func (s *Store) ListAllEvents(ctx context.Context, jobID int64) ([]JobEvent, err
 	}
 	defer rows.Close()
 
+	return scanEvents(rows)
+}
+
+// RecoverStuckJobs marks previously in-flight jobs as failed with an explicit recovery event.
+func (s *Store) RecoverStuckJobs(ctx context.Context) (int64, error) {
+	const message = "worker restarted before job completion; outcome may be incomplete; inspect state before retrying"
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM jobs WHERE status = ? ORDER BY created_at ASC`,
+		JobStatusRunning,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("list recoverable jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, fmt.Errorf("scan recoverable job id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate recoverable jobs: %w", err)
+	}
+
+	var count int64
+	for _, id := range ids {
+		if _, changed, err := s.failActiveJob(ctx, id, JobEventTypeRecovered, "error", message); err != nil {
+			return count, err
+		} else if changed {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *Store) failActiveJob(ctx context.Context, id int64, eventType, level, message string) (Job, bool, error) {
+	job, err := s.GetJob(ctx, id)
+	if err != nil {
+		return Job{}, false, err
+	}
+	if IsTerminalStatus(job.Status) {
+		return job, false, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Job{}, false, fmt.Errorf("begin job failure tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := nowRFC3339().Format(time.RFC3339)
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs
+		 SET status = ?, last_error = ?, finished_at = ?, timeout_at = NULL, updated_at = ?
+		 WHERE id = ? AND status IN (?, ?)`,
+		JobStatusFailed,
+		message,
+		now,
+		now,
+		id,
+		JobStatusQueued,
+		JobStatusRunning,
+	)
+	if err != nil {
+		return Job{}, false, fmt.Errorf("mark job failed: %w", err)
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		current, getErr := s.GetJob(ctx, id)
+		if getErr != nil {
+			return Job{}, false, getErr
+		}
+		return current, false, nil
+	}
+
+	if _, err := appendEventTx(ctx, tx, id, CreateEventInput{
+		EventType: eventType,
+		Level:     level,
+		StepKey:   job.CurrentStep,
+		Status:    string(JobStatusFailed),
+		Message:   message,
+	}); err != nil {
+		return Job{}, false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Job{}, false, fmt.Errorf("commit job failure tx: %w", err)
+	}
+	updated, err := s.GetJob(ctx, id)
+	if err != nil {
+		return Job{}, false, err
+	}
+	return updated, true, nil
+}
+
+func appendEventTx(ctx context.Context, tx *sql.Tx, jobID int64, in CreateEventInput) (JobEvent, error) {
+	var seq int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(seq), 0) + 1 FROM job_events WHERE job_id = ?`,
+		jobID,
+	).Scan(&seq); err != nil {
+		return JobEvent{}, fmt.Errorf("next event seq: %w", err)
+	}
+
+	now := nowRFC3339().Format(time.RFC3339)
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO job_events (job_id, seq, event_type, level, step_key, status, message, payload, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		jobID,
+		seq,
+		in.EventType,
+		in.Level,
+		nullableString(in.StepKey),
+		nullableString(in.Status),
+		in.Message,
+		nullableString(in.Payload),
+		now,
+	)
+	if err != nil {
+		return JobEvent{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	return JobEvent{
+		JobID:      jobID,
+		Seq:        seq,
+		EventType:  in.EventType,
+		Level:      in.Level,
+		StepKey:    strings.TrimSpace(in.StepKey),
+		Status:     strings.TrimSpace(in.Status),
+		Message:    in.Message,
+		Payload:    strings.TrimSpace(in.Payload),
+		OccurredAt: now,
+	}, nil
+}
+
+func scanJobs(rows *sql.Rows) ([]Job, error) {
+	out := make([]Job, 0)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		out = append(out, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate jobs: %w", err)
+	}
+	return out, nil
+}
+
+func scanEvents(rows *sql.Rows) ([]JobEvent, error) {
 	out := make([]JobEvent, 0)
 	for rows.Next() {
 		var (
@@ -594,31 +541,59 @@ func (s *Store) ListAllEvents(ctx context.Context, jobID int64) ([]JobEvent, err
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate events: %w", err)
 	}
-
 	return out, nil
 }
 
-// RecoverStuckJobs resets jobs that were interrupted mid-execution (e.g., server restart).
-// Jobs in "preparing" or "running" status are transitioned back to "queued" so they can be re-claimed.
-// Returns the number of jobs recovered.
-func (s *Store) RecoverStuckJobs(ctx context.Context) (int64, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+type rowScanner interface {
+	Scan(dest ...any) error
+}
 
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE jobs 
-		 SET status = ?, updated_at = ?
-		 WHERE status IN (?, ?)`,
-		JobStatusQueued,
-		now,
-		JobStatusPreparing,
-		JobStatusRunning,
+func scanJob(scanner rowScanner) (Job, error) {
+	var (
+		job        Job
+		serverID   sql.NullInt64
+		lastErr    sql.NullString
+		payload    sql.NullString
+		startedAt  sql.NullString
+		finishedAt sql.NullString
+		timeoutAt  sql.NullString
+		commandID  sql.NullString
+	)
+	err := scanner.Scan(
+		&job.ID,
+		&serverID,
+		&job.Kind,
+		&job.Status,
+		&job.CurrentStep,
+		&job.RetryCount,
+		&lastErr,
+		&payload,
+		&startedAt,
+		&finishedAt,
+		&timeoutAt,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+		&commandID,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("recover stuck jobs: %w", err)
+		return Job{}, err
 	}
+	if serverID.Valid {
+		job.ServerID = serverID.Int64
+	}
+	job.LastError = nullString(lastErr)
+	job.Payload = nullString(payload)
+	job.StartedAt = nullString(startedAt)
+	job.FinishedAt = nullString(finishedAt)
+	job.TimeoutAt = nullString(timeoutAt)
+	if commandID.Valid {
+		job.CommandID = &commandID.String
+	}
+	return job, nil
+}
 
-	count, _ := res.RowsAffected()
-	return count, nil
+func nowRFC3339() time.Time {
+	return time.Now().UTC()
 }
 
 func nullableInt64(v int64) any {
@@ -634,6 +609,13 @@ func nullableString(v string) any {
 		return nil
 	}
 	return v
+}
+
+func nullableNullString(v sql.NullString) any {
+	if !v.Valid || strings.TrimSpace(v.String) == "" {
+		return nil
+	}
+	return strings.TrimSpace(v.String)
 }
 
 func nullString(v sql.NullString) string {

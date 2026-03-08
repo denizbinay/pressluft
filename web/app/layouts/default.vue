@@ -1,13 +1,4 @@
 <script setup lang="ts">
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import {
   Sidebar,
   SidebarContent,
@@ -18,44 +9,15 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Activity,
-  Bell,
-  Box,
   Globe,
-  HelpCircle,
   LayoutDashboard,
-  Search,
   Server,
   Settings,
 } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import type { Activity as ActivityEvent } from "~/composables/useActivity"
-import { useActivity } from "~/composables/useActivity"
+import { computed } from 'vue'
 
 const route = useRoute()
-const router = useRouter()
-
-const searchOpen = ref(false)
-const searchQuery = ref('')
-const notificationsOpen = ref(false)
-
-const {
-  activities: notifications,
-  unreadCount,
-  listActivity,
-  streamActivity,
-  fetchUnreadCount,
-  markAllRead,
-  markRead,
-} = useActivity()
 
 const navSections = [
   {
@@ -67,8 +29,8 @@ const navSections = [
   {
     title: 'Resources',
     items: [
-      { label: 'Sites', icon: Globe, to: '/sites' },
       { label: 'Servers', icon: Server, to: '/servers' },
+      { label: 'Sites', icon: Globe, to: '/sites', badge: 'Planned' },
     ],
   },
   {
@@ -76,20 +38,11 @@ const navSections = [
     items: [
       { label: 'Activity', icon: Activity, to: '/activity' },
       { label: 'Settings', icon: Settings, to: '/settings' },
-      { label: 'Components', icon: Box, to: '/components' },
     ],
   },
 ]
 
 const flatNavItems = navSections.flatMap((section) => section.items)
-
-const filteredNavItems = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return flatNavItems
-  return flatNavItems.filter((item) =>
-    item.label.toLowerCase().includes(query),
-  )
-})
 
 const breadcrumbLabel = computed(() => {
   if (route.path === '/') return 'Dashboard'
@@ -98,144 +51,6 @@ const breadcrumbLabel = computed(() => {
 
 const isActive = (to: string) =>
   route.path === to || route.path.startsWith(`${to}/`)
-
-const openSearch = () => {
-  searchOpen.value = true
-}
-
-const closeSearch = () => {
-  searchOpen.value = false
-  searchQuery.value = ''
-}
-
-const handleSearchSelect = (item: { to: string }) => {
-  router.push(item.to)
-  closeSearch()
-}
-
-const handleKeydown = (event: KeyboardEvent) => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault()
-    openSearch()
-  }
-}
-
-const notificationFilter = { requiresAttention: true }
-
-const resolveActivityLink = (activity: ActivityEvent) => {
-  if (activity.resource_type === 'job' && activity.resource_id) {
-    return `/jobs/${activity.resource_id}`
-  }
-  if (activity.resource_type === 'server' && activity.resource_id) {
-    return `/servers/${activity.resource_id}`
-  }
-  if (activity.parent_resource_type === 'server' && activity.parent_resource_id) {
-    return `/servers/${activity.parent_resource_id}`
-  }
-  return '/activity'
-}
-
-const notificationMeta = (activity: ActivityEvent) => {
-  const parts: string[] = []
-  if (activity.resource_type && activity.resource_id) {
-    parts.push(`${activity.resource_type} #${activity.resource_id}`)
-  }
-  if (activity.created_at) {
-    try {
-      parts.push(
-        new Date(activity.created_at).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      )
-    } catch {
-      parts.push(activity.created_at)
-    }
-  }
-  return parts.join(' · ')
-}
-
-const refreshNotifications = async () => {
-  try {
-    await listActivity(notificationFilter, { limit: 6 })
-  } catch {
-    // Errors are surfaced via the composable error state
-  }
-}
-
-const refreshUnreadCount = async () => {
-  try {
-    await fetchUnreadCount(notificationFilter)
-  } catch {
-    // Errors are surfaced via the composable error state
-  }
-}
-
-const handleNotificationClick = async (activity: ActivityEvent) => {
-  if (!activity.read_at) {
-    try {
-      await markRead(activity.id)
-    } catch {
-      // Ignore mark read failures for navigation
-    }
-  }
-  router.push(resolveActivityLink(activity))
-  notificationsOpen.value = false
-}
-
-const handleMarkAllRead = async () => {
-  try {
-    await markAllRead(notificationFilter)
-  } catch {
-    // Errors are surfaced via the composable error state
-  }
-  await refreshNotifications()
-}
-
-watch(
-  () => route.fullPath,
-  () => {
-    closeSearch()
-  },
-)
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-const stopNotificationStream = ref<null | (() => void)>(null)
-
-onMounted(async () => {
-  await refreshNotifications()
-  await refreshUnreadCount()
-  stopNotificationStream.value = streamActivity({
-    sinceId: notifications.value[0]?.id ?? 0,
-    filter: (activity) => activity.requires_attention,
-    maxItems: 10,
-    onEvent: (activity) => {
-      if (!activity.read_at) {
-        unreadCount.value += 1
-      }
-    },
-  })
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleKeydown)
-  stopNotificationStream.value?.()
-})
-
-watch(
-  () => notificationsOpen.value,
-  (open) => {
-    if (open) {
-      refreshNotifications()
-      refreshUnreadCount()
-    }
-  },
-)
 </script>
 
 <template>
@@ -315,6 +130,12 @@ watch(
             >
               <component :is="item.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
               <span class="group-data-[collapsible=icon]:hidden">{{ item.label }}</span>
+              <span
+                v-if="item.badge"
+                class="ml-auto rounded-full border border-border/60 bg-muted/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden"
+              >
+                {{ item.badge }}
+              </span>
             </NuxtLink>
           </div>
         </div>
@@ -345,120 +166,7 @@ watch(
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            class="hidden sm:flex rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            type="button"
-            @click="openSearch"
-          >
-             <Search class="h-4 w-4" aria-hidden="true" />
-            <span>Search...</span>
-            <span class="ml-2 text-xs text-muted-foreground border border-border/60 rounded px-1.5 py-0.5">⌘K</span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            class="sm:hidden rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            type="button"
-            aria-label="Open search"
-            @click="openSearch"
-          >
-             <Search class="h-4 w-4" aria-hidden="true" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            class="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            type="button"
-            aria-label="Help"
-          >
-             <HelpCircle class="h-4 w-4" aria-hidden="true" />
-          </Button>
-
-          <DropdownMenu v-model:open="notificationsOpen">
-            <DropdownMenuTrigger as-child>
-              <Button
-                variant="ghost"
-                class="relative rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                type="button"
-                aria-label="Notifications"
-              >
-                 <Bell class="h-4 w-4" aria-hidden="true" />
-                <span
-                  v-if="unreadCount > 0"
-                  class="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground"
-                >
-                  {{ unreadCount > 9 ? '9+' : unreadCount }}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              :side-offset="8"
-              class="w-80 rounded-xl border border-border/60 bg-popover p-0 shadow-xl"
-            >
-              <div class="flex items-center justify-between px-4 py-3">
-                <DropdownMenuLabel class="p-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Notifications
-                </DropdownMenuLabel>
-                <Badge variant="outline" class="border-border/60 text-[10px] text-muted-foreground">
-                  {{ unreadCount }} unread
-                </Badge>
-              </div>
-              <DropdownMenuSeparator class="mx-0 my-0 h-px bg-border/60" />
-              <div class="max-h-80 overflow-auto">
-                <div
-                  v-if="notifications.length === 0"
-                  class="px-4 py-6 text-sm text-muted-foreground"
-                >
-                  No notifications yet.
-                </div>
-                <DropdownMenuItem
-                  v-for="activity in notifications"
-                  :key="activity.id"
-                  class="items-start gap-3 px-4 py-3"
-                  @select="handleNotificationClick(activity)"
-                >
-                  <span
-                    class="mt-1 h-2 w-2 rounded-full"
-                    :class="activity.read_at ? 'bg-muted-foreground/40' : 'bg-accent'"
-                  />
-                  <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-foreground">
-                      {{ activity.title }}
-                    </p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                      {{ notificationMeta(activity) }}
-                    </p>
-                    <p v-if="activity.message" class="mt-1 text-xs text-muted-foreground">
-                      {{ activity.message }}
-                    </p>
-                  </div>
-                </DropdownMenuItem>
-              </div>
-              <DropdownMenuSeparator class="mx-0 my-0 h-px bg-border/60" />
-              <div class="flex items-center justify-between px-4 py-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  @click.stop="handleMarkAllRead"
-                >
-                  Mark all read
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  @click.stop="router.push('/activity')"
-                >
-                  View all
-                </Button>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <Toolbar :items="flatNavItems" />
       </header>
 
       <main class="flex-1 overflow-auto">
@@ -469,50 +177,5 @@ watch(
         </div>
       </main>
     </SidebarInset>
-
-    <Dialog :open="searchOpen" @update:open="(value) => (value ? openSearch() : closeSearch())">
-      <DialogContent
-        :show-close-button="false"
-        class="w-full max-w-lg rounded-xl border border-border/60 bg-popover/90 p-0 shadow-2xl text-popover-foreground"
-      >
-        <div class="flex items-center justify-between border-b border-border/40 px-6 py-4">
-          <DialogTitle class="text-base font-semibold text-foreground">Search</DialogTitle>
-          <DialogClose
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
-            aria-label="Close modal"
-          >
-            <span aria-hidden="true">×</span>
-          </DialogClose>
-        </div>
-
-        <div class="space-y-4 px-6 py-5">
-          <Input
-            v-model="searchQuery"
-            type="search"
-            placeholder="Search pages..."
-            autofocus
-            class="w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background hover:border-border"
-          />
-
-          <div class="space-y-1">
-            <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Navigation</p>
-            <div v-if="filteredNavItems.length" class="space-y-1">
-              <button
-                v-for="item in filteredNavItems"
-                :key="item.label"
-                type="button"
-                class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition-colors hover:bg-muted/60"
-                @click="handleSearchSelect(item)"
-              >
-                <component :is="item.icon" class="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span>{{ item.label }}</span>
-                <span class="ml-auto text-xs text-muted-foreground">{{ item.to }}</span>
-              </button>
-            </div>
-            <p v-else class="text-sm text-muted-foreground">No matches found.</p>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   </SidebarProvider>
 </template>

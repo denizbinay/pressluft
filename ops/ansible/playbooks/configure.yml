@@ -1,19 +1,85 @@
 ---
 - name: Pressluft configure flow
   hosts: all
+  become: true
   gather_facts: false
   vars:
     profile_path_resolved: "{{ profile_path if (profile_path is match('^/')) else (playbook_dir ~ '/../../..' ~ '/' ~ profile_path) }}"
     registration_token: "{{ agent_registration_token | default('') }}"
+    execution_mode: "{{ pressluft_execution_mode | default('dev') }}"
   tasks:
-    - name: Create pressluft directories
+    - name: Validate configure contract inputs
+      ansible.builtin.assert:
+        that:
+          - server_id is defined
+          - control_plane_url | length > 0
+          - execution_mode in ['dev', 'production-bootstrap']
+          - profile_key | default('') | length > 0
+          - profile_path | default('') | length > 0
+
+    - name: Validate production bootstrap transport inputs
+      when: execution_mode == 'production-bootstrap'
+      ansible.builtin.assert:
+        that:
+          - control_plane_url is match('^https://')
+          - registration_token | length > 0
+
+    - name: Validate dev bootstrap transport inputs
+      when: execution_mode == 'dev'
+      ansible.builtin.assert:
+        that:
+          - dev_ws_token | default('') | length > 0
+
+    - name: Validate selected profile artifact exists on control plane
+      delegate_to: localhost
+      become: false
+      ansible.builtin.stat:
+        path: "{{ profile_path_resolved }}"
+      register: pressluft_profile_artifact
+
+    - name: Assert selected profile artifact exists
+      ansible.builtin.assert:
+        that:
+          - pressluft_profile_artifact.stat.exists
+
+    - name: Load selected profile artifact
+      delegate_to: localhost
+      become: false
+      ansible.builtin.include_vars:
+        file: "{{ profile_path_resolved }}"
+        name: pressluft_profile
+
+    - name: Validate loaded profile metadata
+      ansible.builtin.assert:
+        that:
+          - pressluft_profile.key == profile_key
+          - pressluft_profile.base_image | length > 0
+          - pressluft_profile.configure_guarantee | length > 0
+          - pressluft_profile.support.level == profile_support_level
+          - pressluft_profile.artifacts.playbook == 'ansible/playbooks/configure.yml'
+          - pressluft_profile.artifacts.loading_model == 'dynamic-include-role'
+          - pressluft_profile.artifacts.role | length > 0
+
+    - name: Block unavailable profile selections
+      ansible.builtin.assert:
+        that:
+          - pressluft_profile.support.level == 'supported'
+        fail_msg: >-
+          Profile {{ pressluft_profile.key }} is {{ pressluft_profile.support.level }}.
+          {{ pressluft_profile.support.reason | default('This profile is not selectable yet.') }}
+
+    - name: Create pressluft directories before baseline role
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        mode: '0755'
+        mode: '0700'
       loop:
         - /etc/pressluft
         - /var/lib/pressluft
+
+    - name: Apply common baseline role
+      ansible.builtin.include_role:
+        name: common
 
     - name: Copy agent binary
       ansible.builtin.copy:
@@ -26,8 +92,55 @@
       ansible.builtin.template:
         src: agent-config.yaml.j2
         dest: /etc/pressluft/agent.yaml
-        mode: '0644'
+        mode: '0600'
       notify: restart pressluft-agent
+
+    - name: Deploy production bootstrap token
+      when:
+        - execution_mode == 'production-bootstrap'
+        - registration_token | length > 0
+      ansible.builtin.copy:
+        dest: /etc/pressluft/bootstrap-registration.token
+        mode: '0600'
+        content: "{{ registration_token }}"
+      notify: restart pressluft-agent
+
+    - name: Remove production bootstrap token when absent
+      when:
+        - execution_mode != 'production-bootstrap' or registration_token | length == 0
+      ansible.builtin.file:
+        path: /etc/pressluft/bootstrap-registration.token
+        state: absent
+
+    - name: Deploy dev websocket token
+      when:
+        - execution_mode == 'dev'
+        - dev_ws_token | default('') | length > 0
+      ansible.builtin.copy:
+        dest: /etc/pressluft/dev-ws.token
+        mode: '0600'
+        content: "{{ dev_ws_token }}"
+      notify: restart pressluft-agent
+
+    - name: Remove dev websocket token when absent
+      when:
+        - execution_mode != 'dev' or dev_ws_token | default('') | length == 0
+      ansible.builtin.file:
+        path: /etc/pressluft/dev-ws.token
+        state: absent
+
+    - name: Record selected profile contract
+      ansible.builtin.copy:
+        dest: /etc/pressluft/profile-contract.yaml
+        mode: '0600'
+        content: |
+          key: {{ profile_key }}
+          artifact_path: {{ profile_path_resolved }}
+          support_level: {{ profile_support_level }}
+          support_reason: {{ pressluft_profile.support.reason | default('') | replace('\n', ' ') }}
+          loading_model: {{ pressluft_profile.artifacts.loading_model }}
+          role: {{ pressluft_profile.artifacts.role }}
+          configure_guarantee: {{ profile_configure_guarantee | replace('\n', ' ') }}
 
     - name: Deploy systemd service
       ansible.builtin.template:
@@ -41,15 +154,103 @@
     - name: Enable and start agent
       ansible.builtin.systemd:
         name: pressluft-agent
-        enabled: yes
+        enabled: true
         state: started
+
+    - name: Apply selected profile role
+      ansible.builtin.include_role:
+        name: "{{ pressluft_profile.artifacts.role }}"
+
+    - name: Flush handlers before verification
+      ansible.builtin.meta: flush_handlers
+
+    - name: Build verification contracts
+      ansible.builtin.set_fact:
+        pressluft_verify_services: >-
+          {{
+            (pressluft_profile.baseline.verification.services | default([]))
+            + (pressluft_profile.verification.services | default([]))
+          }}
+        pressluft_verify_files: >-
+          {{
+            (pressluft_profile.baseline.verification.files | default([]))
+            + (pressluft_profile.verification.files | default([]))
+          }}
+        pressluft_verify_listeners: >-
+          {{
+            (pressluft_profile.baseline.verification.listeners | default([]))
+            + (pressluft_profile.verification.listeners | default([]))
+          }}
+        pressluft_verify_health_checks: >-
+          {{
+            (pressluft_profile.baseline.verification.health_checks | default([]))
+            + (pressluft_profile.verification.health_checks | default([]))
+          }}
+
+    - name: Verify services reached expected state
+      ansible.builtin.command: "systemctl is-active --quiet {{ item.name }}"
+      register: pressluft_service_verification
+      changed_when: false
+      loop: "{{ pressluft_verify_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Verify managed files exist
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      register: pressluft_file_verification
+      loop: "{{ pressluft_verify_files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Assert managed files exist
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: "Expected managed file missing: {{ item.item.path }}"
+      loop: "{{ pressluft_file_verification.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Verify expected listeners answer locally
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        state: started
+        timeout: 15
+      changed_when: false
+      loop: "{{ pressluft_verify_listeners }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Run profile health checks
+      ansible.builtin.command: "{{ item.command }}"
+      changed_when: false
+      loop: "{{ pressluft_verify_health_checks }}"
+      loop_control:
+        label: "{{ item.name }}"
 
   handlers:
     - name: reload systemd
       ansible.builtin.systemd:
-        daemon_reload: yes
+        daemon_reload: true
 
     - name: restart pressluft-agent
       ansible.builtin.systemd:
         name: pressluft-agent
+        state: restarted
+
+    - name: restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
+    - name: restart php-fpm
+      ansible.builtin.systemd:
+        name: php8.3-fpm
+        state: restarted
+
+    - name: restart redis-server
+      ansible.builtin.systemd:
+        name: redis-server
         state: restarted

@@ -1,53 +1,23 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/apitypes"
 	"pressluft/internal/orchestrator"
 )
 
 type jobsHandler struct {
 	store         *orchestrator.Store
+	serverStore   *ServerStore
 	activityStore *activity.Store
-}
-
-type createJobRequest struct {
-	Kind     string          `json:"kind"`
-	ServerID int64           `json:"server_id"`
-	Payload  json.RawMessage `json:"payload"`
-}
-
-type rebuildServerPayload struct {
-	ServerName  string `json:"server_name"`
-	ServerImage string `json:"server_image"`
-}
-
-type resizeServerPayload struct {
-	ServerType  string `json:"server_type"`
-	UpgradeDisk *bool  `json:"upgrade_disk"`
-}
-
-type updateFirewallsPayload struct {
-	Firewalls []string `json:"firewalls"`
-}
-
-type manageVolumePayload struct {
-	VolumeName string `json:"volume_name"`
-	SizeGB     int    `json:"size_gb"`
-	Location   string `json:"location"`
-	State      string `json:"state"`
-	Automount  *bool  `json:"automount"`
-}
-
-type restartServicePayload struct {
-	ServiceName string `json:"service_name"`
 }
 
 func (jh *jobsHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -121,32 +91,59 @@ func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
-	var req createJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	var req apitypes.CreateJobRequest
+	if err := decodeJSONBody(w, r, defaultJSONBodyLimit, &req); err != nil {
 		return
 	}
-	if strings.TrimSpace(req.Kind) == "" {
-		req.Kind = "provision_server"
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	slog.Default().Info("job action requested", "job_kind", req.Kind, "server_id", req.ServerID)
 	payload, err := validateJobPayload(req)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	job, err := jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
-		Kind:     req.Kind,
-		ServerID: req.ServerID,
-		Payload:  payload,
-	})
+	var job orchestrator.Job
+	if req.ServerID > 0 && jh.serverStore != nil {
+		dispatchPolicy, ok := orchestrator.DispatchPolicyForKind(req.Kind)
+		if !ok {
+			respondError(w, http.StatusBadRequest, "unsupported job kind: "+req.Kind)
+			return
+		}
+		if dispatchPolicy.QueueServer {
+			_, job, err = jh.serverStore.QueueServerJob(r.Context(), QueueServerJobInput{
+				ServerID: req.ServerID,
+				Kind:     req.Kind,
+				Payload:  payload,
+			})
+		} else {
+			job, err = jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
+				Kind:     req.Kind,
+				ServerID: req.ServerID,
+				Payload:  payload,
+			})
+		}
+	} else {
+		job, err = jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
+			Kind:     req.Kind,
+			ServerID: req.ServerID,
+			Payload:  payload,
+		})
+	}
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "failed to create job: "+err.Error())
+		statusCode := http.StatusBadRequest
+		if err == ErrServerDeleting || err == ErrServerDeleted || strings.Contains(err.Error(), ErrServerActionConflict.Error()) {
+			statusCode = http.StatusConflict
+		}
+		respondError(w, statusCode, "failed to create job: "+err.Error())
 		return
 	}
 
 	_, _ = jh.store.AppendEvent(r.Context(), job.ID, orchestrator.CreateEventInput{
-		EventType: "job_created",
+		EventType: orchestrator.JobEventTypeCreated,
 		Level:     "info",
 		Status:    string(job.Status),
 		Message:   "Job accepted and queued",
@@ -154,14 +151,16 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Emit activity for job creation
 	if jh.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
 		input := activity.EmitInput{
 			EventType:    activity.EventJobCreated,
 			Category:     activity.CategoryJob,
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceJob,
 			ResourceID:   job.ID,
-			ActorType:    activity.ActorUser,
-			Title:        fmt.Sprintf("%s job queued", jobKindLabel(req.Kind)),
+			ActorType:    actorType,
+			ActorID:      actorID,
+			Title:        fmt.Sprintf("%s job queued", orchestrator.JobKindLabel(req.Kind)),
 		}
 		if req.ServerID > 0 {
 			input.ParentResourceType = activity.ResourceServer
@@ -171,117 +170,16 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusAccepted, job)
+	slog.Default().Info("job action queued", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID, "job_status", job.Status)
 }
 
 // jobKindLabel returns a human-readable label for a job kind.
 func jobKindLabel(kind string) string {
-	labels := map[string]string{
-		"provision_server": "Server provisioning",
-		"delete_server":    "Server deletion",
-		"rebuild_server":   "Server rebuild",
-		"resize_server":    "Server resize",
-		"update_firewalls": "Firewall update",
-		"manage_volume":    "Volume management",
-		"restart_service":  "Service restart",
-	}
-	if label, ok := labels[kind]; ok {
-		return label
-	}
-	return kind
+	return orchestrator.JobKindLabel(kind)
 }
 
-func validateJobPayload(req createJobRequest) (string, error) {
-	payload := strings.TrimSpace(string(req.Payload))
-	payloadBytes := bytes.TrimSpace(req.Payload)
-	if len(payloadBytes) == 0 || string(payloadBytes) == "null" {
-		payloadBytes = []byte("{}")
-	}
-
-	switch req.Kind {
-	case "rebuild_server":
-		if req.ServerID <= 0 {
-			return "", fmt.Errorf("server_id is required for rebuild_server job")
-		}
-		if payload == "" || payload == "null" {
-			return "", nil
-		}
-		var parsed rebuildServerPayload
-		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
-			return "", fmt.Errorf("invalid rebuild_server payload: %w", err)
-		}
-	case "resize_server":
-		if req.ServerID <= 0 {
-			return "", fmt.Errorf("server_id is required for resize_server job")
-		}
-		var parsed resizeServerPayload
-		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
-			return "", fmt.Errorf("invalid resize_server payload: %w", err)
-		}
-		if strings.TrimSpace(parsed.ServerType) == "" {
-			return "", fmt.Errorf("server_type is required for resize_server job")
-		}
-		if parsed.UpgradeDisk == nil {
-			return "", fmt.Errorf("upgrade_disk is required for resize_server job")
-		}
-	case "update_firewalls":
-		if req.ServerID <= 0 {
-			return "", fmt.Errorf("server_id is required for update_firewalls job")
-		}
-		var parsed updateFirewallsPayload
-		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
-			return "", fmt.Errorf("invalid update_firewalls payload: %w", err)
-		}
-		firewalls := make([]string, 0, len(parsed.Firewalls))
-		for _, fw := range parsed.Firewalls {
-			fw = strings.TrimSpace(fw)
-			if fw != "" {
-				firewalls = append(firewalls, fw)
-			}
-		}
-		if len(firewalls) == 0 {
-			return "", fmt.Errorf("firewalls payload must contain at least one firewall")
-		}
-	case "manage_volume":
-		if req.ServerID <= 0 {
-			return "", fmt.Errorf("server_id is required for manage_volume job")
-		}
-		var parsed manageVolumePayload
-		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
-			return "", fmt.Errorf("invalid manage_volume payload: %w", err)
-		}
-		volumeName := strings.TrimSpace(parsed.VolumeName)
-		state := strings.TrimSpace(parsed.State)
-		if volumeName == "" {
-			return "", fmt.Errorf("volume_name is required for manage_volume job")
-		}
-		if state != "present" && state != "absent" {
-			return "", fmt.Errorf("state must be present or absent for manage_volume job")
-		}
-		if state == "present" {
-			if parsed.Automount == nil {
-				return "", fmt.Errorf("automount is required for manage_volume job when state=present")
-			}
-			if parsed.SizeGB <= 0 {
-				return "", fmt.Errorf("size_gb is required for manage_volume job when state=present")
-			}
-		}
-	case "restart_service":
-		if req.ServerID <= 0 {
-			return "", fmt.Errorf("server_id is required for restart_service job")
-		}
-		var parsed restartServicePayload
-		if err := json.Unmarshal(payloadBytes, &parsed); err != nil {
-			return "", fmt.Errorf("invalid restart_service payload: %w", err)
-		}
-		if strings.TrimSpace(parsed.ServiceName) == "" {
-			return "", fmt.Errorf("service_name is required for restart_service job")
-		}
-	}
-
-	if payload == "null" {
-		payload = ""
-	}
-	return payload, nil
+func validateJobPayload(req apitypes.CreateJobRequest) (string, error) {
+	return orchestrator.ValidatePayload(req.Kind, req.Payload, req.ServerID)
 }
 
 func (jh *jobsHandler) handleGet(w http.ResponseWriter, r *http.Request, jobID int64) {

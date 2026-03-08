@@ -12,105 +12,82 @@ import (
 	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/observability"
 	"pressluft/internal/orchestrator"
-	"pressluft/internal/provider/hetzner"
+	"pressluft/internal/platform"
+	"pressluft/internal/provider"
 	"pressluft/internal/runner"
 	"pressluft/internal/security"
+	serverpkg "pressluft/internal/server"
 	"pressluft/internal/server/profiles"
+	"pressluft/internal/sshutil"
 )
 
 // ServerStore defines the server persistence interface needed by the executor.
 type ServerStore interface {
-	GetByID(ctx context.Context, id int64) (*StoredServer, error)
-	UpdateStatus(ctx context.Context, id int64, status string) error
-	UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus, status, ipv4, ipv6 string) error
+	GetByID(ctx context.Context, id int64) (*serverpkg.StoredServer, error)
+	UpdateStatus(ctx context.Context, id int64, status platform.ServerStatus) error
+	UpdateSetupState(ctx context.Context, id int64, setupState platform.SetupState, setupLastError string) error
+	UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error
 	UpdateServerType(ctx context.Context, id int64, serverType string) error
-	GetKey(ctx context.Context, serverID int64) (*StoredServerKey, error)
-	CreateKey(ctx context.Context, in CreateServerKeyInput) error
-}
-
-// StoredServer mirrors the server package type to avoid import cycles.
-type StoredServer struct {
-	ID               int64
-	ProviderID       int64
-	ProviderType     string
-	ProviderServerID string
-	IPv4             string
-	IPv6             string
-	Name             string
-	Location         string
-	ServerType       string
-	Image            string
-	ProfileKey       string
-	Status           string
-}
-
-// StoredServerKey mirrors the server package key type to avoid import cycles.
-type StoredServerKey struct {
-	ServerID            int64
-	PublicKey           string
-	PrivateKeyEncrypted string
-	EncryptionKeyID     string
-	CreatedAt           string
-	RotatedAt           string
-}
-
-// CreateServerKeyInput mirrors the server package input type to avoid import cycles.
-type CreateServerKeyInput struct {
-	ServerID            int64
-	PublicKey           string
-	PrivateKeyEncrypted string
-	EncryptionKeyID     string
-	RotatedAt           string
+	UpdateImage(ctx context.Context, id int64, image string) error
+	GetKey(ctx context.Context, serverID int64) (*serverpkg.StoredServerKey, error)
+	CreateKey(ctx context.Context, in serverpkg.CreateServerKeyInput) error
 }
 
 // ProviderStore defines the provider persistence interface needed by the executor.
 type ProviderStore interface {
-	GetByID(ctx context.Context, id int64) (*StoredProvider, error)
-}
-
-// StoredProvider mirrors the provider package type to avoid import cycles.
-type StoredProvider struct {
-	ID       int64
-	Type     string
-	APIToken string
+	GetByID(ctx context.Context, id int64) (*provider.StoredProvider, error)
 }
 
 // Executor runs job steps and emits events.
 type Executor struct {
-	jobStore        *orchestrator.Store
-	serverStore     ServerStore
-	providerStore   ProviderStore
-	activityStore   *activity.Store
-	runner          runner.Runner
-	agentRunner     AgentJobRunner
-	devTokenStore   DevTokenStore
-	playbookPath    string
-	configurePath   string
-	deletePath      string
-	rebuildPath     string
-	resizePath      string
-	firewallsPath   string
-	volumePath      string
-	controlPlaneURL string
-	logger          *slog.Logger
+	jobStore          *orchestrator.Store
+	serverStore       ServerStore
+	providerStore     ProviderStore
+	activityStore     *activity.Store
+	runner            runner.Runner
+	agentRunner       AgentJobRunner
+	devTokenStore     DevTokenStore
+	registrationStore RegistrationTokenStore
+	executionMode     platform.ExecutionMode
+	playbookBasePath  string
+	configurePath     string
+	controlPlaneURL   string
+	logger            *slog.Logger
 }
+
+// Conventional playbook filenames inside ops/ansible/playbooks/<provider-type>/.
+// Each provider supplies its own set of playbooks following this naming
+// convention, making it obvious where to add playbooks for a new provider.
+const (
+	playbookProvision = "provision.yml"
+	playbookDelete    = "delete.yml"
+	playbookRebuild   = "rebuild.yml"
+	playbookResize    = "resize.yml"
+	playbookFirewalls = "firewalls.yml"
+	playbookVolume    = "volume.yml"
+)
 
 // ExecutorConfig defines runner configuration.
 type ExecutorConfig struct {
-	ProvisionPlaybookPath string
+	// PlaybookBasePath is the root directory containing per-provider playbook
+	// subdirectories. The executor resolves provider-specific playbooks as
+	// <PlaybookBasePath>/<provider-type>/<action>.yml.
+	PlaybookBasePath      string
 	ConfigurePlaybookPath string
-	DeletePlaybookPath    string
-	RebuildPlaybookPath   string
-	ResizePlaybookPath    string
-	FirewallsPlaybookPath string
-	VolumePlaybookPath    string
 	ControlPlaneURL       string
+	ExecutionMode         platform.ExecutionMode
 	DevTokenStore         DevTokenStore
+	RegistrationStore     RegistrationTokenStore
 	AgentRunner           AgentJobRunner
 }
 
 type DevTokenStore interface {
+	Create(serverID int64, expiresIn time.Duration) (string, error)
+}
+
+type RegistrationTokenStore interface {
 	Create(serverID int64, expiresIn time.Duration) (string, error)
 }
 
@@ -129,41 +106,46 @@ func NewExecutor(
 	logger *slog.Logger,
 ) *Executor {
 	return &Executor{
-		jobStore:        jobStore,
-		serverStore:     serverStore,
-		providerStore:   providerStore,
-		activityStore:   activityStore,
-		runner:          runner,
-		agentRunner:     config.AgentRunner,
-		devTokenStore:   config.DevTokenStore,
-		playbookPath:    strings.TrimSpace(config.ProvisionPlaybookPath),
-		configurePath:   strings.TrimSpace(config.ConfigurePlaybookPath),
-		deletePath:      strings.TrimSpace(config.DeletePlaybookPath),
-		rebuildPath:     strings.TrimSpace(config.RebuildPlaybookPath),
-		resizePath:      strings.TrimSpace(config.ResizePlaybookPath),
-		firewallsPath:   strings.TrimSpace(config.FirewallsPlaybookPath),
-		volumePath:      strings.TrimSpace(config.VolumePlaybookPath),
-		controlPlaneURL: strings.TrimSpace(config.ControlPlaneURL),
-		logger:          logger,
+		jobStore:          jobStore,
+		serverStore:       serverStore,
+		providerStore:     providerStore,
+		activityStore:     activityStore,
+		runner:            runner,
+		agentRunner:       config.AgentRunner,
+		devTokenStore:     config.DevTokenStore,
+		registrationStore: config.RegistrationStore,
+		executionMode:     config.ExecutionMode,
+		playbookBasePath:  strings.TrimSpace(config.PlaybookBasePath),
+		configurePath:     strings.TrimSpace(config.ConfigurePlaybookPath),
+		controlPlaneURL:   strings.TrimSpace(config.ControlPlaneURL),
+		logger:            logger,
 	}
+}
+
+// providerPlaybook resolves a playbook path for the given provider type.
+// The convention is: <playbookBasePath>/<providerType>/<filename>.
+func (e *Executor) providerPlaybook(providerType, filename string) string {
+	return filepath.Join(e.playbookBasePath, providerType, filename)
 }
 
 // Execute runs all steps for a job. It handles state transitions and event emission.
 func (e *Executor) Execute(ctx context.Context, job *orchestrator.Job) error {
 	switch job.Kind {
-	case "provision_server":
+	case string(orchestrator.JobKindProvisionServer):
 		return e.executeProvisionServer(ctx, job)
-	case "delete_server":
+	case string(orchestrator.JobKindConfigureServer):
+		return e.executeConfigureServer(ctx, job)
+	case string(orchestrator.JobKindDeleteServer):
 		return e.executeDeleteServer(ctx, job)
-	case "rebuild_server":
+	case string(orchestrator.JobKindRebuildServer):
 		return e.executeRebuildServer(ctx, job)
-	case "resize_server":
+	case string(orchestrator.JobKindResizeServer):
 		return e.executeResizeServer(ctx, job)
-	case "update_firewalls":
+	case string(orchestrator.JobKindUpdateFirewalls):
 		return e.executeUpdateFirewalls(ctx, job)
-	case "manage_volume":
+	case string(orchestrator.JobKindManageVolume):
 		return e.executeManageVolume(ctx, job)
-	case "restart_service":
+	case string(orchestrator.JobKindRestartService):
 		return e.executeAgentJob(ctx, job)
 	default:
 		return e.failJob(ctx, job, fmt.Sprintf("unknown job kind: %s", job.Kind))
@@ -187,7 +169,7 @@ func (e *Executor) executeAgentJob(ctx context.Context, job *orchestrator.Job) e
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	if err := e.agentRunner.Run(ctx, *job); err != nil {
@@ -197,14 +179,8 @@ func (e *Executor) executeAgentJob(ctx context.Context, job *orchestrator.Job) e
 	return nil
 }
 
-// executeProvisionServer runs the server provisioning workflow:
-// 1. validate - Check server record and provider exist
-// 2. create_ssh_key - Generate and register SSH key with provider
-// 3. create_server - Call provider API to create server with SSH key
-// 4. wait_running - Poll until server is running
-// 5. finalize - Mark server as ready
+// executeProvisionServer provisions provider infrastructure and then queues setup.
 func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator.Job) error {
-	// Transition to running
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
 		ToStatus:    orchestrator.JobStatusRunning,
 		CurrentStep: "validate",
@@ -222,10 +198,9 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
-	// Step 1: Validate
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server configuration")
 
 	server, err := e.serverStore.GetByID(ctx, job.ServerID)
@@ -238,7 +213,7 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
 
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsProvisioningWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible provisioning", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -247,16 +222,14 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.playbookPath) == "" {
-		return e.failJob(ctx, job, "provision playbook path not configured")
-	}
-	if strings.TrimSpace(e.configurePath) == "" {
-		return e.failJob(ctx, job, "configure playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
 	e.emitStepComplete(ctx, job.ID, "validate", "Server configuration validated")
+	e.setServerStatus(ctx, server.ID, platform.ServerStatusProvisioning)
+	e.setSetupState(ctx, server.ID, platform.SetupStateNotStarted, "")
 
-	// Step 2: Provision with Ansible
 	e.updateStep(ctx, job.ID, "provision")
 	e.emitStepStart(ctx, job.ID, "provision", "Running provision playbook")
 
@@ -267,21 +240,21 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	}
 
 	var publicKey string
-	var privateKey string
 	if storedKey != nil {
 		publicKey = storedKey.PublicKey
 		e.logSSHPublicKey("stored", publicKey)
 	} else {
-		publicKey, privateKey, err = hetzner.GenerateSSHKeyPair(keyName)
+		var generatedPrivateKey string
+		publicKey, generatedPrivateKey, err = sshutil.GenerateKeyPair(keyName)
 		if err != nil {
 			return e.failJob(ctx, job, fmt.Sprintf("failed to generate SSH key: %v", err))
 		}
 		e.logSSHPublicKey("generated", publicKey)
-		encryptedKey, keyID, err := security.Encrypt([]byte(privateKey))
+		encryptedKey, keyID, err := security.Encrypt([]byte(generatedPrivateKey))
 		if err != nil {
 			return e.failJob(ctx, job, fmt.Sprintf("failed to encrypt SSH key: %v", err))
 		}
-		if err := e.serverStore.CreateKey(ctx, CreateServerKeyInput{
+		if err := e.serverStore.CreateKey(ctx, serverpkg.CreateServerKeyInput{
 			ServerID:            server.ID,
 			PublicKey:           publicKey,
 			PrivateKeyEncrypted: encryptedKey,
@@ -295,10 +268,9 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 				return e.failJob(ctx, job, fmt.Sprintf("failed to store SSH key: %v", err))
 			}
 			publicKey = storedKey.PublicKey
-			privateKey = ""
 			e.logSSHPublicKey("stored_after_conflict", publicKey)
 		} else {
-			storedKey = &StoredServerKey{
+			storedKey = &serverpkg.StoredServerKey{
 				ServerID:            server.ID,
 				PublicKey:           publicKey,
 				PrivateKeyEncrypted: encryptedKey,
@@ -326,9 +298,9 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	request := runner.Request{
 		JobID:         job.ID,
 		InventoryPath: inventoryPath,
-		PlaybookPath:  e.playbookPath,
+		PlaybookPath:  e.providerPlaybook(storedProvider.Type, playbookProvision),
 		ExtraVars: map[string]string{
-			"hcloud_token":    storedProvider.APIToken,
+			"api_token":       storedProvider.APIToken,
 			"server_name":     server.Name,
 			"server_location": server.Location,
 			"server_type":     server.ServerType,
@@ -355,119 +327,32 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	}
 
 	providerServerID := strconv.FormatInt(result.ID, 10)
-	if err := e.serverStore.UpdateProvisioning(ctx, server.ID, providerServerID, "", "", "provisioning", result.IPv4, result.IPv6); err != nil {
+	if err := e.serverStore.UpdateProvisioning(ctx, server.ID, providerServerID, "", "", platform.ServerStatusProvisioning, result.IPv4, result.IPv6); err != nil {
 		e.logger.Error("failed to update server provisioning state", "error", err)
 	}
 
 	e.emitStepComplete(ctx, job.ID, "provision", fmt.Sprintf("Server created: %s", providerServerID))
+	e.setServerStatus(ctx, server.ID, platform.ServerStatusConfiguring)
+	e.setSetupState(ctx, server.ID, platform.SetupStateRunning, "")
 
-	// Step 3: Configure
-	e.updateStep(ctx, job.ID, "configure")
-	e.emitStepStart(ctx, job.ID, "configure", "Running configure playbook")
-
-	profile, ok := profiles.Get(server.ProfileKey)
-	if !ok {
-		return e.failJob(ctx, job, fmt.Sprintf("unknown profile key: %s", server.ProfileKey))
-	}
-
-	if privateKey == "" {
-		if storedKey == nil {
-			storedKey, err = e.serverStore.GetKey(ctx, server.ID)
-			if err != nil {
-				return e.failJob(ctx, job, fmt.Sprintf("failed to read SSH key: %v", err))
-			}
-			if storedKey == nil {
-				return e.failJob(ctx, job, "missing SSH key for server")
-			}
-		}
-		decryptedKey, err := security.Decrypt(storedKey.PrivateKeyEncrypted)
-		if err != nil {
-			return e.failJob(ctx, job, fmt.Sprintf("failed to decrypt SSH key: %v", err))
-		}
-		privateKey = string(decryptedKey)
-	}
-
-	privateKeyPath := filepath.Join(workspace, "server.key")
-	if err := os.WriteFile(privateKeyPath, []byte(privateKey), 0o600); err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("failed to write private key: %v", err))
-	}
-
-	configureInventoryPath := filepath.Join(workspace, "configure.ini")
-	configureInventory := fmt.Sprintf("server ansible_host=%s ansible_user=root ansible_ssh_private_key_file=%s ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\n", result.IPv4, privateKeyPath)
-	if err := os.WriteFile(configureInventoryPath, []byte(configureInventory), 0o600); err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("failed to write configure inventory: %v", err))
-	}
-
-	agentBinaryPath, err := filepath.Abs("bin/pressluft-agent")
+	payloadBytes, err := json.Marshal(orchestrator.ConfigureServerPayload{IPv4: result.IPv4})
 	if err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("failed to resolve agent binary path: %v", err))
+		return e.failJob(ctx, job, fmt.Sprintf("marshal configure payload: %v", err))
 	}
-	if _, err := os.Stat(agentBinaryPath); err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("agent binary not found at %q; ensure bin/pressluft-agent exists in the project root", agentBinaryPath))
-	}
-
-	extraVars := map[string]string{
-		"server_id":         strconv.FormatInt(server.ID, 10),
-		"control_plane_url": e.controlPlaneURL,
-		"profile_path":      profile.ArtifactPath,
-		"agent_binary_path": agentBinaryPath,
-	}
-
-	devVars, err := e.extraAgentVars(ctx, server.ID)
-	if err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("failed to prepare agent config: %v", err))
-	}
-	for key, value := range devVars {
-		extraVars[key] = value
-	}
-
-	configureRequest := runner.Request{
-		JobID:         job.ID,
-		InventoryPath: configureInventoryPath,
-		PlaybookPath:  e.configurePath,
-		ExtraVars:     extraVars,
-	}
-
-	if err := e.runner.Run(ctx, configureRequest, &runnerEventSink{jobStore: e.jobStore, jobID: job.ID, logger: e.logger}); err != nil {
-		return e.failJob(ctx, job, fmt.Sprintf("ansible configure failed: %v", err))
-	}
-
-	e.emitStepComplete(ctx, job.ID, "configure", "Configure playbook completed")
-
-	// Step 4: Finalize
-	e.updateStep(ctx, job.ID, "finalize")
-	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing server setup")
-
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
-		e.logger.Error("failed to update server status to ready", "error", err)
-	}
-
-	e.emitStepComplete(ctx, job.ID, "finalize", "Server provisioning complete")
-
-	// Mark job as succeeded
-	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
-		ToStatus:    orchestrator.JobStatusSucceeded,
-		CurrentStep: "finalize",
-	}); err != nil {
-		return fmt.Errorf("transition to succeeded: %w", err)
-	}
-
-	e.emitEvent(ctx, job.ID, "info", "", "succeeded", "Job completed successfully")
-
-	// Emit job completed activity
-	e.emitActivity(ctx, activity.EmitInput{
-		EventType:          activity.EventJobCompleted,
-		Category:           activity.CategoryJob,
-		Level:              activity.LevelSuccess,
-		ResourceType:       activity.ResourceJob,
-		ResourceID:         job.ID,
-		ParentResourceType: activity.ResourceServer,
-		ParentResourceID:   job.ServerID,
-		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s completed", jobKindLabel(job.Kind)),
+	configureJob, err := e.jobStore.CreateJob(ctx, orchestrator.CreateJobInput{
+		Kind:     string(orchestrator.JobKindConfigureServer),
+		ServerID: server.ID,
+		Payload:  string(payloadBytes),
 	})
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("queue configure job: %v", err))
+	}
+	e.emitEvent(ctx, configureJob.ID, orchestrator.JobEventTypeCreated, "info", "", string(configureJob.Status), "Setup job accepted and queued")
 
-	// Emit server provisioned activity (special case for provision jobs)
+	if err := e.completeJob(ctx, job, "provision"); err != nil {
+		return err
+	}
+
 	e.emitActivity(ctx, activity.EmitInput{
 		EventType:    activity.EventServerProvisioned,
 		Category:     activity.CategoryServer,
@@ -477,34 +362,71 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 		ActorType:    activity.ActorSystem,
 		Title:        fmt.Sprintf("Server '%s' provisioned", server.Name),
 	})
-
 	return nil
 }
 
-type deleteServerPayload struct {
-	ServerName string `json:"server_name"`
-}
+func (e *Executor) executeConfigureServer(ctx context.Context, job *orchestrator.Job) error {
+	if job.ServerID <= 0 {
+		return e.failJob(ctx, job, "server_id is required for configure_server job")
+	}
+	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
+		ToStatus:    orchestrator.JobStatusRunning,
+		CurrentStep: "validate",
+	}); err != nil {
+		return fmt.Errorf("transition to running: %w", err)
+	}
 
-type rebuildServerPayload struct {
-	ServerName  string `json:"server_name"`
-	ServerImage string `json:"server_image"`
-}
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   job.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
+	})
 
-type resizeServerPayload struct {
-	ServerType  string `json:"server_type"`
-	UpgradeDisk *bool  `json:"upgrade_disk"`
-}
+	e.emitStepStart(ctx, job.ID, "validate", "Validating server setup request")
+	server, err := e.serverStore.GetByID(ctx, job.ServerID)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("server not found: %v", err))
+	}
+	if strings.TrimSpace(e.configurePath) == "" {
+		return e.failJob(ctx, job, "configure playbook path not configured")
+	}
 
-type updateFirewallsPayload struct {
-	Firewalls []string `json:"firewalls"`
-}
+	payload, err := orchestrator.UnmarshalConfigureServerPayload(job.Payload)
+	if err != nil {
+		return e.failJob(ctx, job, err.Error())
+	}
+	ipv4 := strings.TrimSpace(payload.IPv4)
+	if ipv4 == "" {
+		ipv4 = strings.TrimSpace(server.IPv4)
+	}
+	if ipv4 == "" {
+		return e.failJob(ctx, job, "server IPv4 is required for configure_server job")
+	}
 
-type manageVolumePayload struct {
-	VolumeName string `json:"volume_name"`
-	SizeGB     int    `json:"size_gb"`
-	Location   string `json:"location"`
-	State      string `json:"state"`
-	Automount  *bool  `json:"automount"`
+	e.emitStepComplete(ctx, job.ID, "validate", "Server setup request validated")
+	e.updateStep(ctx, job.ID, "configure")
+	e.emitStepStart(ctx, job.ID, "configure", "Running configure playbook")
+	e.setServerStatus(ctx, server.ID, platform.ServerStatusConfiguring)
+	e.setSetupState(ctx, server.ID, platform.SetupStateRunning, "")
+
+	if err := e.runConfigurePlaybook(ctx, job.ID, server, ipv4, "", nil); err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("ansible configure failed: %v", err))
+	}
+
+	e.emitStepComplete(ctx, job.ID, "configure", "Configure playbook completed")
+	e.updateStep(ctx, job.ID, "finalize")
+	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing server setup")
+	e.setSetupState(ctx, server.ID, platform.SetupStateReady, "")
+	e.setServerStatus(ctx, server.ID, platform.ServerStatusReady)
+	e.emitStepComplete(ctx, job.ID, "finalize", "Server setup complete")
+
+	return e.completeJob(ctx, job, "finalize")
 }
 
 func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Job) error {
@@ -528,7 +450,7 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server delete request")
@@ -542,7 +464,7 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsServerMutationWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible workflows", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -551,18 +473,14 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.deletePath) == "" {
-		return e.failJob(ctx, job, "delete playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
-	var payload deleteServerPayload
-	if err := parseJobPayload(job, &payload); err != nil {
+	if _, err := orchestrator.UnmarshalDeleteServerPayload(job.Payload); err != nil {
 		return e.failJob(ctx, job, err.Error())
 	}
-	serverName := strings.TrimSpace(payload.ServerName)
-	if serverName == "" {
-		serverName = strings.TrimSpace(server.Name)
-	}
+	serverName := strings.TrimSpace(server.Name)
 	if serverName == "" {
 		return e.failJob(ctx, job, "server_name is required for delete_server job")
 	}
@@ -572,7 +490,7 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "delete")
 	e.emitStepStart(ctx, job.ID, "delete", "Running delete playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.deletePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookDelete), map[string]string{
 		"api_token":   storedProvider.APIToken,
 		"server_name": serverName,
 	}); err != nil {
@@ -584,11 +502,20 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "finalize")
 	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing delete")
 
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
-		e.logger.Error("failed to update server status to ready", "error", err)
+	if err := e.serverStore.UpdateStatus(ctx, server.ID, platform.ServerStatusDeleted); err != nil {
+		e.logger.Error("failed to update server status to deleted", "error", err)
 	}
 
 	e.emitStepComplete(ctx, job.ID, "finalize", "Server delete complete")
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:    activity.EventServerDeleted,
+		Category:     activity.CategoryServer,
+		Level:        activity.LevelSuccess,
+		ResourceType: activity.ResourceServer,
+		ResourceID:   server.ID,
+		ActorType:    activity.ActorSystem,
+		Title:        fmt.Sprintf("Server '%s' deleted", server.Name),
+	})
 
 	return e.completeJob(ctx, job, "finalize")
 }
@@ -614,7 +541,7 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server rebuild request")
@@ -628,7 +555,7 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsServerMutationWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible workflows", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -637,18 +564,15 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.rebuildPath) == "" {
-		return e.failJob(ctx, job, "rebuild playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
-	var payload rebuildServerPayload
-	if err := parseJobPayload(job, &payload); err != nil {
+	payload, err := orchestrator.UnmarshalRebuildServerPayload(job.Payload)
+	if err != nil {
 		return e.failJob(ctx, job, err.Error())
 	}
-	serverName := strings.TrimSpace(payload.ServerName)
-	if serverName == "" {
-		serverName = strings.TrimSpace(server.Name)
-	}
+	serverName := strings.TrimSpace(server.Name)
 	serverImage := strings.TrimSpace(payload.ServerImage)
 	if serverImage == "" {
 		serverImage = strings.TrimSpace(server.Image)
@@ -659,13 +583,16 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	if serverImage == "" {
 		return e.failJob(ctx, job, "server_image is required for rebuild_server job")
 	}
+	if _, err := validateSelectableProfile(server.ProfileKey); err != nil {
+		return e.failJob(ctx, job, err.Error())
+	}
 
 	e.emitStepComplete(ctx, job.ID, "validate", "Rebuild request validated")
 
 	e.updateStep(ctx, job.ID, "rebuild")
 	e.emitStepStart(ctx, job.ID, "rebuild", "Running rebuild playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.rebuildPath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookRebuild), map[string]string{
 		"api_token":    storedProvider.APIToken,
 		"server_name":  serverName,
 		"server_image": serverImage,
@@ -674,14 +601,30 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 	}
 
 	e.emitStepComplete(ctx, job.ID, "rebuild", "Rebuild playbook completed")
+	e.setServerStatus(ctx, server.ID, platform.ServerStatusConfiguring)
+	e.setSetupState(ctx, server.ID, platform.SetupStateRunning, "")
+	if err := e.serverStore.UpdateImage(ctx, server.ID, serverImage); err != nil {
+		e.logger.Error("failed to update server image", "error", err)
+	}
+	if strings.TrimSpace(server.IPv4) == "" {
+		return e.failJob(ctx, job, "server IPv4 is required for rebuild follow-up setup")
+	}
+	configurePayload, err := json.Marshal(orchestrator.ConfigureServerPayload{IPv4: server.IPv4})
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("marshal rebuild configure payload: %v", err))
+	}
+	configureJob, err := e.jobStore.CreateJob(ctx, orchestrator.CreateJobInput{
+		Kind:     string(orchestrator.JobKindConfigureServer),
+		ServerID: server.ID,
+		Payload:  string(configurePayload),
+	})
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("queue configure job after rebuild: %v", err))
+	}
+	e.emitEvent(ctx, configureJob.ID, orchestrator.JobEventTypeCreated, "info", "", string(configureJob.Status), "Setup job accepted and queued")
 
 	e.updateStep(ctx, job.ID, "finalize")
-	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing rebuild")
-
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
-		e.logger.Error("failed to update server status to ready", "error", err)
-	}
-
+	e.emitStepStart(ctx, job.ID, "finalize", "Queued follow-up server setup")
 	e.emitStepComplete(ctx, job.ID, "finalize", "Server rebuild complete")
 
 	return e.completeJob(ctx, job, "finalize")
@@ -708,7 +651,7 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating server resize request")
@@ -722,7 +665,7 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsServerMutationWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible workflows", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -731,20 +674,17 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.resizePath) == "" {
-		return e.failJob(ctx, job, "resize playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
-	var payload resizeServerPayload
-	if err := parseJobPayload(job, &payload); err != nil {
+	payload, err := orchestrator.UnmarshalResizeServerPayload(job.Payload)
+	if err != nil {
 		return e.failJob(ctx, job, err.Error())
 	}
 	serverType := strings.TrimSpace(payload.ServerType)
 	if serverType == "" {
 		return e.failJob(ctx, job, "server_type is required for resize_server job")
-	}
-	if payload.UpgradeDisk == nil {
-		return e.failJob(ctx, job, "upgrade_disk is required for resize_server job")
 	}
 
 	e.emitStepComplete(ctx, job.ID, "validate", "Resize request validated")
@@ -752,11 +692,11 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "resize")
 	e.emitStepStart(ctx, job.ID, "resize", "Running resize playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.resizePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookResize), map[string]string{
 		"api_token":    storedProvider.APIToken,
 		"server_name":  server.Name,
 		"server_type":  serverType,
-		"upgrade_disk": strconv.FormatBool(*payload.UpgradeDisk),
+		"upgrade_disk": strconv.FormatBool(payload.UpgradeDisk),
 	}); err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("ansible resize failed: %v", err))
 	}
@@ -769,7 +709,7 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 	if err := e.serverStore.UpdateServerType(ctx, server.ID, serverType); err != nil {
 		e.logger.Error("failed to update server type", "error", err)
 	}
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
+	if err := e.serverStore.UpdateStatus(ctx, server.ID, platform.ServerStatusReady); err != nil {
 		e.logger.Error("failed to update server status to ready", "error", err)
 	}
 
@@ -799,7 +739,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating firewall update request")
@@ -813,7 +753,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsServerMutationWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible workflows", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -822,12 +762,12 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.firewallsPath) == "" {
-		return e.failJob(ctx, job, "firewalls playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
-	var payload updateFirewallsPayload
-	if err := parseJobPayload(job, &payload); err != nil {
+	payload, err := orchestrator.UnmarshalUpdateFirewallsPayload(job.Payload)
+	if err != nil {
 		return e.failJob(ctx, job, err.Error())
 	}
 	firewalls := make([]string, 0, len(payload.Firewalls))
@@ -847,7 +787,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	e.updateStep(ctx, job.ID, "update_firewalls")
 	e.emitStepStart(ctx, job.ID, "update_firewalls", "Running firewall update playbook")
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.firewallsPath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookFirewalls), map[string]string{
 		"api_token":     storedProvider.APIToken,
 		"server_name":   server.Name,
 		"firewalls_csv": firewallsCSV,
@@ -860,7 +800,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 	e.updateStep(ctx, job.ID, "finalize")
 	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing firewall update")
 
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
+	if err := e.serverStore.UpdateStatus(ctx, server.ID, platform.ServerStatusReady); err != nil {
 		e.logger.Error("failed to update server status to ready", "error", err)
 	}
 
@@ -890,7 +830,7 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 		ParentResourceType: activity.ResourceServer,
 		ParentResourceID:   job.ServerID,
 		ActorType:          activity.ActorSystem,
-		Title:              fmt.Sprintf("%s started", jobKindLabel(job.Kind)),
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
 	})
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating volume request")
@@ -904,7 +844,7 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("provider not found: %v", err))
 	}
-	if storedProvider.Type != "hetzner" {
+	if !provider.SupportsServerMutationWorkflow(storedProvider.Type) {
 		return e.failJob(ctx, job, fmt.Sprintf("provider %s does not support ansible workflows", storedProvider.Type))
 	}
 	if strings.TrimSpace(storedProvider.APIToken) == "" {
@@ -913,12 +853,12 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	if e.runner == nil {
 		return e.failJob(ctx, job, "ansible runner not configured")
 	}
-	if strings.TrimSpace(e.volumePath) == "" {
-		return e.failJob(ctx, job, "volume playbook path not configured")
+	if strings.TrimSpace(e.playbookBasePath) == "" {
+		return e.failJob(ctx, job, "playbook base path not configured")
 	}
 
-	var payload manageVolumePayload
-	if err := parseJobPayload(job, &payload); err != nil {
+	payload, err := orchestrator.UnmarshalManageVolumePayload(job.Payload)
+	if err != nil {
 		return e.failJob(ctx, job, err.Error())
 	}
 	volumeName := strings.TrimSpace(payload.VolumeName)
@@ -948,7 +888,7 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 		automountValue = strconv.FormatBool(*payload.Automount)
 	}
 
-	if err := e.runLocalPlaybook(ctx, job.ID, e.volumePath, map[string]string{
+	if err := e.runLocalPlaybook(ctx, job.ID, e.providerPlaybook(storedProvider.Type, playbookVolume), map[string]string{
 		"api_token":   storedProvider.APIToken,
 		"server_name": server.Name,
 		"volume_name": volumeName,
@@ -965,13 +905,139 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	e.updateStep(ctx, job.ID, "finalize")
 	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing volume workflow")
 
-	if err := e.serverStore.UpdateStatus(ctx, server.ID, "ready"); err != nil {
+	if err := e.serverStore.UpdateStatus(ctx, server.ID, platform.ServerStatusReady); err != nil {
 		e.logger.Error("failed to update server status to ready", "error", err)
 	}
 
 	e.emitStepComplete(ctx, job.ID, "finalize", "Volume workflow complete")
 
 	return e.completeJob(ctx, job, "finalize")
+}
+
+func (e *Executor) runConfigurePlaybook(ctx context.Context, jobID int64, server *serverpkg.StoredServer, ipv4, privateKey string, storedKey *serverpkg.StoredServerKey) error {
+	if server == nil {
+		return fmt.Errorf("server is required")
+	}
+	if strings.TrimSpace(ipv4) == "" {
+		return fmt.Errorf("server IPv4 is required")
+	}
+	if strings.TrimSpace(e.configurePath) == "" {
+		return fmt.Errorf("configure playbook path not configured")
+	}
+
+	profile, err := validateSelectableProfile(server.ProfileKey)
+	if err != nil {
+		return err
+	}
+
+	if privateKey == "" {
+		if storedKey == nil {
+			var err error
+			storedKey, err = e.serverStore.GetKey(ctx, server.ID)
+			if err != nil {
+				return fmt.Errorf("failed to read SSH key: %w", err)
+			}
+		}
+		if storedKey == nil {
+			return fmt.Errorf("missing SSH key for server")
+		}
+		decryptedKey, err := security.Decrypt(storedKey.PrivateKeyEncrypted)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt SSH key: %w", err)
+		}
+		privateKey = string(decryptedKey)
+	}
+
+	workspace, err := os.MkdirTemp("", "pressluft-configure-")
+	if err != nil {
+		return fmt.Errorf("failed to create configure workspace: %w", err)
+	}
+	defer os.RemoveAll(workspace)
+
+	privateKeyPath := filepath.Join(workspace, "server.key")
+	if err := os.WriteFile(privateKeyPath, []byte(privateKey), 0o600); err != nil {
+		return fmt.Errorf("failed to write private key: %w", err)
+	}
+
+	configureInventoryPath := filepath.Join(workspace, "configure.ini")
+	configureInventory := fmt.Sprintf("server ansible_host=%s ansible_user=root ansible_ssh_private_key_file=%s ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\n", ipv4, privateKeyPath)
+	if err := os.WriteFile(configureInventoryPath, []byte(configureInventory), 0o600); err != nil {
+		return fmt.Errorf("failed to write configure inventory: %w", err)
+	}
+
+	agentBinaryPath, err := filepath.Abs("bin/pressluft-agent")
+	if err != nil {
+		return fmt.Errorf("failed to resolve agent binary path: %w", err)
+	}
+	if _, err := os.Stat(agentBinaryPath); err != nil {
+		return fmt.Errorf("agent binary not found at %q; ensure bin/pressluft-agent exists in the project root", agentBinaryPath)
+	}
+
+	extraVars := ConfigureContract{
+		ServerID:           server.ID,
+		ControlPlaneURL:    e.controlPlaneURL,
+		ExecutionMode:      e.executionMode,
+		ProfileKey:         profile.Key,
+		ProfileArtifact:    profile.ArtifactPath,
+		ProfileSupport:     profile.SupportLevel,
+		ConfigureGuarantee: profile.ConfigureGuarantee,
+		AgentBinaryPath:    agentBinaryPath,
+	}.ExtraVars()
+
+	devVars, err := e.extraAgentVars(ctx, server.ID)
+	if err != nil {
+		return fmt.Errorf("failed to prepare agent config: %w", err)
+	}
+	for key, value := range devVars {
+		extraVars[key] = value
+	}
+
+	configureRequest := runner.Request{
+		JobID:         jobID,
+		InventoryPath: configureInventoryPath,
+		PlaybookPath:  e.configurePath,
+		ExtraVars:     extraVars,
+	}
+
+	return e.runner.Run(ctx, configureRequest, &runnerEventSink{jobStore: e.jobStore, jobID: jobID, logger: e.logger})
+}
+
+func validateSelectableProfile(profileKey string) (profiles.Profile, error) {
+	profile, ok := profiles.Get(profileKey)
+	if !ok {
+		return profiles.Profile{}, fmt.Errorf("unknown profile key: %s", profileKey)
+	}
+	if profile.Selectable() {
+		return profile, nil
+	}
+
+	reason := strings.TrimSpace(profile.SupportReason)
+	if reason == "" {
+		reason = "profile is not selectable in the current platform contract"
+	}
+	return profiles.Profile{}, fmt.Errorf("profile %q is %s: %s", profile.Key, profile.SupportLevel, reason)
+}
+
+func (e *Executor) setServerStatus(ctx context.Context, serverID int64, status platform.ServerStatus) {
+	if serverID <= 0 || strings.TrimSpace(string(status)) == "" {
+		return
+	}
+	if err := e.serverStore.UpdateStatus(ctx, serverID, status); err != nil {
+		e.logger.Error("server status persistence failed", "server_id", serverID, "server_status", status, "error", err)
+		return
+	}
+	e.logger.Info("server status updated", "server_id", serverID, "server_status", status)
+}
+
+func (e *Executor) setSetupState(ctx context.Context, serverID int64, setupState platform.SetupState, setupLastError string) {
+	if serverID <= 0 || strings.TrimSpace(string(setupState)) == "" {
+		return
+	}
+	if err := e.serverStore.UpdateSetupState(ctx, serverID, setupState, setupLastError); err != nil {
+		e.logger.Error("server setup state persistence failed", "server_id", serverID, "setup_state", setupState, "error", err)
+		return
+	}
+	e.logger.Info("server setup state updated", "server_id", serverID, "setup_state", setupState)
 }
 
 func (e *Executor) runLocalPlaybook(ctx context.Context, jobID int64, playbookPath string, extraVars map[string]string) error {
@@ -996,17 +1062,6 @@ func (e *Executor) runLocalPlaybook(ctx context.Context, jobID int64, playbookPa
 	return e.runner.Run(ctx, request, &runnerEventSink{jobStore: e.jobStore, jobID: jobID, logger: e.logger})
 }
 
-func parseJobPayload(job *orchestrator.Job, target any) error {
-	raw := strings.TrimSpace(job.Payload)
-	if raw == "" {
-		return nil
-	}
-	if err := json.Unmarshal([]byte(raw), target); err != nil {
-		return fmt.Errorf("invalid job payload: %w", err)
-	}
-	return nil
-}
-
 func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step string) error {
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
 		ToStatus:    orchestrator.JobStatusSucceeded,
@@ -1015,7 +1070,7 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 		return fmt.Errorf("transition to succeeded: %w", err)
 	}
 
-	e.emitEvent(ctx, job.ID, "info", "", "succeeded", "Job completed successfully")
+	e.emitEvent(ctx, job.ID, orchestrator.JobEventTypeSucceeded, "info", "", string(orchestrator.JobStatusSucceeded), "Job completed successfully")
 
 	// Emit job completed activity
 	input := activity.EmitInput{
@@ -1025,7 +1080,7 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 		ResourceType: activity.ResourceJob,
 		ResourceID:   job.ID,
 		ActorType:    activity.ActorSystem,
-		Title:        fmt.Sprintf("%s completed", jobKindLabel(job.Kind)),
+		Title:        fmt.Sprintf("%s completed", orchestrator.JobKindLabel(job.Kind)),
 	}
 	if job.ServerID > 0 {
 		input.ParentResourceType = activity.ResourceServer
@@ -1037,24 +1092,26 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 }
 
 func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg string) error {
-	e.logger.Error("job failed", "job_id", job.ID, "error", errMsg)
+	corr := observability.Correlation{JobID: job.ID, ServerID: job.ServerID, CommandID: derefString(job.CommandID)}
+	e.logger.Error("job failed", corr.LogArgs("error", errMsg)...)
 
-	// Update server status to failed
 	if job.ServerID > 0 {
-		if err := e.serverStore.UpdateStatus(ctx, job.ServerID, "failed"); err != nil {
-			e.logger.Error("failed to update server status", "error", err)
+		if job.Kind == string(orchestrator.JobKindConfigureServer) {
+			e.setSetupState(ctx, job.ServerID, platform.SetupStateDegraded, errMsg)
+		} else if err := e.serverStore.UpdateStatus(ctx, job.ServerID, platform.ServerStatusFailed); err != nil {
+			e.logger.Error("server failure status persistence failed", corr.LogArgs("server_status", platform.ServerStatusFailed, "error", err)...)
 		}
 	}
 
 	// Emit failure event
-	e.emitEvent(ctx, job.ID, "error", job.CurrentStep, "failed", errMsg)
+	e.emitEvent(ctx, job.ID, orchestrator.JobEventTypeFailed, "error", job.CurrentStep, string(orchestrator.JobStatusFailed), errMsg)
 
 	// Transition job to failed
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
 		ToStatus:  orchestrator.JobStatusFailed,
 		LastError: errMsg,
 	}); err != nil {
-		e.logger.Error("failed to transition job to failed", "error", err)
+		e.logger.Error("job failure transition persistence failed", corr.LogArgs("error", err)...)
 	}
 
 	// Emit job failed activity with requires_attention flag
@@ -1065,7 +1122,7 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 		ResourceType:      activity.ResourceJob,
 		ResourceID:        job.ID,
 		ActorType:         activity.ActorSystem,
-		Title:             fmt.Sprintf("%s failed", jobKindLabel(job.Kind)),
+		Title:             fmt.Sprintf("%s failed", orchestrator.JobKindLabel(job.Kind)),
 		Message:           errMsg,
 		RequiresAttention: true,
 	}
@@ -1083,29 +1140,31 @@ func (e *Executor) updateStep(ctx context.Context, jobID int64, step string) {
 		ToStatus:    orchestrator.JobStatusRunning,
 		CurrentStep: step,
 	}); err != nil {
-		e.logger.Error("failed to update job step", "job_id", jobID, "step", step, "error", err)
+		e.logger.Error("job step transition persistence failed", "job_id", jobID, "step", step, "error", err)
 	}
 }
 
 func (e *Executor) emitStepStart(ctx context.Context, jobID int64, step, message string) {
-	e.emitEvent(ctx, jobID, "info", step, "running", message)
+	e.emitEvent(ctx, jobID, orchestrator.JobEventTypeStepStarted, "info", step, string(orchestrator.JobStatusRunning), message)
 }
 
 func (e *Executor) emitStepComplete(ctx context.Context, jobID int64, step, message string) {
-	e.emitEvent(ctx, jobID, "info", step, "completed", message)
+	e.emitEvent(ctx, jobID, orchestrator.JobEventTypeStepComplete, "info", step, "completed", message)
 }
 
-func (e *Executor) emitEvent(ctx context.Context, jobID int64, level, step, status, message string) {
-	_, err := e.jobStore.AppendEvent(ctx, jobID, orchestrator.CreateEventInput{
-		EventType: "step_update",
+func (e *Executor) emitEvent(ctx context.Context, jobID int64, eventType, level, step, status, message string) {
+	event, err := e.jobStore.AppendEvent(ctx, jobID, orchestrator.CreateEventInput{
+		EventType: eventType,
 		Level:     level,
 		StepKey:   step,
 		Status:    status,
 		Message:   message,
 	})
 	if err != nil {
-		e.logger.Error("failed to emit event", "job_id", jobID, "error", err)
+		e.logger.Error("job event append failed", "job_id", jobID, "event_type", eventType, "error", err)
+		return
 	}
+	e.logger.Debug("job event appended", "job_id", jobID, "event_seq", event.Seq, "event_type", event.EventType, "status", status)
 }
 
 type provisionArtifact struct {
@@ -1140,7 +1199,7 @@ func (e *Executor) logSSHPublicKey(source, publicKey string) {
 		return
 	}
 	fields := strings.Fields(publicKey)
-	e.logger.Info("ssh public key", "source", source, "value", publicKey, "field_count", len(fields))
+	e.logger.Debug("ssh public key prepared", "source", source, "key_type", fields[0], "field_count", len(fields))
 }
 
 type runnerEventSink struct {
@@ -1155,7 +1214,7 @@ func (s *runnerEventSink) Emit(ctx context.Context, event runner.Event) error {
 		stepKey = "ansible"
 	}
 	_, err := s.jobStore.AppendEvent(ctx, s.jobID, orchestrator.CreateEventInput{
-		EventType: "step_update",
+		EventType: runnerEventType(event.Type),
 		Level:     event.Level,
 		StepKey:   stepKey,
 		Status:    event.Type,
@@ -1163,9 +1222,18 @@ func (s *runnerEventSink) Emit(ctx context.Context, event runner.Event) error {
 		Payload:   event.Payload,
 	})
 	if err != nil && s.logger != nil {
-		s.logger.Error("failed to emit runner event", "job_id", s.jobID, "error", err)
+		s.logger.Error("runner event append failed", "job_id", s.jobID, "event_type", event.Type, "step_key", stepKey, "error", err)
 	}
 	return err
+}
+
+func runnerEventType(status string) string {
+	switch strings.TrimSpace(status) {
+	case "running", "started":
+		return orchestrator.JobEventTypeStepStarted
+	default:
+		return orchestrator.JobEventTypeStepComplete
+	}
 }
 
 // emitActivity emits an activity event if the activity store is configured.
@@ -1173,24 +1241,17 @@ func (e *Executor) emitActivity(ctx context.Context, input activity.EmitInput) {
 	if e.activityStore == nil {
 		return
 	}
-	if _, err := e.activityStore.Emit(ctx, input); err != nil {
-		e.logger.Error("failed to emit activity", "event_type", input.EventType, "error", err)
+	activityEntry, err := e.activityStore.Emit(ctx, input)
+	if err != nil {
+		e.logger.Error("activity emit failed", "event_type", input.EventType, "resource_type", input.ResourceType, "resource_id", input.ResourceID, "parent_resource_type", input.ParentResourceType, "parent_resource_id", input.ParentResourceID, "error", err)
+		return
 	}
+	e.logger.Debug("activity emitted", "activity_id", activityEntry.ID, "event_type", activityEntry.EventType, "resource_type", activityEntry.ResourceType, "resource_id", activityEntry.ResourceID, "parent_resource_type", activityEntry.ParentResourceType, "parent_resource_id", activityEntry.ParentResourceID)
 }
 
-// jobKindLabel returns a human-readable label for a job kind.
-func jobKindLabel(kind string) string {
-	labels := map[string]string{
-		"provision_server": "Server provisioning",
-		"delete_server":    "Server deletion",
-		"rebuild_server":   "Server rebuild",
-		"resize_server":    "Server resize",
-		"update_firewalls": "Firewall update",
-		"manage_volume":    "Volume management",
-		"restart_service":  "Service restart",
+func derefString(value *string) string {
+	if value == nil {
+		return ""
 	}
-	if label, ok := labels[kind]; ok {
-		return label
-	}
-	return kind
+	return *value
 }

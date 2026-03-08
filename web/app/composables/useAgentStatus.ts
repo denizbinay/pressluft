@@ -1,5 +1,7 @@
 import { ref, readonly, onUnmounted, onMounted, type Ref } from 'vue'
-import type { AgentInfo, AgentStatusType } from './useServers'
+import type { AgentInfo } from '~/lib/api-contract'
+import { parseAgentInfo, parseAgentStatusMapResponse } from '~/lib/api-runtime'
+import { reachableNodeStatuses } from '~/lib/platform-contract.generated'
 
 interface UseAgentStatusOptions {
   /** Polling interval in milliseconds. Default: 15000 (15s) */
@@ -13,6 +15,7 @@ interface UseAgentStatusOptions {
  */
 export function useAgentStatus(serverId: Ref<number | null>, options: UseAgentStatusOptions = {}) {
   const { pollInterval = 15000, autoStart = true } = options
+  const { apiFetch } = useApiClient()
 
   const agentInfo = ref<AgentInfo | null>(null)
   const loading = ref(false)
@@ -26,9 +29,7 @@ export function useAgentStatus(serverId: Ref<number | null>, options: UseAgentSt
     loading.value = true
     error.value = ''
     try {
-      const res = await globalThis.fetch(`/api/servers/${serverId.value}/agent-status`)
-      if (!res.ok) throw new Error('Failed to fetch agent status')
-      agentInfo.value = await res.json()
+      agentInfo.value = parseAgentInfo(await apiFetch(`/servers/${serverId.value}/agent-status`))
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -64,6 +65,7 @@ export function useAgentStatus(serverId: Ref<number | null>, options: UseAgentSt
     agentInfo: readonly(agentInfo),
     loading: readonly(loading),
     error: readonly(error),
+    // `connected` is live session state; `status` is the durable backend node status.
     fetch,
     startPolling,
     stopPolling,
@@ -76,6 +78,7 @@ export function useAgentStatus(serverId: Ref<number | null>, options: UseAgentSt
  */
 export function useAllAgentStatus(options: UseAgentStatusOptions = {}) {
   const { pollInterval = 15000, autoStart = true } = options
+  const { apiFetch } = useApiClient()
 
   const agentInfoMap = ref<Record<number, AgentInfo>>({})
   const loading = ref(false)
@@ -87,9 +90,7 @@ export function useAllAgentStatus(options: UseAgentStatusOptions = {}) {
     loading.value = true
     error.value = ''
     try {
-      const res = await globalThis.fetch('/api/servers/agents')
-      if (!res.ok) throw new Error('Failed to fetch agent status')
-      agentInfoMap.value = await res.json()
+      agentInfoMap.value = parseAgentStatusMapResponse(await apiFetch('/servers/agents'))
     } catch (e: any) {
       error.value = e.message
     } finally {
@@ -106,7 +107,12 @@ export function useAllAgentStatus(options: UseAgentStatusOptions = {}) {
     return info?.connected ?? false
   }
 
-  const getStatusType = (serverId: number): AgentStatusType => {
+  const isReachable = (serverId: number): boolean => {
+    const info = agentInfoMap.value[serverId]
+    return info ? reachableNodeStatuses.includes(info.status) : false
+  }
+
+  const getStatusType = (serverId: number): AgentInfo['status'] => {
     const info = agentInfoMap.value[serverId]
     return info?.status ?? 'unknown'
   }
@@ -142,6 +148,7 @@ export function useAllAgentStatus(options: UseAgentStatusOptions = {}) {
     fetch,
     getStatus,
     isConnected,
+    isReachable,
     getStatusType,
     startPolling,
     stopPolling,

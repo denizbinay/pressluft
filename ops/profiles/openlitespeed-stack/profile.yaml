@@ -1,8 +1,19 @@
 key: openlitespeed-stack
 name: OpenLiteSpeed Stack
-version: 0.2.0
+version: 1.0.0
 description: >
-  OpenLiteSpeed-first profile for cache-heavy WordPress sites managed by agencies.
+  Planned OpenLiteSpeed-based managed stack for Ubuntu 24.04. It is listed for
+  visibility, but it cannot be provisioned yet.
+
+configure_guarantee: >
+  Provisioning is blocked until Pressluft can install, configure, and verify
+  this stack end to end.
+
+support:
+  level: unavailable
+  reason: >
+    Not ready for provisioning because automated setup and verification for this
+    stack are not implemented yet.
 
 base_image: ubuntu-24.04
 image_policy:
@@ -10,23 +21,79 @@ image_policy:
   allowed:
     - ubuntu-24.04
 
-services:
-  - openlitespeed
-  - lsphp
-  - mariadb-client
-  - redis-server
-
-hardening:
-  fail2ban: enabled
-  ufw: baseline
-  automatic_security_updates: enabled
-
-hooks:
-  - bootstrap
-  - harden
-  - configure
-  - verify
+baseline:
+  package_update: dist
+  packages:
+    - ca-certificates
+    - curl
+    - fail2ban
+    - gnupg
+    - openssh-server
+    - python3
+    - python3-apt
+    - rsync
+    - ufw
+    - unattended-upgrades
+  directories:
+    - path: /etc/pressluft
+      owner: root
+      group: root
+      mode: "0755"
+    - path: /var/lib/pressluft
+      owner: pressluft
+      group: pressluft
+      mode: "0755"
+  users:
+    - name: pressluft
+      group: pressluft
+      home: /var/lib/pressluft
+      shell: /usr/sbin/nologin
+      system: true
+  firewall:
+    enabled: true
+    default_incoming: deny
+    default_outgoing: allow
+    allowed_tcp_ports:
+      - 22
+      - 80
+      - 443
+  verification:
+    services:
+      - name: fail2ban
+        state: started
+      - name: ssh
+        state: started
+      - name: pressluft-agent
+        state: started
+    files:
+      - path: /etc/pressluft/agent.yaml
+      - path: /etc/pressluft/profile-contract.yaml
+      - path: /etc/systemd/system/pressluft-agent.service
+    listeners:
+      - name: ssh
+        host: 127.0.0.1
+        port: 22
+        state: started
+    health_checks:
+      - name: blocked-selection
+        command: /usr/bin/true
 
 artifacts:
   playbook: ansible/playbooks/configure.yml
   role: openlitespeed-stack
+  loading_model: dynamic-include-role
+
+verification:
+  services:
+    - name: openlitespeed
+      state: started
+  files:
+    - path: /usr/local/lsws/conf/httpd_config.conf
+  listeners:
+    - name: openlitespeed-http
+      host: 127.0.0.1
+      port: 80
+      state: started
+  health_checks:
+    - name: blocked-selection
+      command: /usr/bin/true

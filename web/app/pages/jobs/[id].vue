@@ -2,6 +2,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import type { Job } from '~/composables/useJobs'
 import { useJobs } from "~/composables/useJobs"
+import { jobKindLabels } from "~/lib/platform-contract.generated"
 
 const route = useRoute()
 const router = useRouter()
@@ -18,15 +19,7 @@ const job = ref<Job | null>(null)
 const jobError = ref("")
 
 const jobKindLabel = (kind: string): string => {
-  const labels: Record<string, string> = {
-    provision_server: "Server provisioning",
-    delete_server: "Server deletion",
-    rebuild_server: "Server rebuild",
-    resize_server: "Server resize",
-    update_firewalls: "Firewall update",
-    manage_volume: "Volume management",
-  }
-  return labels[kind] || kind
+  return jobKindLabels[kind as keyof typeof jobKindLabels] || kind
 }
 
 const jobSubtitle = computed(() => {

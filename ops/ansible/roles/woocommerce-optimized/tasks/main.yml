@@ -1,4 +1,7 @@
 ---
-- name: Validate woocommerce-optimized marker
-  ansible.builtin.debug:
-    msg: "Pressluft woocommerce-optimized role scaffold executed"
+- name: Block unavailable woocommerce-optimized role
+  ansible.builtin.fail:
+    msg: >-
+      The woocommerce-optimized profile is intentionally unavailable in the
+      current platform contract. Its identifier does not currently imply
+      WooCommerce-specific support.

@@ -1,28 +1,11 @@
 import { computed, ref } from "vue"
-
-export interface Activity {
-  id: number
-  event_type: string
-  category: string
-  level: "info" | "success" | "warning" | "error" | string
-  resource_type?: string
-  resource_id?: number
-  parent_resource_type?: string
-  parent_resource_id?: number
-  actor_type: string
-  actor_id?: string
-  title: string
-  message?: string
-  payload?: string
-  requires_attention: boolean
-  read_at?: string
-  created_at: string
-}
-
-export interface ActivityListResponse {
-  data: Activity[]
-  next_cursor?: string
-}
+import type { Activity, ActivityListResponse } from "~/lib/api-contract"
+import {
+  parseActivity,
+  parseActivityListResponse,
+  parseUnreadCountResponse,
+} from "~/lib/api-runtime"
+export type { Activity, ActivityListResponse } from "~/lib/api-contract"
 
 export interface ActivityFilter {
   category?: string
@@ -75,6 +58,7 @@ const buildActivityParams = (
 }
 
 export function useActivity() {
+  const { apiFetch, apiPath } = useApiClient()
   const activities = ref<Activity[]>([])
   const loading = ref(false)
   const error = ref("")
@@ -104,12 +88,7 @@ export function useActivity() {
     try {
       const params = buildActivityParams(filter, options)
       const query = params.toString()
-      const res = await fetch(`/api/activity${query ? `?${query}` : ""}`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error(body.error || "Failed to fetch activity")
-      }
-      const payload = (await res.json()) as ActivityListResponse
+      const payload = parseActivityListResponse(await apiFetch(`/activity${query ? `?${query}` : ""}`))
       const next = payload.next_cursor || ""
 
       if (options.append) {
@@ -136,14 +115,9 @@ export function useActivity() {
     try {
       const params = buildActivityParams({}, options)
       const query = params.toString()
-      const res = await fetch(
-        `/api/servers/${serverId}/activity${query ? `?${query}` : ""}`,
+      const payload = parseActivityListResponse(
+        await apiFetch(`/servers/${serverId}/activity${query ? `?${query}` : ""}`),
       )
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error(body.error || "Failed to fetch server activity")
-      }
-      const payload = (await res.json()) as ActivityListResponse
       const next = payload.next_cursor || ""
 
       if (options.append) {
@@ -183,11 +157,11 @@ export function useActivity() {
       if (closed) return
       try {
         const query = lastSeenId > 0 ? `?since_id=${lastSeenId}` : ""
-        stream = new EventSource(`/api/activity/stream${query}`)
+        stream = new EventSource(apiPath(`/activity/stream${query}`))
 
         stream.addEventListener("activity", (evt) => {
           try {
-            const parsed = JSON.parse((evt as MessageEvent).data) as Activity
+            const parsed = parseActivity(JSON.parse((evt as MessageEvent).data))
             if (parsed.id > lastSeenId) {
               lastSeenId = parsed.id
             }
@@ -235,14 +209,9 @@ export function useActivity() {
     try {
       const params = buildActivityParams(filter)
       const query = params.toString()
-      const res = await fetch(
-        `/api/activity/unread-count${query ? `?${query}` : ""}`,
+      const payload = parseUnreadCountResponse(
+        await apiFetch(`/activity/unread-count${query ? `?${query}` : ""}`),
       )
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error(body.error || "Failed to fetch unread count")
-      }
-      const payload = (await res.json()) as { count: number }
       unreadCount.value = payload.count
       return payload.count
     } catch (e: any) {
@@ -252,14 +221,9 @@ export function useActivity() {
   }
 
   const markRead = async (activityId: number) => {
-    const res = await fetch(`/api/activity/${activityId}/read`, {
+    const payload = parseActivity(await apiFetch(`/activity/${activityId}/read`, {
       method: "POST",
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || "Failed to mark activity read")
-    }
-    const payload = (await res.json()) as Activity
+    }))
     const previous = activities.value.find((item) => item.id === activityId)
     const wasUnread = previous && !previous.read_at
     upsertActivity(payload, false)
@@ -272,14 +236,7 @@ export function useActivity() {
   const markAllRead = async (filter: ActivityFilter = {}) => {
     const params = buildActivityParams(filter)
     const query = params.toString()
-    const res = await fetch(
-      `/api/activity/read-all${query ? `?${query}` : ""}`,
-      { method: "POST" },
-    )
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || "Failed to mark activity read")
-    }
+    await apiFetch(`/activity/read-all${query ? `?${query}` : ""}`, { method: "POST" })
     const now = new Date().toISOString()
     const matchesFilter = (activity: Activity) => {
       if (filter.category && activity.category !== filter.category) return false

@@ -3,10 +3,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
+	"math/rand"
 	"time"
 
+	"pressluft/internal/observability"
 	"pressluft/internal/ws"
 
 	"nhooyr.io/websocket"
@@ -28,14 +30,12 @@ func New(config *Config, logger *slog.Logger) *Agent {
 }
 
 func (a *Agent) Run(ctx context.Context) error {
-	if a.config.RegistrationToken != "" && !a.config.IsRegistered() {
-		a.logger.Info("registering agent with control plane")
-		if err := Register(a.config, ""); err != nil {
-			return fmt.Errorf("registration failed: %w", err)
-		}
-		a.logger.Info("registration successful")
+	a.logger.Info("agent runtime started", "server_id", a.config.ServerID, "control_plane", a.config.ControlPlane)
+	if err := a.bootstrap(ctx); err != nil {
+		return err
 	}
 
+	attempt := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -44,14 +44,21 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		if err := a.connectAndRun(ctx); err != nil {
-			a.logger.Error("connection error", "error", err)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			a.logger.Error("agent connection loop failed", "server_id", a.config.ServerID, "error", err)
+			attempt++
+			delay := retryDelay(attempt)
+			a.logger.Info("agent reconnect scheduled", "server_id", a.config.ServerID, "attempt", attempt, "delay", delay)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			continue
 		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
+		attempt = 0
 	}
 }
 
@@ -75,18 +82,29 @@ func (a *Agent) sendHeartbeats(ctx context.Context) {
 func (a *Agent) sendHeartbeat(ctx context.Context) {
 	metrics := CollectMetrics()
 
-	env := ws.Envelope{
-		Type: ws.TypeHeartbeat,
-		Payload: mustMarshal(ws.Heartbeat{
-			Timestamp:  time.Now(),
-			Version:    "1.0.0",
-			CPUPercent: metrics.CPUPercent,
-			MemUsedMB:  metrics.MemUsedMB,
-			MemTotalMB: metrics.MemTotalMB,
-		}),
+	payload, err := json.Marshal(ws.Heartbeat{
+		Timestamp:  time.Now(),
+		Version:    "1.0.0",
+		CPUPercent: metrics.CPUPercent,
+		MemUsedMB:  metrics.MemUsedMB,
+		MemTotalMB: metrics.MemTotalMB,
+	})
+	if err != nil {
+		a.logger.Error("agent heartbeat encode failed", "server_id", a.config.ServerID, "error", err)
+		return
 	}
-	if err := a.conn.Write(ctx, websocket.MessageText, mustMarshal(env)); err != nil {
-		a.logger.Debug("heartbeat error", "error", err)
+
+	env := ws.Envelope{
+		Type:    ws.TypeHeartbeat,
+		Payload: payload,
+	}
+	message, err := json.Marshal(env)
+	if err != nil {
+		a.logger.Error("agent heartbeat envelope encode failed", "server_id", a.config.ServerID, "error", err)
+		return
+	}
+	if err := a.conn.Write(ctx, websocket.MessageText, message); err != nil {
+		a.logger.Debug("agent heartbeat send failed", "server_id", a.config.ServerID, "error", err)
 	}
 }
 
@@ -95,25 +113,63 @@ func (a *Agent) handleMessage(ctx context.Context, env ws.Envelope) {
 	case ws.TypeCommand:
 		var cmd ws.Command
 		if err := json.Unmarshal(env.Payload, &cmd); err != nil {
-			a.logger.Error("unmarshal command", "error", err)
+			a.logger.Error("command decode failed", "server_id", a.config.ServerID, "error", err)
+			return
+		}
+		if cmd.ServerID == 0 {
+			cmd.ServerID = a.config.ServerID
+		}
+		corr := observability.Correlation{JobID: cmd.JobID, ServerID: cmd.ServerID, CommandID: cmd.ID}
+		a.logger.Info("command execution started", corr.LogArgs("command_type", cmd.Type)...)
+
+		result := a.executor.Execute(ctx, cmd)
+		if result.JobID == 0 {
+			result.JobID = cmd.JobID
+		}
+		if result.ServerID == 0 {
+			result.ServerID = cmd.ServerID
+		}
+		payload, err := json.Marshal(result)
+		if err != nil {
+			a.logger.Error("command result encode failed", corr.LogArgs("error", err)...)
 			return
 		}
 
-		result := a.executor.Execute(ctx, cmd)
-
 		resultEnv := ws.Envelope{
 			Type:    ws.TypeCommandResult,
-			Payload: mustMarshal(result),
+			Payload: payload,
 		}
 
-		_ = a.conn.Write(ctx, websocket.MessageText, mustMarshal(resultEnv))
+		message, err := json.Marshal(resultEnv)
+		if err != nil {
+			a.logger.Error("command result envelope encode failed", corr.LogArgs("error", err)...)
+			return
+		}
+		if err := a.conn.Write(ctx, websocket.MessageText, message); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Debug("command result send failed", corr.LogArgs("error", err)...)
+			return
+		}
+		a.logger.Info("command execution finished", observability.Correlation{JobID: result.JobID, ServerID: result.ServerID, CommandID: result.CommandID}.LogArgs("success", result.Success, "error_code", result.ErrorCode)...)
+	case ws.TypeHeartbeatAck:
+		return
 	}
 }
 
-func mustMarshal(v any) []byte {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
+func retryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
 	}
-	return data
+	base := time.Second << min(attempt-1, 5)
+	if base > 30*time.Second {
+		base = 30 * time.Second
+	}
+	jitter := time.Duration(rand.Int63n(int64(base / 2)))
+	return base + jitter
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

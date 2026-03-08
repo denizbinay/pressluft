@@ -136,10 +136,13 @@ const progressPercent = (value: number, max = 100) =>
     <!-- Page header -->
     <div>
       <h1 class="text-3xl font-semibold text-foreground">
-        UI Components
+        Internal UI Components
       </h1>
       <p class="mt-2 text-base text-muted-foreground">
-        Component library &mdash; your design system at a glance.
+        Internal preview route for component exploration and design-system work.
+      </p>
+      <p class="mt-2 text-sm text-muted-foreground">
+        This route is intentionally hidden from user-facing navigation and is not part of the shipped product workflow.
       </p>
     </div>
 

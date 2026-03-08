@@ -5,6 +5,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { useJobs, type Job, type JobEvent, type ConnectionMode } from "~/composables/useJobs"
+import {
+  jobKindLabels,
+  jobKindSteps,
+  jobTerminalStatuses,
+  type JobKind,
+  type JobTerminalStatus,
+  type JobStatus,
+} from "~/lib/platform-contract.generated"
 
 interface Props {
   jobId: number
@@ -34,28 +42,6 @@ const loading = ref(true)
 const connectionError = ref("")
 const retryCount = ref(0)
 
-// Step key to human-readable label mapping (matches backend executor steps)
-const stepLabels: Record<string, string> = {
-  validate: "Validating request",
-  provision: "Provisioning server",
-  configure: "Configuring server",
-  finalize: "Finalizing",
-  delete: "Deleting server",
-  rebuild: "Rebuilding server",
-  resize: "Resizing server",
-  update_firewalls: "Updating firewalls",
-  manage_volume: "Managing volume",
-}
-
-const stepOrderByKind: Record<string, string[]> = {
-  provision: ["validate", "provision", "configure", "finalize"],
-  delete: ["validate", "delete", "finalize"],
-  rebuild: ["validate", "rebuild", "finalize"],
-  resize: ["validate", "resize", "finalize"],
-  update_firewalls: ["validate", "update_firewalls", "finalize"],
-  manage_volume: ["validate", "manage_volume", "finalize"],
-}
-
 // Derive steps from events
 interface TimelineStep {
   key: string
@@ -66,17 +52,17 @@ interface TimelineStep {
 }
 
 const steps = computed<TimelineStep[]>(() => {
-  const rawKind = activeJob.value?.kind || ""
-  const normalizedKind = rawKind.endsWith("_server")
-    ? rawKind.slice(0, Math.max(rawKind.length - "_server".length, 0))
-    : rawKind
+  const kind = activeJob.value?.kind as JobKind | undefined
   const eventStepOrder: string[] = []
   for (const event of events.value) {
     if (event.step_key && !eventStepOrder.includes(event.step_key)) {
       eventStepOrder.push(event.step_key)
     }
   }
-  const stepOrder = stepOrderByKind[normalizedKind] || eventStepOrder
+  const workflowSteps = kind ? jobKindSteps[kind] || [] : []
+  const stepOrder = workflowSteps.length > 0
+    ? workflowSteps.map((step) => step.key)
+    : eventStepOrder
   const eventsByStep = new Map<string, JobEvent[]>()
 
   // Group events by step_key
@@ -111,7 +97,7 @@ const steps = computed<TimelineStep[]>(() => {
 
     return {
       key,
-      label: stepLabels[key] || key,
+      label: workflowSteps.find((step) => step.key === key)?.label || key,
       status,
       message: latestEvent?.message,
       timestamp: latestEvent?.occurred_at,
@@ -121,7 +107,7 @@ const steps = computed<TimelineStep[]>(() => {
 
 const jobKindLabel = computed(() => {
   const kind = activeJob.value?.kind
-  return kind ? kind.replace(/_/g, " ") : ""
+  return kind ? jobKindLabels[kind as JobKind] || kind : ""
 })
 
 function formatPayloadValue(value: unknown): string {
@@ -163,7 +149,7 @@ const jobStartedAt = computed(() => {
 
 const isTerminal = computed(() => {
   const status = activeJob.value?.status
-  return status === "succeeded" || status === "failed" || status === "cancelled" || status === "timed_out"
+  return status ? jobTerminalStatuses.includes(status as JobTerminalStatus) : false
 })
 
 // Format timestamp to readable time
@@ -179,17 +165,14 @@ function formatTime(iso: string): string {
   }
 }
 
-function statusBadgeClass(status: string) {
+function statusBadgeClass(status: JobStatus | "unknown") {
   switch (status) {
     case "succeeded":
       return "border-primary/30 bg-primary/10 text-primary"
     case "running":
-    case "preparing":
     case "queued":
       return "border-accent/30 bg-accent/10 text-accent"
     case "failed":
-    case "cancelled":
-    case "timed_out":
       return "border-destructive/30 bg-destructive/10 text-destructive"
     default:
       return "border-border/60 bg-muted/60 text-foreground"
@@ -207,7 +190,7 @@ watch(
 
     if (status === "succeeded") {
       emit("completed", activeJob.value)
-    } else if (status === "failed" || status === "cancelled" || status === "timed_out") {
+    } else if (status === "failed") {
       emit("failed", activeJob.value, activeJob.value.last_error || "Unknown error")
     }
   },
@@ -216,7 +199,7 @@ watch(
 // Handle event updates to refresh job status
 function handleEvent(event: JobEvent) {
   // Refresh job when we get terminal events
-  if (event.event_type === "job_completed" || event.event_type === "job_failed") {
+  if (event.event_type === "job_succeeded" || event.event_type === "job_failed" || event.event_type === "job_timed_out" || event.event_type === "job_recovered") {
     fetchJob(props.jobId).catch(() => {})
   }
 }
@@ -240,8 +223,7 @@ async function retryLoad() {
     const job = await fetchJob(props.jobId)
 
     // Check if job is already in terminal state (historical view)
-    const terminalStatuses = ["succeeded", "failed", "cancelled", "timed_out"]
-    if (terminalStatuses.includes(job.status)) {
+    if (jobTerminalStatuses.includes(job.status as JobTerminalStatus)) {
       isHistoricalView.value = true
       await fetchJobEvents(props.jobId)
       loading.value = false
@@ -264,8 +246,7 @@ onMounted(async () => {
     const job = await fetchJob(props.jobId)
 
     // Check if job is already in terminal state (historical view)
-    const terminalStatuses = ["succeeded", "failed", "cancelled", "timed_out"]
-    if (terminalStatuses.includes(job.status)) {
+    if (jobTerminalStatuses.includes(job.status as JobTerminalStatus)) {
       // Historical view: fetch all events at once, no streaming
       isHistoricalView.value = true
       await fetchJobEvents(props.jobId)
@@ -404,8 +385,7 @@ onUnmounted(() => {
               :class="cn(
                 {
                   'bg-muted text-muted-foreground': step.status === 'pending',
-                  'bg-primary/20 text-primary': step.status === 'running',
-                  'bg-primary/20 text-primary': step.status === 'completed',
+                  'bg-primary/20 text-primary': step.status === 'running' || step.status === 'completed',
                   'bg-destructive/20 text-destructive': step.status === 'failed',
                 },
                 !isHistoricalView && 'transition-all duration-300',

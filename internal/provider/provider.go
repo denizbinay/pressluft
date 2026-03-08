@@ -18,10 +18,14 @@ type ValidationResult struct {
 }
 
 // Info describes a provider type for the frontend (display name, docs URL, etc.).
+// Every field is used by the UI to render provider cards and token setup
+// instructions without any provider-specific hardcoding.
 type Info struct {
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	DocsURL string `json:"docs_url"`
+	Type         string `json:"type"`
+	Name         string `json:"name"`
+	DocsURL      string `json:"docs_url"`
+	Abbreviation string `json:"abbreviation"` // short label for provider icon, e.g. "Hz"
+	Description  string `json:"description"`  // one-liner shown under the provider name
 }
 
 // Provider is the interface every cloud provider adapter must satisfy.
@@ -30,6 +34,16 @@ type Info struct {
 type Provider interface {
 	Info() Info
 	Validate(ctx context.Context, token string) (*ValidationResult, error)
+}
+
+type ProvisioningWorkflowProvider interface {
+	Provider
+	SupportsProvisioningWorkflow() bool
+}
+
+type ServerMutationWorkflowProvider interface {
+	Provider
+	SupportsServerMutationWorkflow() bool
 }
 
 // registry holds all registered provider implementations keyed by type.
@@ -56,4 +70,26 @@ func All() []Info {
 		out = append(out, p.Info())
 	}
 	return out
+}
+
+func SupportsProvisioningWorkflow(providerType string) bool {
+	p := Get(providerType)
+	if p == nil {
+		return false
+	}
+	if workflowProvider, ok := p.(ProvisioningWorkflowProvider); ok {
+		return workflowProvider.SupportsProvisioningWorkflow()
+	}
+	return false
+}
+
+func SupportsServerMutationWorkflow(providerType string) bool {
+	p := Get(providerType)
+	if p == nil {
+		return false
+	}
+	if workflowProvider, ok := p.(ServerMutationWorkflowProvider); ok {
+		return workflowProvider.SupportsServerMutationWorkflow()
+	}
+	return false
 }

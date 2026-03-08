@@ -11,6 +11,7 @@ import (
 // Config holds worker configuration.
 type Config struct {
 	PollInterval time.Duration
+	JobTimeouts  map[string]time.Duration
 }
 
 // DefaultConfig returns sensible defaults.
@@ -23,13 +24,17 @@ func DefaultConfig() Config {
 // Worker polls for queued jobs and executes them.
 type Worker struct {
 	jobStore *orchestrator.Store
-	executor *Executor
+	executor jobExecutor
 	config   Config
 	logger   *slog.Logger
 }
 
+type jobExecutor interface {
+	Execute(ctx context.Context, job *orchestrator.Job) error
+}
+
 // New creates a worker with the given dependencies.
-func New(jobStore *orchestrator.Store, executor *Executor, logger *slog.Logger, config Config) *Worker {
+func New(jobStore *orchestrator.Store, executor jobExecutor, logger *slog.Logger, config Config) *Worker {
 	if config.PollInterval <= 0 {
 		config.PollInterval = DefaultConfig().PollInterval
 	}
@@ -45,11 +50,11 @@ func New(jobStore *orchestrator.Store, executor *Executor, logger *slog.Logger, 
 func (w *Worker) Run(ctx context.Context) {
 	w.logger.Info("worker started", "poll_interval", w.config.PollInterval)
 
-	// Recover any jobs that were interrupted by a previous shutdown
+	// Recover any jobs that were interrupted by a previous shutdown.
 	if recovered, err := w.jobStore.RecoverStuckJobs(ctx); err != nil {
-		w.logger.Error("failed to recover stuck jobs", "error", err)
+		w.logger.Error("job recovery failed", "error", err)
 	} else if recovered > 0 {
-		w.logger.Info("recovered stuck jobs", "count", recovered)
+		w.logger.Info("job recovery completed", "recovered_jobs", recovered)
 	}
 
 	ticker := time.NewTicker(w.config.PollInterval)
@@ -69,7 +74,7 @@ func (w *Worker) Run(ctx context.Context) {
 func (w *Worker) poll(ctx context.Context) {
 	job, err := w.jobStore.ClaimNextJob(ctx)
 	if err != nil {
-		w.logger.Error("failed to claim job", "error", err)
+		w.logger.Error("job claim failed", "error", err)
 		return
 	}
 	if job == nil {
@@ -77,14 +82,37 @@ func (w *Worker) poll(ctx context.Context) {
 		return
 	}
 
-	w.logger.Info("claimed job", "job_id", job.ID, "kind", job.Kind, "server_id", job.ServerID)
+	w.logger.Info("job claimed", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID)
 
-	// Execute the job (blocking)
-	if err := w.executor.Execute(ctx, job); err != nil {
-		w.logger.Error("job execution failed", "job_id", job.ID, "error", err)
-		// Executor handles marking the job as failed
+	policy, ok := orchestrator.JobKindPolicy(job.Kind)
+	if !ok {
+		w.logger.Error("claimed job kind unsupported", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID)
 		return
 	}
 
-	w.logger.Info("job completed", "job_id", job.ID)
+	jobCtx := ctx
+	cancel := func() {}
+	timeout := policy.Timeout
+	if override, ok := w.config.JobTimeouts[job.Kind]; ok && override > 0 {
+		timeout = override
+	}
+	if timeout > 0 {
+		jobCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+
+	if err := w.executor.Execute(jobCtx, job); err != nil {
+		w.logger.Error("job execution failed", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID, "error", err)
+		if jobCtx.Err() == context.DeadlineExceeded {
+			message := "job timed out before completion"
+			if _, changed, markErr := w.jobStore.MarkJobTimedOut(ctx, job.ID, message); markErr != nil {
+				w.logger.Error("job timeout persistence failed", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID, "error", markErr)
+			} else if changed {
+				w.logger.Warn("job timed out", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID, "timeout", timeout)
+			}
+		}
+		return
+	}
+
+	w.logger.Info("job execution returned", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID)
 }

@@ -1,9 +1,20 @@
 key: nginx-stack
 name: NGINX Stack
-version: 0.2.0
+version: 1.0.0
 description: >
-  Managed WordPress baseline using NGINX + PHP-FPM with practical defaults
-  for agency workloads.
+  Default managed Ubuntu 24.04 web stack with NGINX, PHP-FPM, Redis, and the
+  Pressluft agent for standard site hosting.
+
+configure_guarantee: >
+  A successful configure run applies the base system, deploys the Pressluft
+  agent, configures the NGINX stack, and verifies required services, files,
+  listeners, and health checks before the server is marked ready.
+
+support:
+  level: supported
+  reason: >
+    Available for managed provisioning and supported for production use in
+    Pressluft.
 
 base_image: ubuntu-24.04
 image_policy:
@@ -11,23 +22,102 @@ image_policy:
   allowed:
     - ubuntu-24.04
 
-services:
-  - nginx
-  - php-fpm
-  - mariadb-client
-  - redis-server
-
-hardening:
-  fail2ban: enabled
-  ufw: baseline
-  automatic_security_updates: enabled
-
-hooks:
-  - bootstrap
-  - harden
-  - configure
-  - verify
+baseline:
+  package_update: dist
+  packages:
+    - ca-certificates
+    - curl
+    - fail2ban
+    - gnupg
+    - openssh-server
+    - python3
+    - python3-apt
+    - rsync
+    - ufw
+    - unattended-upgrades
+  directories:
+    - path: /etc/pressluft
+      owner: root
+      group: root
+      mode: "0755"
+    - path: /var/lib/pressluft
+      owner: pressluft
+      group: pressluft
+      mode: "0755"
+    - path: /var/log/pressluft
+      owner: pressluft
+      group: pressluft
+      mode: "0755"
+    - path: /srv/www/pressluft
+      owner: www-data
+      group: www-data
+      mode: "0755"
+  users:
+    - name: pressluft
+      group: pressluft
+      home: /var/lib/pressluft
+      shell: /usr/sbin/nologin
+      system: true
+  firewall:
+    enabled: true
+    default_incoming: deny
+    default_outgoing: allow
+    allowed_tcp_ports:
+      - 22
+      - 80
+      - 443
+  verification:
+    services:
+      - name: fail2ban
+        state: started
+      - name: pressluft-agent
+        state: started
+    files:
+      - path: /etc/pressluft/agent.yaml
+      - path: /etc/pressluft/profile-contract.yaml
+      - path: /etc/systemd/system/pressluft-agent.service
+      - path: /etc/apt/apt.conf.d/20auto-upgrades
+    listeners:
+      - name: ssh
+        host: 127.0.0.1
+        port: 22
+        state: started
+    health_checks:
+      - name: pressluft-agent-service
+        command: systemctl is-active --quiet pressluft-agent
+      - name: fail2ban-service
+        command: systemctl is-active --quiet fail2ban
 
 artifacts:
   playbook: ansible/playbooks/configure.yml
   role: nginx-stack
+  loading_model: dynamic-include-role
+
+verification:
+  services:
+    - name: nginx
+      state: started
+    - name: php8.3-fpm
+      state: started
+    - name: redis-server
+      state: started
+  files:
+    - path: /etc/nginx/sites-available/pressluft-default.conf
+    - path: /etc/nginx/sites-enabled/pressluft-default.conf
+    - path: /srv/www/pressluft/default/public/index.html
+  listeners:
+    - name: nginx-http
+      host: 127.0.0.1
+      port: 80
+      state: started
+    - name: redis-local
+      host: 127.0.0.1
+      port: 6379
+      state: started
+  health_checks:
+    - name: nginx-config
+      command: nginx -t
+    - name: php-fpm-config
+      command: php-fpm8.3 -t
+    - name: nginx-http-check
+      command: curl --fail --silent http://127.0.0.1/

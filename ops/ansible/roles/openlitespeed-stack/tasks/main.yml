@@ -1,4 +1,7 @@
 ---
-- name: Validate openlitespeed-stack marker
-  ansible.builtin.debug:
-    msg: "Pressluft openlitespeed-stack role scaffold executed"
+- name: Block unavailable openlitespeed-stack role
+  ansible.builtin.fail:
+    msg: >-
+      The openlitespeed-stack profile is intentionally unavailable in the current
+      platform contract. nginx-stack is the only fully convergent baseline in
+      this milestone.

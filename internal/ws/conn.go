@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -33,6 +34,9 @@ func (c *Conn) ServerID() int64 {
 }
 
 func (c *Conn) Send(ctx context.Context, env Envelope) error {
+	if c == nil || c.conn == nil {
+		return errors.New("websocket transport not connected")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -45,6 +49,9 @@ func (c *Conn) Send(ctx context.Context, env Envelope) error {
 }
 
 func (c *Conn) Receive(ctx context.Context) (Envelope, error) {
+	if c == nil || c.conn == nil {
+		return Envelope{}, errors.New("websocket transport not connected")
+	}
 	_, data, err := c.conn.Read(ctx)
 	if err != nil {
 		return Envelope{}, err
@@ -59,6 +66,9 @@ func (c *Conn) Receive(ctx context.Context) (Envelope, error) {
 }
 
 func (c *Conn) Close() error {
+	if c == nil || c.conn == nil {
+		return nil
+	}
 	return c.conn.Close(websocket.StatusNormalClosure, "")
 }
 

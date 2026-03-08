@@ -75,8 +75,13 @@ const (
 
 // Security events
 const (
-	EventSecurityAPIKeyCreated EventType = "security.api_key_created"
-	EventSecurityAPIKeyRevoked EventType = "security.api_key_revoked"
+	EventSecurityAPIKeyCreated  EventType = "security.api_key_created"
+	EventSecurityAPIKeyRevoked  EventType = "security.api_key_revoked"
+	EventSecurityLoginSucceeded EventType = "security.login_succeeded"
+	EventSecurityLoginFailed    EventType = "security.login_failed"
+	EventSecurityLogout         EventType = "security.logout"
+	EventSecurityBootstrapAdmin EventType = "security.bootstrap_admin_created"
+	EventSecuritySessionRevoked EventType = "security.session_revoked"
 )
 
 // validEventTypes is the set of all allowed event types.
@@ -103,8 +108,13 @@ var validEventTypes = map[EventType]bool{
 	// Account events
 	EventAccountSettingsChanged: true,
 	// Security events
-	EventSecurityAPIKeyCreated: true,
-	EventSecurityAPIKeyRevoked: true,
+	EventSecurityAPIKeyCreated:  true,
+	EventSecurityAPIKeyRevoked:  true,
+	EventSecurityLoginSucceeded: true,
+	EventSecurityLoginFailed:    true,
+	EventSecurityLogout:         true,
+	EventSecurityBootstrapAdmin: true,
+	EventSecuritySessionRevoked: true,
 }
 
 // ValidateEventType checks if the given event type is valid.

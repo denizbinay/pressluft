@@ -17,13 +17,19 @@ const sections: SettingsSection[] = [
   { key: 'api-keys', label: 'API Keys', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z', description: 'API tokens and access credentials' },
 ]
 
+const visibleSectionKeys = new Set(['providers', 'servers'])
+
+const visibleSections = sections.filter((section) => visibleSectionKeys.has(section.key))
+
+const plannedSections = sections.filter((section) => !visibleSectionKeys.has(section.key))
+
 const route = useRoute()
 const router = useRouter()
 
 const activeSection = computed(() => {
   const tab = route.query.tab as string
-  const isValid = sections.some((s) => s.key === tab)
-  return isValid ? tab : 'general'
+  const isValid = visibleSections.some((section) => section.key === tab)
+  return isValid ? tab : 'providers'
 })
 
 const currentSection = computed(() =>
@@ -52,7 +58,10 @@ const selectSection = (key: string) => {
     <div class="mb-8">
       <h1 class="text-3xl font-semibold text-foreground">Settings</h1>
       <p class="mt-2 text-base text-muted-foreground">
-        Manage your application configuration and preferences.
+        Manage the provider and server settings that are active on this branch.
+      </p>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Additional settings surfaces stay in place for future work, but are hidden from the primary settings navigation until they are implemented.
       </p>
     </div>
 
@@ -107,7 +116,7 @@ const selectSection = (key: string) => {
         >
           <nav aria-label="Settings sections">
             <button
-              v-for="section in sections"
+              v-for="section in visibleSections"
               :key="section.key"
               :class="[
                 'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors',
@@ -140,7 +149,7 @@ const selectSection = (key: string) => {
       <aside class="hidden w-64 shrink-0 lg:block">
         <nav aria-label="Settings sections" class="space-y-1">
           <button
-            v-for="section in sections"
+            v-for="section in visibleSections"
             :key="section.key"
             :class="[
               'flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors',
@@ -182,11 +191,15 @@ const selectSection = (key: string) => {
           <CardContent class="px-6 py-5">
             <!-- Placeholder content per section -->
             <div class="space-y-6">
+            <div class="rounded-lg border border-dashed border-border/50 px-4 py-3 text-sm text-muted-foreground">
+              Active now: providers and servers. Reserved for later: {{ plannedSections.map((section) => section.label).join(', ') }}.
+            </div>
+
             <!-- General -->
               <div v-if="activeSection === 'general'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
                 <p class="text-sm text-muted-foreground">
-                  Application name, default timezone, language preferences, and theme settings will go here.
+                  This settings surface is reserved for a future round. General preferences are not implemented on this branch.
                 </p>
               </div>
             </div>
@@ -205,7 +218,7 @@ const selectSection = (key: string) => {
             <div v-if="activeSection === 'sites'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
                 <p class="text-sm text-muted-foreground">
-                  Website management, domain configuration, and deployment target settings will go here.
+                  Site settings are planned, but not available yet on this branch.
                 </p>
               </div>
             </div>
@@ -214,7 +227,7 @@ const selectSection = (key: string) => {
             <div v-if="activeSection === 'notifications'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
                 <p class="text-sm text-muted-foreground">
-                  Alert rules, email digest preferences, Slack/webhook integrations will go here.
+                  Notification settings are reserved for future implementation.
                 </p>
               </div>
             </div>
@@ -223,7 +236,7 @@ const selectSection = (key: string) => {
             <div v-if="activeSection === 'security'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
                 <p class="text-sm text-muted-foreground">
-                  Password policy, two-factor authentication, session management, and audit log will go here.
+                  Security settings are planned, but not implemented here yet.
                 </p>
               </div>
             </div>
@@ -232,7 +245,7 @@ const selectSection = (key: string) => {
             <div v-if="activeSection === 'api-keys'" class="space-y-4">
               <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
                 <p class="text-sm text-muted-foreground">
-                  API token generation, scopes, expiration, and revocation management will go here.
+                  API key management is reserved for a future round.
                 </p>
               </div>
             </div>

@@ -1,5 +1,5 @@
 -- +goose Up
-ALTER TABLE jobs ADD COLUMN payload TEXT;
+-- no-op: payload is part of the base jobs schema.
 
 -- +goose Down
--- SQLite does not support DROP COLUMN for payload.
+-- no-op.

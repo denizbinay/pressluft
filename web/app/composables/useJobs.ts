@@ -1,60 +1,31 @@
 import { ref, readonly } from 'vue'
-
-export interface Job {
-  id: number
-  server_id?: number
-  kind: string
-  status: string
-  current_step: string
-  retry_count: number
-  last_error?: string
-  payload?: string
-  created_at: string
-  updated_at: string
-}
-
-export interface JobEvent {
-  job_id: number
-  seq: number
-  event_type: string
-  level: string
-  step_key?: string
-  status?: string
-  message: string
-  payload?: string
-  occurred_at: string
-}
+import type { CreateJobRequest, Job, JobEvent } from '~/lib/api-contract'
+import type { JobStatus, JobTerminalStatus } from '~/lib/platform-contract.generated'
+import { jobTerminalStatuses } from '~/lib/platform-contract.generated'
+import { parseJob, parseJobEvents } from '~/lib/api-runtime'
+export type { Job, JobEvent } from '~/lib/api-contract'
 
 /** Connection mode for job monitoring */
 export type ConnectionMode = 'streaming' | 'polling' | 'disconnected'
 
 export function useJobs() {
+  const { apiFetch, apiPath } = useApiClient()
   const activeJob = ref<Job | null>(null)
   const events = ref<JobEvent[]>([])
   const loading = ref(false)
   const error = ref('')
   const connectionMode = ref<ConnectionMode>('disconnected')
 
-  const createJob = async (payload: {
-    kind?: string
-    server_id?: number
-    payload?: Record<string, unknown> | string | null
-  }) => {
+  const createJob = async (payload: CreateJobRequest) => {
     loading.value = true
     error.value = ''
     try {
-      const res = await fetch('/api/jobs', {
+      const job = parseJob(await apiFetch('/jobs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error(body.error || 'Failed to create job')
-      }
-      const job = await res.json()
+        body: payload,
+      }))
       activeJob.value = job
-      return job as Job
+      return job
     } finally {
       loading.value = false
     }
@@ -62,26 +33,16 @@ export function useJobs() {
 
   const fetchJob = async (jobId: number) => {
     error.value = ''
-    const res = await fetch(`/api/jobs/${jobId}`)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to fetch job')
-    }
-    const job = await res.json()
+    const job = parseJob(await apiFetch(`/jobs/${jobId}`))
     activeJob.value = job
-    return job as Job
+    return job
   }
 
   const fetchJobEvents = async (jobId: number) => {
     error.value = ''
-    const res = await fetch(`/api/jobs/${jobId}/events/history`)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }))
-      throw new Error(body.error || 'Failed to fetch job events')
-    }
-    const data = await res.json()
-    events.value = data as JobEvent[]
-    return data as JobEvent[]
+    const data = parseJobEvents(await apiFetch(`/jobs/${jobId}/events/history`))
+    events.value = data
+    return data
   }
 
   /**
@@ -102,8 +63,8 @@ export function useJobs() {
       onModeChange?.(mode)
     }
 
-    const isTerminalStatus = (status: string) =>
-      ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(status)
+    const isTerminalStatus = (status: JobStatus) =>
+      jobTerminalStatuses.includes(status as JobTerminalStatus)
 
     // Start polling fallback
     const startPolling = () => {
@@ -158,17 +119,17 @@ export function useJobs() {
 
     // Try SSE first
     try {
-      stream = new EventSource(`/api/jobs/${jobId}/events`)
+      stream = new EventSource(apiPath(`/jobs/${jobId}/events`))
       updateMode('streaming')
 
       stream.addEventListener('job_event', (evt) => {
         try {
-          const parsed = JSON.parse((evt as MessageEvent).data) as JobEvent
+          const parsed = parseJobEvents([JSON.parse((evt as MessageEvent).data)])[0]
           events.value = [...events.value, parsed]
           onEvent?.(parsed)
 
           // Check for terminal events
-          if (parsed.status && isTerminalStatus(parsed.status)) {
+          if (parsed.status && isTerminalStatus(parsed.status as JobStatus)) {
             fetchJob(jobId).catch(() => {})
           }
         } catch {

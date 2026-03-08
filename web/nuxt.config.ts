@@ -1,9 +1,17 @@
 import tailwindcss from '@tailwindcss/vite'
 
+const devProxyTarget = process.env.NUXT_DEV_PROXY_TARGET || 'http://localhost:8081/api'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
+
+  runtimeConfig: {
+    public: {
+      apiBase: process.env.NUXT_API_BASE || '/api',
+    },
+  },
 
   css: ['~/assets/css/main.css'],
 
@@ -36,10 +44,9 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    devProxy: {
-      '/api': {
-        target: process.env.NUXT_API_BASE || 'http://localhost:8081/api',
-        changeOrigin: true,
+    routeRules: {
+      '/api/**': {
+        proxy: `${devProxyTarget}/**`,
       },
     },
   },

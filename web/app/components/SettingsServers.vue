@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogScrollContent,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,15 @@ import { useProviders } from "~/composables/useProviders"
 import { useServers, type ServerTypePrice } from "~/composables/useServers"
 import { useAllAgentStatus } from "~/composables/useAgentStatus"
 import type { Job } from "~/composables/useJobs"
+import { parseHealthResponse } from "~/lib/api-runtime"
+import {
+  inProgressServerStatuses,
+  mutationBlockedServerStatuses,
+  type CallbackURLMode,
+  type ServerStatus,
+  type SupportLevel,
+  type SetupState,
+} from "~/lib/platform-contract.generated"
 
 const modal = useModal()
 
@@ -42,10 +51,14 @@ const {
 } = useServers()
 
 const { getStatusType, isConnected } = useAllAgentStatus({ pollInterval: 15000 })
+const callbackMode = ref<CallbackURLMode>("unknown")
+const callbackWarning = ref("")
 
 // Delete confirmation state
 const deleteConfirmId = ref<number | null>(null)
 const deleting = ref(false)
+const deleteError = ref("")
+const deleteSuccess = ref("")
 
 const formStep = ref<"configure" | "review" | "provisioning">("configure")
 const formError = ref("")
@@ -74,11 +87,8 @@ const locationOptions = computed(() =>
   })),
 )
 
-const profileOptions = computed(() =>
-  profiles.value.map((profile) => ({
-    value: profile.key,
-    label: profile.name,
-  })),
+const selectableProfiles = computed(() =>
+  profiles.value.filter((profile) => profile.support_level !== "unavailable"),
 )
 
 // Filter server types to only show those available at the selected location
@@ -107,10 +117,25 @@ const selectedProfile = computed(() =>
   profiles.value.find((profile) => profile.key === formProfileKey.value),
 )
 
+const defaultProfileKey = computed(() =>
+  selectableProfiles.value[0]?.key || "",
+)
+
 const selectedTypeLabel = computed(() =>
   serverTypeOptions.value.find((option) => option.value === formServerType.value)?.label
   || formServerType.value,
 )
+
+const selectedProfileStatusClass = computed(() =>
+  selectedProfile.value ? profileSupportClass(selectedProfile.value.support_level) : "border-border/60 bg-muted/40 text-muted-foreground"
+)
+
+const selectedProfileSupportText = computed(() => {
+  if (!selectedProfile.value) {
+    return ""
+  }
+  return selectedProfile.value.support_reason || supportLevelLabel(selectedProfile.value.support_level)
+})
 
 const controlClass =
   "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -134,8 +159,17 @@ const selectItemClass =
 const buttonBaseClass =
   "rounded-lg focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
+const { apiFetch } = useApiClient()
+
 onMounted(async () => {
   await Promise.all([fetchProviders(), fetchServers()])
+  apiFetch('/health')
+    .then((payload) => parseHealthResponse(payload))
+    .then((body) => {
+      callbackMode.value = body.callback_url_mode || "unknown"
+      callbackWarning.value = body.callback_url_warning || ""
+    })
+    .catch(() => {})
 })
 
 const resetForm = () => {
@@ -146,7 +180,7 @@ const resetForm = () => {
   formName.value = ""
   formLocation.value = ""
   formServerType.value = ""
-  formProfileKey.value = profileOptions.value[0]?.value || ""
+  formProfileKey.value = defaultProfileKey.value
   activeJobId.value = null
 }
 
@@ -169,7 +203,7 @@ const loadCatalogForSelectedProvider = async () => {
     formLocation.value = locationOptions.value[0]?.value || ""
     // Server type will be set after location is selected (filtered by availability)
     formServerType.value = ""
-    formProfileKey.value = profileOptions.value[0]?.value || ""
+    formProfileKey.value = defaultProfileKey.value
   } catch (e: any) {
     formError.value = e.message
   } finally {
@@ -253,7 +287,20 @@ const isFormValid = () => {
     && !!formLocation.value
     && !!formServerType.value
     && !!formProfileKey.value
+    && selectedProfile.value?.support_level !== "unavailable"
   )
+}
+
+const supportLevelLabel = (supportLevel: SupportLevel): string => {
+  if (supportLevel === "supported") return "Supported"
+  if (supportLevel === "experimental") return "Experimental"
+  return "Not Ready"
+}
+
+const profileSupportClass = (supportLevel: SupportLevel): string => {
+  if (supportLevel === "supported") return "border-primary/30 bg-primary/10 text-primary"
+  if (supportLevel === "experimental") return "border-accent/30 bg-accent/10 text-accent"
+  return "border-border/60 bg-muted/60 text-muted-foreground"
 }
 
 const formatMonthlyPrice = (
@@ -287,32 +334,45 @@ const formatDate = (iso: string): string => {
   }
 }
 
-const statusBadgeClass = (status: string): string => {
+const statusBadgeClass = (status: ServerStatus): string => {
   if (status === "ready") return "border-primary/30 bg-primary/10 text-primary"
   if (status === "failed") return "border-destructive/30 bg-destructive/10 text-destructive"
-  if (status === "provisioning" || status === "pending") {
+  if (inProgressServerStatuses.includes(status)) {
     return "border-accent/30 bg-accent/10 text-accent"
   }
+  if (status === "deleted") return "border-border/60 bg-muted/60 text-muted-foreground"
   return "border-border/60 bg-muted/60 text-foreground"
 }
 
+const setupBadgeClass = (setupState?: SetupState): string => {
+  if (setupState === "ready") return "border-primary/30 bg-primary/10 text-primary"
+  if (setupState === "degraded") return "border-destructive/30 bg-destructive/10 text-destructive"
+  if (setupState === "running") return "border-accent/30 bg-accent/10 text-accent"
+  return "border-border/60 bg-muted/60 text-muted-foreground"
+}
+
 const confirmDelete = (serverId: number) => {
+	deleteError.value = ""
+	deleteSuccess.value = ""
   deleteConfirmId.value = serverId
 }
 
 const cancelDelete = () => {
   deleteConfirmId.value = null
+  deleteError.value = ""
 }
 
 const executeDelete = async (serverId: number) => {
   deleting.value = true
+  deleteError.value = ""
+  deleteSuccess.value = ""
   try {
-    await deleteServer(serverId)
+    const result = await deleteServer(serverId)
+    deleteSuccess.value = `Delete job #${result.job_id} queued`
     deleteConfirmId.value = null
     await fetchServers()
   } catch (e: any) {
-    // Could show a toast here
-    console.error("Failed to delete server:", e.message)
+    deleteError.value = e.message || "Failed to queue delete job"
   } finally {
     deleting.value = false
   }
@@ -329,6 +389,15 @@ const handleDialogUpdate = (value: boolean) => {
 
 <template>
   <div class="space-y-6">
+    <Alert
+      v-if="callbackMode === 'ephemeral' && callbackWarning"
+      class="border-accent/30 bg-accent/10 text-accent"
+    >
+      <AlertDescription>
+        {{ callbackWarning }}
+      </AlertDescription>
+    </Alert>
+
     <div class="flex items-center justify-between">
       <p class="text-sm text-muted-foreground">
         Provision managed servers for agency WordPress workloads.
@@ -357,9 +426,9 @@ const handleDialogUpdate = (value: boolean) => {
     </div>
 
     <div v-else class="space-y-3">
-      <div
-        v-for="server in servers"
-        :key="server.id"
+        <div
+          v-for="server in servers"
+          :key="server.id"
         class="group flex items-center justify-between rounded-lg border border-border/60 bg-card/30 px-4 py-3 transition-colors hover:border-border/80 hover:bg-card/50"
       >
         <NuxtLink
@@ -369,9 +438,10 @@ const handleDialogUpdate = (value: boolean) => {
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-foreground group-hover:text-foreground">{{ server.name }}</span>
             <Badge :class="statusBadgeClass(server.status)">{{ server.status }}</Badge>
+            <Badge :class="setupBadgeClass(server.setup_state)">setup {{ server.setup_state }}</Badge>
             <!-- Agent status indicator -->
             <span
-              v-if="server.status === 'ready'"
+              v-if="server.setup_state === 'ready'"
               class="flex items-center gap-1 text-xs"
               :title="'Agent: ' + getStatusType(server.id)"
             >
@@ -399,6 +469,15 @@ const handleDialogUpdate = (value: boolean) => {
           <p class="text-xs text-muted-foreground">
             {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }} · Added {{ formatDate(server.created_at) }}
           </p>
+          <p v-if="server.setup_state === 'degraded' && server.setup_last_error" class="mt-1 text-xs text-destructive">
+            Setup needs attention: {{ server.setup_last_error }}
+          </p>
+          <p v-if="server.status === 'deleting'" class="mt-1 text-xs text-accent">
+            Deletion is queued and runs asynchronously until provider-side removal completes.
+          </p>
+          <p v-else-if="server.status === 'deleted'" class="mt-1 text-xs text-muted-foreground">
+            Tombstone record retained after provider-side deletion.
+          </p>
         </NuxtLink>
         <div class="flex items-center gap-3">
           <span class="text-xs text-muted-foreground">{{ server.provider_type }}</span>
@@ -411,8 +490,9 @@ const handleDialogUpdate = (value: boolean) => {
             :class="cn(
               buttonBaseClass,
               'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
-              server.status !== 'failed' && 'opacity-0 group-hover:opacity-100',
+              !['failed', 'ready'].includes(server.status) && 'opacity-0 group-hover:opacity-100',
             )"
+            :disabled="mutationBlockedServerStatuses.includes(server.status)"
             title="Delete server"
             @click.prevent="confirmDelete(server.id)"
           >
@@ -443,6 +523,8 @@ const handleDialogUpdate = (value: boolean) => {
           </div>
         </div>
       </div>
+      <p v-if="deleteSuccess" class="text-xs text-primary">{{ deleteSuccess }}</p>
+      <p v-if="deleteError" class="text-xs text-destructive">{{ deleteError }}</p>
     </div>
 
     <Dialog
@@ -450,8 +532,8 @@ const handleDialogUpdate = (value: boolean) => {
       :open="modal.isOpen.value"
       @update:open="handleDialogUpdate"
     >
-      <DialogContent
-        class="border-border/60 bg-popover/90 text-popover-foreground"
+      <DialogScrollContent
+        class="max-h-[85vh] border-border/60 bg-popover/90 p-5 text-popover-foreground sm:max-w-xl sm:p-6"
       >
         <DialogHeader class="text-left">
           <DialogTitle class="text-base font-semibold text-foreground">
@@ -509,19 +591,55 @@ const handleDialogUpdate = (value: boolean) => {
               </Label>
               <Select v-model="formProfileKey" :disabled="formLoadingCatalog">
                 <SelectTrigger :class="selectTriggerClass">
-                  <SelectValue placeholder="Select profile" />
+                  <SelectValue placeholder="Select server profile">
+                    <div v-if="selectedProfile" class="flex min-w-0 items-center justify-between gap-2">
+                      <span class="truncate text-sm text-foreground">{{ selectedProfile.name }}</span>
+                      <Badge :class="profileSupportClass(selectedProfile.support_level)">
+                        {{ supportLevelLabel(selectedProfile.support_level) }}
+                      </Badge>
+                    </div>
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent :class="selectContentClass">
                   <SelectItem
-                    v-for="option in profileOptions"
-                    :key="option.value"
-                    :value="option.value"
+                    v-for="profile in profiles"
+                    :key="profile.key"
+                    :value="profile.key"
+                    :disabled="profile.support_level === 'unavailable'"
                     :class="selectItemClass"
                   >
-                    <SelectItemText>{{ option.label }}</SelectItemText>
+                    <div class="flex w-full min-w-0 items-center justify-between gap-2">
+                      <span class="truncate">{{ profile.name }}</span>
+                      <Badge :class="profileSupportClass(profile.support_level)">
+                        {{ supportLevelLabel(profile.support_level) }}
+                      </Badge>
+                    </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
+              <div
+                v-if="selectedProfile"
+                class="rounded-lg border px-3 py-3"
+                :class="selectedProfileStatusClass"
+              >
+                <ul class="space-y-2 text-sm text-muted-foreground">
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Description:</strong> {{ selectedProfile.description }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Configure guarantee:</strong> {{ selectedProfile.configure_guarantee }}</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                    <span><strong class="text-foreground">Support:</strong> {{ selectedProfileSupportText }}</span>
+                  </li>
+                </ul>
+              </div>
+              <p v-else class="text-xs text-muted-foreground">
+                No selectable server profile is available for this provider yet.
+              </p>
             </div>
 
             <div class="space-y-1.5">
@@ -579,7 +697,17 @@ const handleDialogUpdate = (value: boolean) => {
               <p><strong class="text-foreground">Name:</strong> {{ formName }}</p>
               <p><strong class="text-foreground">Region:</strong> {{ formLocation }}</p>
               <p><strong class="text-foreground">Size:</strong> {{ selectedTypeLabel }}</p>
-              <p><strong class="text-foreground">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
+              <div class="mt-1">
+                <p><strong class="text-foreground">Profile:</strong> {{ selectedProfile?.name || formProfileKey }}</p>
+                <div v-if="selectedProfile" class="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge :class="profileSupportClass(selectedProfile.support_level)">
+                    {{ supportLevelLabel(selectedProfile.support_level) }}
+                  </Badge>
+                </div>
+                <p v-if="selectedProfile" class="mt-2 text-xs text-muted-foreground">
+                  {{ selectedProfileSupportText }}
+                </p>
+              </div>
             </div>
             <p class="text-xs text-muted-foreground">
               The base image is determined by the selected profile. Advanced networking, firewalls, and storage options are intentionally hidden for this managed flow.
@@ -659,7 +787,7 @@ const handleDialogUpdate = (value: boolean) => {
             Done
           </Button>
         </DialogFooter>
-      </DialogContent>
+      </DialogScrollContent>
     </Dialog>
   </div>
 </template>
