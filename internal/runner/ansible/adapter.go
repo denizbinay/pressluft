@@ -141,7 +141,7 @@ func (a *Adapter) buildApplyCommand(ctx context.Context, req runner.Request) *ex
 
 func (a *Adapter) configureCommand(cmd *exec.Cmd) {
 	cmd.Dir = a.workingDirectory
-	env := os.Environ()
+	env := unsetEnv(os.Environ(), "ANSIBLE_REMOTE_TEMP")
 	if binDir := filepath.Dir(a.binaryPath); binDir != "" {
 		env = prependEnvPath(env, binDir)
 		venvDir := filepath.Dir(binDir)
@@ -151,6 +151,21 @@ func (a *Adapter) configureCommand(cmd *exec.Cmd) {
 	}
 	env = upsertEnv(env, "ANSIBLE_STDOUT_CALLBACK", "json")
 	cmd.Env = upsertEnv(env, "ANSIBLE_ROLES_PATH", "ops/ansible/roles")
+}
+
+func unsetEnv(env []string, key string) []string {
+	if key == "" {
+		return env
+	}
+	prefix := key + "="
+	filtered := env[:0]
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 func (a *Adapter) runCommand(ctx context.Context, cmd *exec.Cmd, sink runner.EventSink, stepKey, description string) error {
