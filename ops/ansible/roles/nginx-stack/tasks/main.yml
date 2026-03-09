@@ -3,7 +3,9 @@
   ansible.builtin.apt:
     name:
       - mariadb-client
+      - mariadb-server
       - nginx
+      - openssl
       - php8.3-cli
       - php8.3-curl
       - php8.3-fpm
@@ -17,13 +19,40 @@
       - redis-server
     state: present
 
-- name: Ensure nginx document root exists
+- name: Ensure nginx-stack directories exist
   ansible.builtin.file:
-    path: /srv/www/pressluft/default/public
+    path: "{{ item.path }}"
     state: directory
-    owner: www-data
-    group: www-data
-    mode: '0755'
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: /etc/nginx/ssl
+      owner: root
+      group: root
+      mode: '0755'
+    - path: /srv/www/pressluft/default/public
+      owner: www-data
+      group: www-data
+      mode: '0755'
+    - path: /var/lib/pressluft/acme-webroot/.well-known/acme-challenge
+      owner: pressluft
+      group: pressluft
+      mode: '0755'
+    - path: /var/lib/pressluft/certs
+      owner: pressluft
+      group: pressluft
+      mode: '0750'
+    - path: /var/lib/pressluft/.acme.sh
+      owner: pressluft
+      group: pressluft
+      mode: '0750'
+    - path: /etc/pressluft/acme.sh
+      owner: pressluft
+      group: pressluft
+      mode: '0750'
+  loop_control:
+    label: "{{ item.path }}"
 
 - name: Deploy nginx default landing page
   ansible.builtin.copy:
@@ -36,13 +65,21 @@
       <html lang="en">
       <head>
         <meta charset="utf-8">
-        <title>Pressluft NGINX Baseline</title>
+        <title>Pressluft WordPress Baseline</title>
       </head>
       <body>
-        <h1>Pressluft baseline ready</h1>
+        <h1>Pressluft WordPress-ready baseline</h1>
         <p>The nginx-stack profile converged successfully.</p>
+        <p>This server is configured to host WordPress with NGINX, PHP-FPM, MariaDB, Redis, and ACME automation.</p>
       </body>
       </html>
+
+- name: Deploy managed nginx global config
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    mode: '0644'
+  notify: restart nginx
 
 - name: Deploy managed nginx site config
   ansible.builtin.template:
@@ -64,12 +101,96 @@
     state: absent
   notify: restart nginx
 
+- name: Deploy managed PHP runtime overrides
+  ansible.builtin.template:
+    src: php-pressluft.ini.j2
+    dest: "{{ item }}"
+    mode: '0644'
+  loop:
+    - /etc/php/8.3/cli/conf.d/90-pressluft.ini
+    - /etc/php/8.3/fpm/conf.d/90-pressluft.ini
+  notify: restart php-fpm
+
+- name: Deploy managed PHP-FPM pool config
+  ansible.builtin.template:
+    src: php-www.conf.j2
+    dest: /etc/php/8.3/fpm/pool.d/www.conf
+    mode: '0644'
+  notify: restart php-fpm
+
+- name: Deploy managed Redis config
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: /etc/redis/redis.conf
+    mode: '0644'
+  notify: restart redis-server
+
+- name: Deploy managed MariaDB config
+  ansible.builtin.template:
+    src: mariadb-pressluft.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/60-pressluft.cnf
+    mode: '0644'
+  notify: restart mariadb
+
+- name: Create default self-signed TLS certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -newkey rsa:2048 -sha256
+      -keyout /etc/nginx/ssl/pressluft-default.key
+      -out /etc/nginx/ssl/pressluft-default.crt
+      -days 3650
+      -subj /CN=localhost
+  args:
+    creates: /etc/nginx/ssl/pressluft-default.crt
+  notify: restart nginx
+
+- name: Install acme.sh for Pressluft
+  become_user: pressluft
+  ansible.builtin.shell: >-
+    curl -fsSL https://get.acme.sh | sh -s --
+    --home /var/lib/pressluft/.acme.sh
+    --config-home /etc/pressluft/acme.sh
+    --nocron
+  args:
+    creates: /var/lib/pressluft/.acme.sh/acme.sh
+  environment:
+    HOME: /var/lib/pressluft
+
+- name: Deploy ACME renewal helper
+  ansible.builtin.template:
+    src: pressluft-acme-renew.j2
+    dest: /usr/local/bin/pressluft-acme-renew
+    mode: '0755'
+
+- name: Deploy ACME issue helper
+  ansible.builtin.template:
+    src: pressluft-acme-issue.j2
+    dest: /usr/local/bin/pressluft-acme-issue
+    mode: '0755'
+
+- name: Deploy ACME renewal systemd unit
+  ansible.builtin.template:
+    src: pressluft-acme-renew.service.j2
+    dest: /etc/systemd/system/pressluft-acme-renew.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: Deploy ACME renewal timer
+  ansible.builtin.template:
+    src: pressluft-acme-renew.timer.j2
+    dest: /etc/systemd/system/pressluft-acme-renew.timer
+    mode: '0644'
+  notify: reload systemd
+
 - name: Ensure nginx-stack services are enabled and started
   ansible.builtin.systemd:
+    daemon_reload: true
     name: "{{ item }}"
     enabled: true
     state: started
   loop:
+    - mariadb
     - nginx
     - php8.3-fpm
+    - pressluft-acme-renew.timer
     - redis-server

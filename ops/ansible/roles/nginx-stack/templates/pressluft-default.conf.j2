@@ -1,21 +1,82 @@
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
     server_name _;
 
     root /srv/www/pressluft/default/public;
-    index index.html index.php;
+    index index.php index.html;
 
-    location / {
-        try_files $uri $uri/ =404;
+    access_log /var/log/nginx/pressluft-default.access.log pressluft_main;
+    error_log /var/log/nginx/pressluft-default.error.log warn;
+
+    ssl_certificate /etc/nginx/ssl/pressluft-default.crt;
+    ssl_certificate_key /etc/nginx/ssl/pressluft-default.key;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/pressluft/acme-webroot;
+        allow all;
+        default_type text/plain;
+        try_files $uri =404;
     }
 
-    location ~ \.php$ {
+    location = /favicon.ico {
+        access_log off;
+        log_not_found off;
+    }
+
+    location = /robots.txt {
+        access_log off;
+        log_not_found off;
+        allow all;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location = /wp-config.php {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location = /xmlrpc.php {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location = /wp-login.php {
+        try_files $uri =404;
+        limit_req zone=pressluft_wp_login burst=10 nodelay;
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
 
-    location ~ /\.ht {
+    location ~* /(?:uploads|files)/.*\.php$ {
         deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(?:css|js|gif|ico|jpe?g|png|svg|webp|avif|woff2?)$ {
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location ~ \.php$ {
+        try_files $uri =404;
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
 }

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+exec /var/lib/pressluft/.acme.sh/acme.sh \
+  --cron \
+  --home /var/lib/pressluft/.acme.sh \
+  --config-home /etc/pressluft/acme.sh

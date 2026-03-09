@@ -254,3 +254,8 @@
       ansible.builtin.systemd:
         name: redis-server
         state: restarted
+
+    - name: restart mariadb
+      ansible.builtin.systemd:
+        name: mariadb
+        state: restarted

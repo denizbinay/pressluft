@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  printf '%s\n' 'pressluft-acme-issue must run as root.' >&2
+  exit 1
+fi
+
+if [ "$#" -lt 1 ]; then
+  printf '%s\n' 'usage: pressluft-acme-issue <domain> [additional-domain ...]' >&2
+  exit 1
+fi
+
+primary_domain=$1
+shift
+
+domain_args="-d $primary_domain"
+for extra_domain in "$@"; do
+  domain_args="$domain_args -d $extra_domain"
+done
+
+cert_dir="/var/lib/pressluft/certs/$primary_domain"
+install -d -o pressluft -g pressluft -m 0750 "$cert_dir"
+
+runuser -u pressluft -- env HOME=/var/lib/pressluft /var/lib/pressluft/.acme.sh/acme.sh \
+  --issue \
+  --home /var/lib/pressluft/.acme.sh \
+  --config-home /etc/pressluft/acme.sh \
+  --webroot /var/lib/pressluft/acme-webroot \
+  $domain_args
+
+runuser -u pressluft -- env HOME=/var/lib/pressluft /var/lib/pressluft/.acme.sh/acme.sh \
+  --install-cert \
+  --home /var/lib/pressluft/.acme.sh \
+  --config-home /etc/pressluft/acme.sh \
+  -d "$primary_domain" \
+  --key-file "$cert_dir/privkey.pem" \
+  --fullchain-file "$cert_dir/fullchain.pem"
+
+printf '%s\n' "Certificate material installed under $cert_dir"
