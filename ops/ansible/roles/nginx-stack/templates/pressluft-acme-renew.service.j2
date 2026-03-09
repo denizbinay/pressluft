@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew ACME certificates for Pressluft
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pressluft
+Group=pressluft
+Environment=HOME=/var/lib/pressluft
+ExecStart=/usr/local/bin/pressluft-acme-renew
