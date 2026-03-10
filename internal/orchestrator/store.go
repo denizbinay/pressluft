@@ -214,7 +214,7 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 		 FROM jobs j
 		 LEFT JOIN servers s ON s.id = j.server_id
 		 WHERE j.status = ?
-		 ORDER BY created_at ASC
+		 ORDER BY j.created_at ASC
 		 LIMIT 1`,
 		JobStatusQueued,
 	)
@@ -343,7 +343,7 @@ func (s *Store) ListEvents(ctx context.Context, jobID string, afterSeq int64, li
 		 FROM job_events e
 		 JOIN jobs j ON j.id = e.job_id
 		 WHERE e.job_id = ? AND e.seq > ?
-		 ORDER BY seq ASC
+		 ORDER BY e.seq ASC
 		 LIMIT ?`,
 		jobID,
 		afterSeq,
@@ -369,7 +369,7 @@ func (s *Store) ListAllEvents(ctx context.Context, jobID string) ([]JobEvent, er
 		 FROM job_events e
 		 JOIN jobs j ON j.id = e.job_id
 		 WHERE e.job_id = ?
-		 ORDER BY seq ASC`,
+		 ORDER BY e.seq ASC`,
 		jobID,
 	)
 	if err != nil {
