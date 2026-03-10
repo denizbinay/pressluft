@@ -25,19 +25,19 @@ import (
 
 // ServerStore defines the server persistence interface needed by the executor.
 type ServerStore interface {
-	GetByID(ctx context.Context, id int64) (*serverpkg.StoredServer, error)
-	UpdateStatus(ctx context.Context, id int64, status platform.ServerStatus) error
-	UpdateSetupState(ctx context.Context, id int64, setupState platform.SetupState, setupLastError string) error
-	UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error
-	UpdateServerType(ctx context.Context, id int64, serverType string) error
-	UpdateImage(ctx context.Context, id int64, image string) error
-	GetKey(ctx context.Context, serverID int64) (*serverpkg.StoredServerKey, error)
+	GetByID(ctx context.Context, id string) (*serverpkg.StoredServer, error)
+	UpdateStatus(ctx context.Context, id string, status platform.ServerStatus) error
+	UpdateSetupState(ctx context.Context, id string, setupState platform.SetupState, setupLastError string) error
+	UpdateProvisioning(ctx context.Context, id string, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error
+	UpdateServerType(ctx context.Context, id string, serverType string) error
+	UpdateImage(ctx context.Context, id string, image string) error
+	GetKey(ctx context.Context, serverID string) (*serverpkg.StoredServerKey, error)
 	CreateKey(ctx context.Context, in serverpkg.CreateServerKeyInput) error
 }
 
 // ProviderStore defines the provider persistence interface needed by the executor.
 type ProviderStore interface {
-	GetByID(ctx context.Context, id int64) (*provider.StoredProvider, error)
+	GetByID(ctx context.Context, id string) (*provider.StoredProvider, error)
 }
 
 // Executor runs job steps and emits events.
@@ -84,11 +84,11 @@ type ExecutorConfig struct {
 }
 
 type DevTokenStore interface {
-	Create(serverID int64, expiresIn time.Duration) (string, error)
+	Create(serverID string, expiresIn time.Duration) (string, error)
 }
 
 type RegistrationTokenStore interface {
-	Create(serverID int64, expiresIn time.Duration) (string, error)
+	Create(serverID string, expiresIn time.Duration) (string, error)
 }
 
 type AgentJobRunner interface {
@@ -153,7 +153,7 @@ func (e *Executor) Execute(ctx context.Context, job *orchestrator.Job) error {
 }
 
 func (e *Executor) executeAgentJob(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for agent job")
 	}
 	if e.agentRunner == nil {
@@ -233,7 +233,7 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 	e.updateStep(ctx, job.ID, "provision")
 	e.emitStepStart(ctx, job.ID, "provision", "Running provision playbook")
 
-	keyName := fmt.Sprintf("pressluft-server-%d", server.ID)
+	keyName := fmt.Sprintf("pressluft-server-%s", server.ID)
 	storedKey, err := e.serverStore.GetKey(ctx, server.ID)
 	if err != nil {
 		return e.failJob(ctx, job, fmt.Sprintf("failed to read SSH key: %v", err))
@@ -366,7 +366,7 @@ func (e *Executor) executeProvisionServer(ctx context.Context, job *orchestrator
 }
 
 func (e *Executor) executeConfigureServer(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for configure_server job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -430,7 +430,7 @@ func (e *Executor) executeConfigureServer(ctx context.Context, job *orchestrator
 }
 
 func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for delete_server job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -521,7 +521,7 @@ func (e *Executor) executeDeleteServer(ctx context.Context, job *orchestrator.Jo
 }
 
 func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for rebuild_server job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -631,7 +631,7 @@ func (e *Executor) executeRebuildServer(ctx context.Context, job *orchestrator.J
 }
 
 func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for resize_server job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -719,7 +719,7 @@ func (e *Executor) executeResizeServer(ctx context.Context, job *orchestrator.Jo
 }
 
 func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for update_firewalls job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -810,7 +810,7 @@ func (e *Executor) executeUpdateFirewalls(ctx context.Context, job *orchestrator
 }
 
 func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Job) error {
-	if job.ServerID <= 0 {
+	if strings.TrimSpace(job.ServerID) == "" {
 		return e.failJob(ctx, job, "server_id is required for manage_volume job")
 	}
 	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{
@@ -914,7 +914,7 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	return e.completeJob(ctx, job, "finalize")
 }
 
-func (e *Executor) runConfigurePlaybook(ctx context.Context, jobID int64, server *serverpkg.StoredServer, ipv4, privateKey string, storedKey *serverpkg.StoredServerKey) error {
+func (e *Executor) runConfigurePlaybook(ctx context.Context, jobID string, server *serverpkg.StoredServer, ipv4, privateKey string, storedKey *serverpkg.StoredServerKey) error {
 	if server == nil {
 		return fmt.Errorf("server is required")
 	}
@@ -1018,8 +1018,8 @@ func validateSelectableProfile(profileKey string) (profiles.Profile, error) {
 	return profiles.Profile{}, fmt.Errorf("profile %q is %s: %s", profile.Key, profile.SupportLevel, reason)
 }
 
-func (e *Executor) setServerStatus(ctx context.Context, serverID int64, status platform.ServerStatus) {
-	if serverID <= 0 || strings.TrimSpace(string(status)) == "" {
+func (e *Executor) setServerStatus(ctx context.Context, serverID string, status platform.ServerStatus) {
+	if strings.TrimSpace(serverID) == "" || strings.TrimSpace(string(status)) == "" {
 		return
 	}
 	if err := e.serverStore.UpdateStatus(ctx, serverID, status); err != nil {
@@ -1029,8 +1029,8 @@ func (e *Executor) setServerStatus(ctx context.Context, serverID int64, status p
 	e.logger.Info("server status updated", "server_id", serverID, "server_status", status)
 }
 
-func (e *Executor) setSetupState(ctx context.Context, serverID int64, setupState platform.SetupState, setupLastError string) {
-	if serverID <= 0 || strings.TrimSpace(string(setupState)) == "" {
+func (e *Executor) setSetupState(ctx context.Context, serverID string, setupState platform.SetupState, setupLastError string) {
+	if strings.TrimSpace(serverID) == "" || strings.TrimSpace(string(setupState)) == "" {
 		return
 	}
 	if err := e.serverStore.UpdateSetupState(ctx, serverID, setupState, setupLastError); err != nil {
@@ -1040,7 +1040,7 @@ func (e *Executor) setSetupState(ctx context.Context, serverID int64, setupState
 	e.logger.Info("server setup state updated", "server_id", serverID, "setup_state", setupState)
 }
 
-func (e *Executor) runLocalPlaybook(ctx context.Context, jobID int64, playbookPath string, extraVars map[string]string) error {
+func (e *Executor) runLocalPlaybook(ctx context.Context, jobID string, playbookPath string, extraVars map[string]string) error {
 	workspace, err := os.MkdirTemp("", "pressluft-ansible-")
 	if err != nil {
 		return fmt.Errorf("failed to create ansible workspace: %v", err)
@@ -1082,7 +1082,7 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 		ActorType:    activity.ActorSystem,
 		Title:        fmt.Sprintf("%s completed", orchestrator.JobKindLabel(job.Kind)),
 	}
-	if job.ServerID > 0 {
+	if job.ServerID != "" {
 		input.ParentResourceType = activity.ResourceServer
 		input.ParentResourceID = job.ServerID
 	}
@@ -1095,7 +1095,7 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 	corr := observability.Correlation{JobID: job.ID, ServerID: job.ServerID, CommandID: derefString(job.CommandID)}
 	e.logger.Error("job failed", corr.LogArgs("error", errMsg)...)
 
-	if job.ServerID > 0 {
+	if job.ServerID != "" {
 		if job.Kind == string(orchestrator.JobKindConfigureServer) {
 			e.setSetupState(ctx, job.ServerID, platform.SetupStateDegraded, errMsg)
 		} else if err := e.serverStore.UpdateStatus(ctx, job.ServerID, platform.ServerStatusFailed); err != nil {
@@ -1126,7 +1126,7 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 		Message:           errMsg,
 		RequiresAttention: true,
 	}
-	if job.ServerID > 0 {
+	if job.ServerID != "" {
 		input.ParentResourceType = activity.ResourceServer
 		input.ParentResourceID = job.ServerID
 	}
@@ -1135,7 +1135,7 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 	return fmt.Errorf("job failed: %s", errMsg)
 }
 
-func (e *Executor) updateStep(ctx context.Context, jobID int64, step string) {
+func (e *Executor) updateStep(ctx context.Context, jobID string, step string) {
 	if _, err := e.jobStore.TransitionJob(ctx, jobID, orchestrator.TransitionInput{
 		ToStatus:    orchestrator.JobStatusRunning,
 		CurrentStep: step,
@@ -1144,15 +1144,15 @@ func (e *Executor) updateStep(ctx context.Context, jobID int64, step string) {
 	}
 }
 
-func (e *Executor) emitStepStart(ctx context.Context, jobID int64, step, message string) {
+func (e *Executor) emitStepStart(ctx context.Context, jobID string, step, message string) {
 	e.emitEvent(ctx, jobID, orchestrator.JobEventTypeStepStarted, "info", step, string(orchestrator.JobStatusRunning), message)
 }
 
-func (e *Executor) emitStepComplete(ctx context.Context, jobID int64, step, message string) {
+func (e *Executor) emitStepComplete(ctx context.Context, jobID string, step, message string) {
 	e.emitEvent(ctx, jobID, orchestrator.JobEventTypeStepComplete, "info", step, "completed", message)
 }
 
-func (e *Executor) emitEvent(ctx context.Context, jobID int64, eventType, level, step, status, message string) {
+func (e *Executor) emitEvent(ctx context.Context, jobID string, eventType, level, step, status, message string) {
 	event, err := e.jobStore.AppendEvent(ctx, jobID, orchestrator.CreateEventInput{
 		EventType: eventType,
 		Level:     level,
@@ -1204,7 +1204,7 @@ func (e *Executor) logSSHPublicKey(source, publicKey string) {
 
 type runnerEventSink struct {
 	jobStore *orchestrator.Store
-	jobID    int64
+	jobID    string
 	logger   *slog.Logger
 }
 

@@ -30,8 +30,8 @@ func TestAuthenticateRequestCapsIdleRefreshAtAbsoluteExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AuthenticateRequest() error = %v", err)
 	}
-	if actor.ID != "1" {
-		t.Fatalf("actor.ID = %q, want %q", actor.ID, "1")
+	if actor.ID != user.ID {
+		t.Fatalf("actor.ID = %q, want %q", actor.ID, user.ID)
 	}
 
 	var expiresAt string
@@ -72,8 +72,8 @@ func newSessionServiceTestHarness(t *testing.T, idleTimeout, absoluteTimeout tim
 	t.Cleanup(func() { _ = db.Close() })
 
 	for _, statement := range []string{
-		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), last_login_at TEXT)`,
-		`CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, session_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, absolute_expires_at TEXT, revoked_at TEXT, last_used_at TEXT, user_agent TEXT, ip TEXT)`,
+		`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), last_login_at TEXT)`,
+		`CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, session_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, absolute_expires_at TEXT, revoked_at TEXT, last_used_at TEXT, user_agent TEXT, ip TEXT)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatalf("exec %q: %v", statement, err)

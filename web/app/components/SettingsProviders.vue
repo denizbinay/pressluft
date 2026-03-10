@@ -111,7 +111,7 @@ const handleSave = async () => {
   }
 }
 
-const handleDelete = async (id: number) => {
+const handleDelete = async (id: string) => {
   deletingId.value = id
   try {
     await deleteProvider(id)

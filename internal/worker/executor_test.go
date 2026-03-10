@@ -24,24 +24,26 @@ import (
 	_ "pressluft/internal/provider/hetzner"
 )
 
+var executorTestDB *sql.DB
+
 func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
 	jobStore := mustOpenExecutorJobStore(t)
 	logger := testLogger()
-	serverStore := &fakeServerStore{servers: map[int64]*server.StoredServer{
-		1: {ID: 1, ProviderID: 11, Name: "delete-me", Status: platform.ServerStatusDeleting},
+	serverStore := &fakeServerStore{servers: map[string]*server.StoredServer{
+		"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "delete-me", Status: platform.ServerStatusDeleting},
 	}}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
 	}, logger)
 
-	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: 1})
+	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: "00000000-0000-7000-8000-000000000001"})
 	if err := executor.Execute(context.Background(), &job); err != nil {
 		t.Fatalf("execute delete: %v", err)
 	}
 
-	if got := serverStore.servers[1].Status; got != platform.ServerStatusDeleted {
+	if got := serverStore.servers["00000000-0000-7000-8000-000000000001"].Status; got != platform.ServerStatusDeleted {
 		t.Fatalf("server status = %q, want %q", got, platform.ServerStatusDeleted)
 	}
 	storedJob := mustGetExecutorJob(t, jobStore, job.ID)
@@ -53,22 +55,22 @@ func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
 func TestExecutorDeleteServerFailureLeavesRecoverableStatus(t *testing.T) {
 	jobStore := mustOpenExecutorJobStore(t)
 	logger := testLogger()
-	serverStore := &fakeServerStore{servers: map[int64]*server.StoredServer{
-		1: {ID: 1, ProviderID: 11, Name: "delete-me", Status: platform.ServerStatusDeleting},
+	serverStore := &fakeServerStore{servers: map[string]*server.StoredServer{
+		"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "delete-me", Status: platform.ServerStatusDeleting},
 	}}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "delete.yml"): errors.New("provider delete failed")}}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
 	}, logger)
 
-	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: 1})
+	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: "00000000-0000-7000-8000-000000000001"})
 	err := executor.Execute(context.Background(), &job)
 	if err == nil {
 		t.Fatal("expected delete to fail")
 	}
 
-	if got := serverStore.servers[1].Status; got != platform.ServerStatusFailed {
+	if got := serverStore.servers["00000000-0000-7000-8000-000000000001"].Status; got != platform.ServerStatusFailed {
 		t.Fatalf("server status = %q, want %q", got, platform.ServerStatusFailed)
 	}
 	storedJob := mustGetExecutorJob(t, jobStore, job.ID)
@@ -81,11 +83,11 @@ func TestExecutorRebuildServerSuccessReconfiguresAndUpdatesImage(t *testing.T) {
 	jobStore := mustOpenExecutorJobStore(t)
 	logger := testLogger()
 	serverStore := &fakeServerStore{
-		servers: map[int64]*server.StoredServer{
-			1: {ID: 1, ProviderID: 11, Name: "rebuild-me", ProfileKey: "nginx-stack", Image: "ubuntu-22.04", IPv4: "203.0.113.10", Status: platform.ServerStatusRebuilding},
+		servers: map[string]*server.StoredServer{
+			"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "rebuild-me", ProfileKey: "nginx-stack", Image: "ubuntu-22.04", IPv4: "203.0.113.10", Status: platform.ServerStatusRebuilding},
 		},
 	}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		PlaybookBasePath:      "playbooks",
@@ -95,14 +97,14 @@ func TestExecutorRebuildServerSuccessReconfiguresAndUpdatesImage(t *testing.T) {
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{
 		Kind:     string(orchestrator.JobKindRebuildServer),
-		ServerID: 1,
+		ServerID: "00000000-0000-7000-8000-000000000001",
 		Payload:  `{"server_image":"ubuntu-24.04"}`,
 	})
 	if err := executor.Execute(context.Background(), &job); err != nil {
 		t.Fatalf("execute rebuild: %v", err)
 	}
 
-	server := serverStore.servers[1]
+	server := serverStore.servers["00000000-0000-7000-8000-000000000001"]
 	if server.Status != platform.ServerStatusConfiguring {
 		t.Fatalf("server status = %q, want %q", server.Status, platform.ServerStatusConfiguring)
 	}
@@ -115,14 +117,21 @@ func TestExecutorRebuildServerSuccessReconfiguresAndUpdatesImage(t *testing.T) {
 	if len(runner.requests) != 1 {
 		t.Fatalf("runner request count = %d, want 1", len(runner.requests))
 	}
-	jobs, err := jobStore.ListJobsByServer(context.Background(), 1)
+	jobs, err := jobStore.ListAllJobs(context.Background())
 	if err != nil {
-		t.Fatalf("list jobs by server: %v", err)
+		t.Fatalf("list all jobs: %v", err)
 	}
 	if len(jobs) != 2 {
 		t.Fatalf("job count = %d, want 2", len(jobs))
 	}
-	if jobs[0].Kind != string(orchestrator.JobKindConfigureServer) && jobs[1].Kind != string(orchestrator.JobKindConfigureServer) {
+	configureFound := false
+	for _, queuedJob := range jobs {
+		if queuedJob.Kind == string(orchestrator.JobKindConfigureServer) {
+			configureFound = true
+			break
+		}
+	}
+	if !configureFound {
 		t.Fatalf("expected configure_server job in %+v", jobs)
 	}
 }
@@ -144,14 +153,14 @@ func TestExecutorRebuildServerRejectsUnavailableProfile(t *testing.T) {
 	mustCreateTestAgentBinary(t)
 
 	serverStore := &fakeServerStore{
-		servers: map[int64]*server.StoredServer{
-			1: {ID: 1, ProviderID: 11, Name: "rebuild-me", ProfileKey: "openlitespeed-stack", Image: "ubuntu-24.04", IPv4: "203.0.113.10", Status: platform.ServerStatusRebuilding},
+		servers: map[string]*server.StoredServer{
+			"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "rebuild-me", ProfileKey: "openlitespeed-stack", Image: "ubuntu-24.04", IPv4: "203.0.113.10", Status: platform.ServerStatusRebuilding},
 		},
-		keys: map[int64]*server.StoredServerKey{
-			1: {ServerID: 1, PrivateKeyEncrypted: encrypted, EncryptionKeyID: keyID, PublicKey: "ssh-ed25519 AAAATEST"},
+		keys: map[string]*server.StoredServerKey{
+			"00000000-0000-7000-8000-000000000001": {ServerID: "00000000-0000-7000-8000-000000000001", PrivateKeyEncrypted: encrypted, EncryptionKeyID: keyID, PublicKey: "ssh-ed25519 AAAATEST"},
 		},
 	}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		PlaybookBasePath:      "playbooks",
@@ -163,14 +172,14 @@ func TestExecutorRebuildServerRejectsUnavailableProfile(t *testing.T) {
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{
 		Kind:     string(orchestrator.JobKindRebuildServer),
-		ServerID: 1,
+		ServerID: "00000000-0000-7000-8000-000000000001",
 		Payload:  `{"server_image":"ubuntu-24.04"}`,
 	})
 	err = executor.Execute(context.Background(), &job)
 	if err == nil {
 		t.Fatal("expected rebuild to fail")
 	}
-	if got := serverStore.servers[1].Status; got != platform.ServerStatusFailed {
+	if got := serverStore.servers["00000000-0000-7000-8000-000000000001"].Status; got != platform.ServerStatusFailed {
 		t.Fatalf("server status = %q, want %q", got, platform.ServerStatusFailed)
 	}
 	if len(runner.requests) != 0 {
@@ -181,10 +190,10 @@ func TestExecutorRebuildServerRejectsUnavailableProfile(t *testing.T) {
 func TestExecutorResizeServerFailureMarksFailed(t *testing.T) {
 	jobStore := mustOpenExecutorJobStore(t)
 	logger := testLogger()
-	serverStore := &fakeServerStore{servers: map[int64]*server.StoredServer{
-		1: {ID: 1, ProviderID: 11, Name: "resize-me", ServerType: "cx22", Status: platform.ServerStatusResizing},
+	serverStore := &fakeServerStore{servers: map[string]*server.StoredServer{
+		"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "resize-me", ServerType: "cx22", Status: platform.ServerStatusResizing},
 	}}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "resize.yml"): errors.New("provider resize failed")}}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
@@ -192,7 +201,7 @@ func TestExecutorResizeServerFailureMarksFailed(t *testing.T) {
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{
 		Kind:     string(orchestrator.JobKindResizeServer),
-		ServerID: 1,
+		ServerID: "00000000-0000-7000-8000-000000000001",
 		Payload:  `{"server_type":"cx32","upgrade_disk":true}`,
 	})
 	err := executor.Execute(context.Background(), &job)
@@ -200,10 +209,10 @@ func TestExecutorResizeServerFailureMarksFailed(t *testing.T) {
 		t.Fatal("expected resize to fail")
 	}
 
-	if got := serverStore.servers[1].Status; got != platform.ServerStatusFailed {
+	if got := serverStore.servers["00000000-0000-7000-8000-000000000001"].Status; got != platform.ServerStatusFailed {
 		t.Fatalf("server status = %q, want %q", got, platform.ServerStatusFailed)
 	}
-	if got := serverStore.servers[1].ServerType; got != "cx22" {
+	if got := serverStore.servers["00000000-0000-7000-8000-000000000001"].ServerType; got != "cx22" {
 		t.Fatalf("server type = %q, want original type", got)
 	}
 }
@@ -225,14 +234,14 @@ func TestExecutorConfigureServerFailureMarksSetupDegraded(t *testing.T) {
 	mustCreateTestAgentBinary(t)
 
 	serverStore := &fakeServerStore{
-		servers: map[int64]*server.StoredServer{
-			1: {ID: 1, ProviderID: 11, Name: "setup-me", ProfileKey: "nginx-stack", Image: "ubuntu-24.04", IPv4: "203.0.113.10", Status: platform.ServerStatusConfiguring, SetupState: platform.SetupStateRunning},
+		servers: map[string]*server.StoredServer{
+			"00000000-0000-7000-8000-000000000001": {ID: "00000000-0000-7000-8000-000000000001", ProviderID: "00000000-0000-7000-8000-000000000011", Name: "setup-me", ProfileKey: "nginx-stack", Image: "ubuntu-24.04", IPv4: "203.0.113.10", Status: platform.ServerStatusConfiguring, SetupState: platform.SetupStateRunning},
 		},
-		keys: map[int64]*server.StoredServerKey{
-			1: {ServerID: 1, PrivateKeyEncrypted: encrypted, EncryptionKeyID: keyID, PublicKey: "ssh-ed25519 AAAATEST"},
+		keys: map[string]*server.StoredServerKey{
+			"00000000-0000-7000-8000-000000000001": {ServerID: "00000000-0000-7000-8000-000000000001", PrivateKeyEncrypted: encrypted, EncryptionKeyID: keyID, PublicKey: "ssh-ed25519 AAAATEST"},
 		},
 	}
-	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: 11, Type: "hetzner", APIToken: "token"}}
+	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{"configure.yml": errors.New("configure failed")}}
 	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
 		ConfigurePlaybookPath: "configure.yml",
@@ -243,7 +252,7 @@ func TestExecutorConfigureServerFailureMarksSetupDegraded(t *testing.T) {
 
 	job := mustClaimExecutorJob(t, jobStore, orchestrator.CreateJobInput{
 		Kind:     string(orchestrator.JobKindConfigureServer),
-		ServerID: 1,
+		ServerID: "00000000-0000-7000-8000-000000000001",
 		Payload:  `{"ipv4":"203.0.113.10"}`,
 	})
 	err = executor.Execute(context.Background(), &job)
@@ -251,7 +260,7 @@ func TestExecutorConfigureServerFailureMarksSetupDegraded(t *testing.T) {
 		t.Fatal("expected configure to fail")
 	}
 
-	server := serverStore.servers[1]
+	server := serverStore.servers["00000000-0000-7000-8000-000000000001"]
 	if server.Status != platform.ServerStatusConfiguring {
 		t.Fatalf("server status = %q, want %q", server.Status, platform.ServerStatusConfiguring)
 	}
@@ -264,11 +273,11 @@ func TestExecutorConfigureServerFailureMarksSetupDegraded(t *testing.T) {
 }
 
 type fakeServerStore struct {
-	servers map[int64]*server.StoredServer
-	keys    map[int64]*server.StoredServerKey
+	servers map[string]*server.StoredServer
+	keys    map[string]*server.StoredServerKey
 }
 
-func (s *fakeServerStore) GetByID(_ context.Context, id int64) (*server.StoredServer, error) {
+func (s *fakeServerStore) GetByID(_ context.Context, id string) (*server.StoredServer, error) {
 	server, ok := s.servers[id]
 	if !ok {
 		return nil, errors.New("server not found")
@@ -277,18 +286,18 @@ func (s *fakeServerStore) GetByID(_ context.Context, id int64) (*server.StoredSe
 	return &copy, nil
 }
 
-func (s *fakeServerStore) UpdateStatus(_ context.Context, id int64, status platform.ServerStatus) error {
+func (s *fakeServerStore) UpdateStatus(_ context.Context, id string, status platform.ServerStatus) error {
 	s.servers[id].Status = status
 	return nil
 }
 
-func (s *fakeServerStore) UpdateSetupState(_ context.Context, id int64, setupState platform.SetupState, setupLastError string) error {
+func (s *fakeServerStore) UpdateSetupState(_ context.Context, id string, setupState platform.SetupState, setupLastError string) error {
 	s.servers[id].SetupState = setupState
 	s.servers[id].SetupLastError = setupLastError
 	return nil
 }
 
-func (s *fakeServerStore) UpdateProvisioning(_ context.Context, id int64, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
+func (s *fakeServerStore) UpdateProvisioning(_ context.Context, id string, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
 	server := s.servers[id]
 	server.ProviderServerID = providerServerID
 	server.Status = status
@@ -297,17 +306,17 @@ func (s *fakeServerStore) UpdateProvisioning(_ context.Context, id int64, provid
 	return nil
 }
 
-func (s *fakeServerStore) UpdateServerType(_ context.Context, id int64, serverType string) error {
+func (s *fakeServerStore) UpdateServerType(_ context.Context, id string, serverType string) error {
 	s.servers[id].ServerType = serverType
 	return nil
 }
 
-func (s *fakeServerStore) UpdateImage(_ context.Context, id int64, image string) error {
+func (s *fakeServerStore) UpdateImage(_ context.Context, id string, image string) error {
 	s.servers[id].Image = image
 	return nil
 }
 
-func (s *fakeServerStore) GetKey(_ context.Context, serverID int64) (*server.StoredServerKey, error) {
+func (s *fakeServerStore) GetKey(_ context.Context, serverID string) (*server.StoredServerKey, error) {
 	key, ok := s.keys[serverID]
 	if !ok {
 		return nil, nil
@@ -318,7 +327,7 @@ func (s *fakeServerStore) GetKey(_ context.Context, serverID int64) (*server.Sto
 
 func (s *fakeServerStore) CreateKey(_ context.Context, in server.CreateServerKeyInput) error {
 	if s.keys == nil {
-		s.keys = map[int64]*server.StoredServerKey{}
+		s.keys = map[string]*server.StoredServerKey{}
 	}
 	s.keys[in.ServerID] = &server.StoredServerKey{ServerID: in.ServerID, PublicKey: in.PublicKey, PrivateKeyEncrypted: in.PrivateKeyEncrypted, EncryptionKeyID: in.EncryptionKeyID}
 	return nil
@@ -330,11 +339,11 @@ type fakeProviderStore struct {
 
 type fakeDevTokenStore struct{}
 
-func (fakeDevTokenStore) Create(serverID int64, expiresIn time.Duration) (string, error) {
+func (fakeDevTokenStore) Create(serverID string, expiresIn time.Duration) (string, error) {
 	return "dev-token", nil
 }
 
-func (s *fakeProviderStore) GetByID(context.Context, int64) (*provider.StoredProvider, error) {
+func (s *fakeProviderStore) GetByID(context.Context, string) (*provider.StoredProvider, error) {
 	return s.provider, nil
 }
 
@@ -360,7 +369,7 @@ func (r *fakeRunner) Run(_ context.Context, req runner.Request, _ runner.EventSi
 
 type fakeRegistrationStore struct{}
 
-func (fakeRegistrationStore) Create(int64, time.Duration) (string, error) {
+func (fakeRegistrationStore) Create(string, time.Duration) (string, error) {
 	return "registration-token", nil
 }
 
@@ -371,10 +380,14 @@ func mustOpenExecutorJobStore(t *testing.T) *orchestrator.Store {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	executorTestDB = db
 	if _, err := db.Exec(`
+		CREATE TABLE servers (
+			id TEXT PRIMARY KEY
+		);
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -389,7 +402,8 @@ func mustOpenExecutorJobStore(t *testing.T) *orchestrator.Store {
 			updated_at   TEXT    NOT NULL
 		);
 		CREATE TABLE job_events (
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -397,8 +411,7 @@ func mustOpenExecutorJobStore(t *testing.T) *orchestrator.Store {
 			status     TEXT,
 			message    TEXT    NOT NULL,
 			payload    TEXT,
-			created_at TEXT    NOT NULL,
-			PRIMARY KEY (job_id, seq)
+			created_at TEXT    NOT NULL
 		);
 	`); err != nil {
 		t.Fatalf("create jobs schema: %v", err)
@@ -408,6 +421,11 @@ func mustOpenExecutorJobStore(t *testing.T) *orchestrator.Store {
 
 func mustCreateExecutorJob(t *testing.T, store *orchestrator.Store, in orchestrator.CreateJobInput) orchestrator.Job {
 	t.Helper()
+	if in.ServerID != "" {
+		if _, err := executorTestDB.Exec(`INSERT OR IGNORE INTO servers (id) VALUES (?)`, in.ServerID); err != nil {
+			t.Fatalf("insert server fixture: %v", err)
+		}
+	}
 	job, err := store.CreateJob(context.Background(), in)
 	if err != nil {
 		t.Fatalf("create job: %v", err)
@@ -423,12 +441,12 @@ func mustClaimExecutorJob(t *testing.T, store *orchestrator.Store, in orchestrat
 		t.Fatalf("claim job: %v", err)
 	}
 	if claimed == nil || claimed.ID != created.ID {
-		t.Fatalf("claimed job = %+v, want id %d", claimed, created.ID)
+		t.Fatalf("claimed job = %+v, want id %s", claimed, created.ID)
 	}
 	return *claimed
 }
 
-func mustGetExecutorJob(t *testing.T, store *orchestrator.Store, id int64) orchestrator.Job {
+func mustGetExecutorJob(t *testing.T, store *orchestrator.Store, id string) orchestrator.Job {
 	t.Helper()
 	job, err := store.GetJob(context.Background(), id)
 	if err != nil {

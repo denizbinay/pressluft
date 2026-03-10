@@ -106,7 +106,7 @@ onMounted(async () => {
   await refreshNotifications()
   await refreshUnreadCount()
   stopNotificationStream.value = streamActivity({
-    sinceId: notifications.value[0]?.id ?? 0,
+    sinceId: notifications.value[0]?.id ?? "",
     filter: (activity) => activity.requires_attention,
     maxItems: 10,
     onEvent: (activity) => {

@@ -11,7 +11,10 @@ import (
 
 func TestClaimNextJobMarksRunningWithTimeout(t *testing.T) {
 	store := newTestStore(t)
-	created, err := store.CreateJob(context.Background(), CreateJobInput{Kind: string(JobKindRestartService), ServerID: 7})
+	created, err := store.CreateJob(context.Background(), CreateJobInput{
+		Kind:     string(JobKindRestartService),
+		ServerID: "00000000-0000-7000-8000-000000000007",
+	})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -24,7 +27,7 @@ func TestClaimNextJobMarksRunningWithTimeout(t *testing.T) {
 		t.Fatal("expected claimed job")
 	}
 	if claimed.ID != created.ID {
-		t.Fatalf("claimed id = %d, want %d", claimed.ID, created.ID)
+		t.Fatalf("claimed id = %q, want %q", claimed.ID, created.ID)
 	}
 	if claimed.Status != JobStatusRunning {
 		t.Fatalf("status = %q, want %q", claimed.Status, JobStatusRunning)
@@ -43,7 +46,10 @@ func TestClaimNextJobMarksRunningWithTimeout(t *testing.T) {
 
 func TestRecoverStuckJobsFailsRunningJobAndAppendsRecoveryEvent(t *testing.T) {
 	store := newTestStore(t)
-	job := mustCreateAndClaimJob(t, store, CreateJobInput{Kind: string(JobKindDeleteServer), ServerID: 9})
+	job := mustCreateAndClaimJob(t, store, CreateJobInput{
+		Kind:     string(JobKindDeleteServer),
+		ServerID: "00000000-0000-7000-8000-000000000009",
+	})
 
 	recovered, err := store.RecoverStuckJobs(context.Background())
 	if err != nil {
@@ -78,7 +84,10 @@ func TestRecoverStuckJobsFailsRunningJobAndAppendsRecoveryEvent(t *testing.T) {
 
 func TestMarkJobTimedOutAppendsTimeoutEvent(t *testing.T) {
 	store := newTestStore(t)
-	job := mustCreateAndClaimJob(t, store, CreateJobInput{Kind: string(JobKindRestartService), ServerID: 11})
+	job := mustCreateAndClaimJob(t, store, CreateJobInput{
+		Kind:     string(JobKindRestartService),
+		ServerID: "00000000-0000-7000-8000-000000000011",
+	})
 
 	updated, changed, err := store.MarkJobTimedOut(context.Background(), job.ID, "job timed out before completion")
 	if err != nil {
@@ -111,9 +120,12 @@ func newTestStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`
+		CREATE TABLE servers (
+			id TEXT PRIMARY KEY
+		);
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -128,8 +140,8 @@ func newTestStore(t *testing.T) *Store {
 			updated_at   TEXT    NOT NULL
 		);
 		CREATE TABLE job_events (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -139,6 +151,10 @@ func newTestStore(t *testing.T) *Store {
 			payload    TEXT,
 			created_at TEXT    NOT NULL
 		);
+		INSERT INTO servers (id) VALUES
+			('00000000-0000-7000-8000-000000000007'),
+			('00000000-0000-7000-8000-000000000009'),
+			('00000000-0000-7000-8000-000000000011');
 	`); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

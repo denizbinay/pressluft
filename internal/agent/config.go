@@ -15,7 +15,7 @@ import (
 const CertificateReissueWindow = 14 * 24 * time.Hour
 
 type Config struct {
-	ServerID              int64  `yaml:"server_id"`
+	ServerID              string `yaml:"server_id"`
 	ControlPlane          string `yaml:"control_plane"`
 	CertFile              string `yaml:"cert_file"`
 	KeyFile               string `yaml:"key_file"`
@@ -146,7 +146,7 @@ func (c *Config) ConfigPath() string {
 }
 
 func (c *Config) Validate() error {
-	if c.ServerID <= 0 {
+	if strings.TrimSpace(c.ServerID) == "" {
 		return fmt.Errorf("server_id is required")
 	}
 	if strings.TrimSpace(c.ControlPlane) == "" {

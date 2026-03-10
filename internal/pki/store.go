@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"pressluft/internal/idutil"
 )
 
 type Store struct {
@@ -18,29 +20,41 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-func (s *Store) SaveNodeCertificate(serverID int64, cert *x509.Certificate) error {
+func (s *Store) SaveNodeCertificate(serverID string, cert *x509.Certificate) error {
 	return s.SaveNodeCertificateTx(context.Background(), nil, serverID, cert)
 }
 
-func (s *Store) SaveNodeCertificateTx(ctx context.Context, tx *sql.Tx, serverID int64, cert *x509.Certificate) error {
+func (s *Store) SaveNodeCertificateTx(ctx context.Context, tx *sql.Tx, serverID string, cert *x509.Certificate) error {
+	serverID, err := s.lookupServerID(ctx, tx, serverID)
+	if err != nil {
+		return err
+	}
+	certID, err := idutil.New()
+	if err != nil {
+		return err
+	}
 	fingerprint := calculateFingerprint(cert)
 	serialNumber := cert.SerialNumber.String()
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 	exec := execOrDB(tx, s.db)
 
-	_, err := exec.ExecContext(ctx, `
-		INSERT INTO node_certificates (server_id, fingerprint, serial_number, certificate, issued_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, serverID, fingerprint, serialNumber, certPEM, time.Now().UTC().Format(time.RFC3339), cert.NotAfter.Format(time.RFC3339))
+	_, err = exec.ExecContext(ctx, `
+		INSERT INTO node_certificates (id, server_id, fingerprint, serial_number, certificate, issued_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, certID, serverID, fingerprint, serialNumber, certPEM, time.Now().UTC().Format(time.RFC3339), cert.NotAfter.Format(time.RFC3339))
 
 	return err
 }
 
-func (s *Store) GetValidCertForServer(serverID int64) (*NodeCertificate, error) {
+func (s *Store) GetValidCertForServer(serverID string) (*NodeCertificate, error) {
 	return s.GetValidCertForServerTx(context.Background(), nil, serverID)
 }
 
-func (s *Store) GetValidCertForServerTx(ctx context.Context, tx *sql.Tx, serverID int64) (*NodeCertificate, error) {
+func (s *Store) GetValidCertForServerTx(ctx context.Context, tx *sql.Tx, serverID string) (*NodeCertificate, error) {
+	serverID, err := s.lookupServerID(ctx, tx, serverID)
+	if err != nil {
+		return nil, err
+	}
 	var (
 		nc           NodeCertificate
 		issuedAtRaw  string
@@ -48,7 +62,7 @@ func (s *Store) GetValidCertForServerTx(ctx context.Context, tx *sql.Tx, serverI
 		revokedAtRaw sql.NullString
 	)
 	exec := execOrDB(tx, s.db)
-	err := exec.QueryRowContext(ctx, `
+	err = exec.QueryRowContext(ctx, `
 		SELECT id, server_id, fingerprint, serial_number, issued_at, expires_at, revoked_at
 		FROM node_certificates
 		WHERE server_id = ?
@@ -119,9 +133,13 @@ func (s *Store) GetCACertificate() (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func (s *Store) GetCertificatePEMForServer(serverID int64) ([]byte, error) {
+func (s *Store) GetCertificatePEMForServer(serverID string) ([]byte, error) {
+	serverID, err := s.lookupServerID(context.Background(), nil, serverID)
+	if err != nil {
+		return nil, err
+	}
 	var certPEM []byte
-	err := s.db.QueryRow(`
+	err = s.db.QueryRow(`
 		SELECT certificate
 		FROM node_certificates
 		WHERE server_id = ?
@@ -145,22 +163,15 @@ func (s *Store) GetCertificatePEMForServer(serverID int64) ([]byte, error) {
 	return certPEM, nil
 }
 
-func (s *Store) ServerIDFromCN(cn string) (int64, error) {
-	if !strings.HasPrefix(cn, "server-") {
-		return 0, fmt.Errorf("invalid CN format")
+func (s *Store) ServerIDFromCN(cn string) (string, error) {
+	if !strings.HasPrefix(cn, "server:") {
+		return "", fmt.Errorf("invalid CN format")
 	}
-	return parseServerID(cn[7:])
-}
-
-func parseServerID(s string) (int64, error) {
-	var result int64
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, fmt.Errorf("invalid server ID")
-		}
-		result = result*10 + int64(c-'0')
+	serverID, err := idutil.Normalize(strings.TrimSpace(cn[7:]))
+	if err != nil {
+		return "", err
 	}
-	return result, nil
+	return serverID, nil
 }
 
 type sqlExecutor interface {
@@ -173,4 +184,20 @@ func execOrDB(tx *sql.Tx, db *sql.DB) sqlExecutor {
 		return tx
 	}
 	return db
+}
+
+func (s *Store) lookupServerID(ctx context.Context, tx *sql.Tx, serverID string) (string, error) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return "", fmt.Errorf("server_id is required")
+	}
+	exec := execOrDB(tx, s.db)
+	var storedID string
+	if err := exec.QueryRowContext(ctx, `SELECT id FROM servers WHERE id = ?`, serverID).Scan(&storedID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("server %s not found", serverID)
+		}
+		return "", fmt.Errorf("lookup server id: %w", err)
+	}
+	return storedID, nil
 }

@@ -116,17 +116,18 @@ func (a *Agent) handleMessage(ctx context.Context, env ws.Envelope) {
 			a.logger.Error("command decode failed", "server_id", a.config.ServerID, "error", err)
 			return
 		}
-		if cmd.ServerID == 0 {
-			cmd.ServerID = a.config.ServerID
+		serverID := a.config.ServerID
+		if cmd.ServerID == "" {
+			cmd.ServerID = serverID
 		}
-		corr := observability.Correlation{JobID: cmd.JobID, ServerID: cmd.ServerID, CommandID: cmd.ID}
+		corr := observability.Correlation{ServerID: serverID, CommandID: cmd.ID}
 		a.logger.Info("command execution started", corr.LogArgs("command_type", cmd.Type)...)
 
 		result := a.executor.Execute(ctx, cmd)
-		if result.JobID == 0 {
+		if result.JobID == "" {
 			result.JobID = cmd.JobID
 		}
-		if result.ServerID == 0 {
+		if result.ServerID == "" {
 			result.ServerID = cmd.ServerID
 		}
 		payload, err := json.Marshal(result)
@@ -149,7 +150,7 @@ func (a *Agent) handleMessage(ctx context.Context, env ws.Envelope) {
 			a.logger.Debug("command result send failed", corr.LogArgs("error", err)...)
 			return
 		}
-		a.logger.Info("command execution finished", observability.Correlation{JobID: result.JobID, ServerID: result.ServerID, CommandID: result.CommandID}.LogArgs("success", result.Success, "error_code", result.ErrorCode)...)
+		a.logger.Info("command execution finished", observability.Correlation{ServerID: serverID, CommandID: result.CommandID}.LogArgs("success", result.Success, "error_code", result.ErrorCode)...)
 	case ws.TypeHeartbeatAck:
 		return
 	}

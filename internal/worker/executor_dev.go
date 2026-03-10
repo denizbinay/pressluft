@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (e *Executor) extraAgentVars(ctx context.Context, serverID int64) (map[string]string, error) {
+func (e *Executor) extraAgentVars(ctx context.Context, serverID string) (map[string]string, error) {
 	if e.devTokenStore == nil {
 		return nil, nil
 	}

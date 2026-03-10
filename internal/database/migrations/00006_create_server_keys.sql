@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS server_keys (
-    server_id             INTEGER PRIMARY KEY,
+    server_id             TEXT PRIMARY KEY,
     public_key            TEXT    NOT NULL,
     private_key_encrypted TEXT    NOT NULL,
     encryption_key_id     TEXT    NOT NULL,

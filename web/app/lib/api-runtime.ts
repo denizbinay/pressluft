@@ -1,11 +1,10 @@
-import { z } from 'zod'
-import { platformContract } from '~/lib/platform-contract.generated'
+import { z } from "zod";
+import { platformContract } from "~/lib/platform-contract.generated";
 import type {
   Activity,
   ActivityListResponse,
   AgentInfo,
   AgentStatusMapResponse,
-  AuthActor,
   CreateServerResponse,
   DeleteServerResponse,
   Job,
@@ -14,29 +13,32 @@ import type {
   ServicesResponse,
   StoredServer,
   UnreadCountResponse,
-} from '~/lib/api-contract'
+} from "~/lib/api-types";
+import type { AuthActor } from "~/lib/api-contract";
 
-const serverStatusSchema = z.enum(platformContract.server_statuses)
-const setupStateSchema = z.enum(platformContract.setup_states)
-const nodeStatusSchema = z.enum(platformContract.node_statuses)
-const jobStatusSchema = z.enum(platformContract.job_statuses)
-const jobKindSchema = z.enum(platformContract.job_kinds.map((spec) => spec.kind) as [string, ...string[]])
-const supportLevelSchema = z.enum(platformContract.support_levels)
-const callbackURLModeSchema = z.enum(platformContract.callback_url_modes)
+const serverStatusSchema = z.enum(platformContract.server_statuses);
+const setupStateSchema = z.enum(platformContract.setup_states);
+const nodeStatusSchema = z.enum(platformContract.node_statuses);
+const jobStatusSchema = z.enum(platformContract.job_statuses);
+const jobKindSchema = z.enum(
+  platformContract.job_kinds.map((spec) => spec.kind) as [string, ...string[]],
+);
+const supportLevelSchema = z.enum(platformContract.support_levels);
+const callbackURLModeSchema = z.enum(platformContract.callback_url_modes);
 
 const authActorSchema = z.object({
   id: z.string(),
   type: z.string(),
   email: z.string(),
-  role: z.literal('admin'),
+  role: z.literal("admin"),
   capabilities: z.array(z.string()).optional(),
   authenticated: z.boolean(),
   auth_source: z.string().optional(),
-})
+});
 
 const storedServerSchema = z.object({
-  id: z.number(),
-  provider_id: z.number(),
+  id: z.string(),
+  provider_id: z.string(),
   provider_type: z.string(),
   provider_server_id: z.string().optional(),
   ipv4: z.string().optional(),
@@ -57,7 +59,7 @@ const storedServerSchema = z.object({
   node_version: z.string().optional(),
   created_at: z.string(),
   updated_at: z.string(),
-})
+});
 
 const agentInfoSchema = z.object({
   connected: z.boolean(),
@@ -67,7 +69,7 @@ const agentInfoSchema = z.object({
   cpu_percent: z.number().optional(),
   mem_used_mb: z.number().optional(),
   mem_total_mb: z.number().optional(),
-})
+});
 
 const serverProfileSchema = z.object({
   key: z.string(),
@@ -77,7 +79,7 @@ const serverProfileSchema = z.object({
   support_level: supportLevelSchema,
   configure_guarantee: z.string(),
   support_reason: z.string().optional(),
-})
+});
 
 const serverCatalogSchema = z.object({
   locations: z.array(
@@ -108,31 +110,31 @@ const serverCatalogSchema = z.object({
       ),
     }),
   ),
-})
+});
 
 const serverCatalogResponseSchema = z.object({
   catalog: serverCatalogSchema,
   profiles: z.array(serverProfileSchema),
-})
+});
 
 const createServerResponseSchema = z.object({
-  server_id: z.number(),
-  job_id: z.number(),
+  server_id: z.string(),
+  job_id: z.string(),
   status: serverStatusSchema,
-})
+});
 
 const deleteServerResponseSchema = z.object({
-  server_id: z.number(),
-  job_id: z.number(),
+  server_id: z.string(),
+  job_id: z.string(),
   status: serverStatusSchema,
   job_status: jobStatusSchema,
   async: z.boolean(),
   description: z.string(),
-})
+});
 
 const jobSchema = z.object({
-  id: z.number(),
-  server_id: z.number().optional(),
+  id: z.string(),
+  server_id: z.string().optional(),
   kind: jobKindSchema,
   status: jobStatusSchema,
   current_step: z.string(),
@@ -145,10 +147,11 @@ const jobSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   command_id: z.string().optional(),
-})
+});
 
 const jobEventSchema = z.object({
-  job_id: z.number(),
+  id: z.string(),
+  job_id: z.string(),
   seq: z.number(),
   event_type: z.string(),
   level: z.string(),
@@ -157,17 +160,17 @@ const jobEventSchema = z.object({
   message: z.string(),
   payload: z.string().optional(),
   occurred_at: z.string(),
-})
+});
 
 const activitySchema = z.object({
-  id: z.number(),
+  id: z.string(),
   event_type: z.string(),
   category: z.string(),
   level: z.string(),
   resource_type: z.string().optional(),
-  resource_id: z.number().optional(),
+  resource_id: z.string().optional(),
   parent_resource_type: z.string().optional(),
-  parent_resource_id: z.number().optional(),
+  parent_resource_id: z.string().optional(),
   actor_type: z.string(),
   actor_id: z.string().optional(),
   title: z.string(),
@@ -176,19 +179,19 @@ const activitySchema = z.object({
   requires_attention: z.boolean(),
   read_at: z.string().optional(),
   created_at: z.string(),
-})
+});
 
 const activityListResponseSchema = z.object({
   data: z.array(activitySchema),
   next_cursor: z.string().optional(),
-})
+});
 
 const unreadCountResponseSchema = z.object({
   count: z.number(),
-})
+});
 
 const servicesResponseSchema = z.object({
-  server_id: z.number(),
+  server_id: z.string(),
   agent_connected: z.boolean(),
   services: z.array(
     z.object({
@@ -198,47 +201,70 @@ const servicesResponseSchema = z.object({
       load_state: z.string(),
     }),
   ),
-})
+});
 
-const agentStatusMapResponseSchema = z.record(z.string(), agentInfoSchema)
+const agentStatusMapResponseSchema = z.record(z.string(), agentInfoSchema);
 
 const healthResponseSchema = z.object({
   status: z.string(),
   callback_url_mode: callbackURLModeSchema.optional(),
   callback_url_warning: z.string().optional(),
-})
+});
 
 function decode<T>(schema: z.ZodType<T>, payload: unknown, label: string): T {
-  const parsed = schema.safeParse(payload)
+  const parsed = schema.safeParse(payload);
   if (parsed.success) {
-    return parsed.data
+    return parsed.data;
   }
-  const detail = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
-  throw new Error(`Invalid ${label} response${detail ? `: ${detail}` : ''}`)
+  const detail = parsed.error.issues
+    .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+    .join("; ");
+  throw new Error(`Invalid ${label} response${detail ? `: ${detail}` : ""}`);
 }
 
-export const parseAuthActor = (payload: unknown): AuthActor => decode(authActorSchema, payload, 'auth actor')
-export const parseStoredServer = (payload: unknown): StoredServer => decode(storedServerSchema, payload, 'server')
+export const parseAuthActor = (payload: unknown): AuthActor =>
+  decode(authActorSchema, payload, "auth actor") as AuthActor;
+export const parseStoredServer = (payload: unknown): StoredServer =>
+  decode(storedServerSchema, payload, "server");
 export const parseStoredServers = (payload: unknown): StoredServer[] =>
-  decode(z.array(storedServerSchema), payload, 'server list')
-export const parseServerCatalogResponse = (payload: unknown): ServerCatalogResponse =>
-  decode(serverCatalogResponseSchema, payload, 'server catalog')
-export const parseCreateServerResponse = (payload: unknown): CreateServerResponse =>
-  decode(createServerResponseSchema, payload, 'create server')
-export const parseDeleteServerResponse = (payload: unknown): DeleteServerResponse =>
-  decode(deleteServerResponseSchema, payload, 'delete server')
-export const parseAgentInfo = (payload: unknown): AgentInfo => decode(agentInfoSchema, payload, 'agent info')
-export const parseAgentStatusMapResponse = (payload: unknown): AgentStatusMapResponse =>
-  decode(agentStatusMapResponseSchema, payload, 'agent status map') as AgentStatusMapResponse
-export const parseJob = (payload: unknown): Job => decode(jobSchema, payload, 'job')
+  decode(z.array(storedServerSchema), payload, "server list");
+export const parseServerCatalogResponse = (
+  payload: unknown,
+): ServerCatalogResponse =>
+  decode(serverCatalogResponseSchema, payload, "server catalog");
+export const parseCreateServerResponse = (
+  payload: unknown,
+): CreateServerResponse =>
+  decode(createServerResponseSchema, payload, "create server");
+export const parseDeleteServerResponse = (
+  payload: unknown,
+): DeleteServerResponse =>
+  decode(deleteServerResponseSchema, payload, "delete server");
+export const parseAgentInfo = (payload: unknown): AgentInfo =>
+  decode(agentInfoSchema, payload, "agent info");
+export const parseAgentStatusMapResponse = (
+  payload: unknown,
+): AgentStatusMapResponse =>
+  decode(
+    agentStatusMapResponseSchema,
+    payload,
+    "agent status map",
+  ) as AgentStatusMapResponse;
+export const parseJob = (payload: unknown): Job =>
+  decode(jobSchema, payload, "job");
 export const parseJobEvents = (payload: unknown): JobEvent[] =>
-  decode(z.array(jobEventSchema), payload, 'job events')
-export const parseActivity = (payload: unknown): Activity => decode(activitySchema, payload, 'activity')
-export const parseActivityListResponse = (payload: unknown): ActivityListResponse =>
-  decode(activityListResponseSchema, payload, 'activity list')
-export const parseUnreadCountResponse = (payload: unknown): UnreadCountResponse =>
-  decode(unreadCountResponseSchema, payload, 'unread count')
+  decode(z.array(jobEventSchema), payload, "job events");
+export const parseActivity = (payload: unknown): Activity =>
+  decode(activitySchema, payload, "activity");
+export const parseActivityListResponse = (
+  payload: unknown,
+): ActivityListResponse =>
+  decode(activityListResponseSchema, payload, "activity list");
+export const parseUnreadCountResponse = (
+  payload: unknown,
+): UnreadCountResponse =>
+  decode(unreadCountResponseSchema, payload, "unread count");
 export const parseServicesResponse = (payload: unknown): ServicesResponse =>
-  decode(servicesResponseSchema, payload, 'services')
+  decode(servicesResponseSchema, payload, "services");
 export const parseHealthResponse = (payload: unknown) =>
-  decode(healthResponseSchema, payload, 'health')
+  decode(healthResponseSchema, payload, "health");

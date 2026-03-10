@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"pressluft/internal/idutil"
 )
 
 // Store persists orchestration jobs and timeline events.
@@ -26,10 +28,15 @@ func (s *Store) CreateJob(ctx context.Context, in CreateJobInput) (Job, error) {
 	}
 
 	now := nowRFC3339().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at)
-		 VALUES (?, ?, ?, '', 0, NULL, ?, NULL, NULL, NULL, ?, ?)`,
-		nullableInt64(in.ServerID),
+	publicID, err := idutil.New()
+	if err != nil {
+		return Job{}, err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO jobs (id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, '', 0, NULL, ?, NULL, NULL, NULL, ?, ?)`,
+		publicID,
+		nullableString(in.ServerID),
 		in.Kind,
 		JobStatusQueued,
 		nullableString(in.Payload),
@@ -39,38 +46,38 @@ func (s *Store) CreateJob(ctx context.Context, in CreateJobInput) (Job, error) {
 	if err != nil {
 		return Job{}, fmt.Errorf("insert job: %w", err)
 	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return Job{}, fmt.Errorf("job insert id: %w", err)
-	}
-
-	return s.GetJob(ctx, id)
+	return s.GetJob(ctx, publicID)
 }
 
-func (s *Store) GetJob(ctx context.Context, id int64) (Job, error) {
-	if id <= 0 {
-		return Job{}, fmt.Errorf("id must be greater than zero")
+func (s *Store) GetJob(ctx context.Context, id string) (Job, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return Job{}, err
 	}
 
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 WHERE id = ?`,
-		id,
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 WHERE j.id = ?`,
+		publicID,
 	)
 	job, err := scanJob(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return Job{}, fmt.Errorf("job %d not found", id)
+			return Job{}, fmt.Errorf("job %s not found", publicID)
 		}
 		return Job{}, fmt.Errorf("query job: %w", err)
 	}
 	return job, nil
 }
 
-func (s *Store) SetCommandID(ctx context.Context, jobID int64, commandID string) error {
-	_, err := s.db.ExecContext(ctx,
+func (s *Store) SetCommandID(ctx context.Context, jobID string, commandID string) error {
+	jobID, err := s.lookupJobID(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
 		"UPDATE jobs SET command_id = ? WHERE id = ?",
 		commandID, jobID,
 	)
@@ -79,9 +86,10 @@ func (s *Store) SetCommandID(ctx context.Context, jobID int64, commandID string)
 
 func (s *Store) GetJobByCommandID(ctx context.Context, commandID string) (*Job, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 WHERE command_id = ?`,
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 WHERE j.command_id = ?`,
 		commandID,
 	)
 	job, err := scanJob(row)
@@ -94,7 +102,7 @@ func (s *Store) GetJobByCommandID(ctx context.Context, commandID string) (*Job, 
 	return &job, nil
 }
 
-func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput) (Job, error) {
+func (s *Store) TransitionJob(ctx context.Context, id string, in TransitionInput) (Job, error) {
 	current, err := s.GetJob(ctx, id)
 	if err != nil {
 		return Job{}, err
@@ -148,7 +156,7 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput)
 		finishedAt,
 		timeoutAt,
 		nowText,
-		id,
+		current.ID,
 	)
 	if err != nil {
 		return Job{}, fmt.Errorf("update job status: %w", err)
@@ -157,13 +165,14 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, in TransitionInput)
 	return s.GetJob(ctx, id)
 }
 
-func (s *Store) MarkJobTimedOut(ctx context.Context, id int64, message string) (Job, bool, error) {
+func (s *Store) MarkJobTimedOut(ctx context.Context, id string, message string) (Job, bool, error) {
 	return s.failActiveJob(ctx, id, JobEventTypeTimedOut, "error", message)
 }
 
-func (s *Store) AppendEvent(ctx context.Context, jobID int64, in CreateEventInput) (JobEvent, error) {
-	if jobID <= 0 {
-		return JobEvent{}, fmt.Errorf("job_id must be greater than zero")
+func (s *Store) AppendEvent(ctx context.Context, jobID string, in CreateEventInput) (JobEvent, error) {
+	jobID, err := s.lookupJobID(ctx, jobID)
+	if err != nil {
+		return JobEvent{}, err
 	}
 	if strings.TrimSpace(in.EventType) == "" {
 		return JobEvent{}, fmt.Errorf("event_type is required")
@@ -201,9 +210,10 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 	defer tx.Rollback()
 
 	row := tx.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 WHERE status = ?
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 WHERE j.status = ?
 		 ORDER BY created_at ASC
 		 LIMIT 1`,
 		JobStatusQueued,
@@ -257,9 +267,10 @@ func (s *Store) ClaimNextJob(ctx context.Context) (*Job, error) {
 // ListAllJobs returns all jobs, ordered by created_at DESC.
 func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 ORDER BY created_at DESC`,
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 ORDER BY j.created_at DESC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list all jobs: %w", err)
@@ -270,16 +281,18 @@ func (s *Store) ListAllJobs(ctx context.Context) ([]Job, error) {
 }
 
 // ListJobsByServer returns all jobs for a given server, ordered by created_at DESC.
-func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, error) {
-	if serverID <= 0 {
-		return nil, fmt.Errorf("server_id must be greater than zero")
+func (s *Store) ListJobsByServer(ctx context.Context, serverID string) ([]Job, error) {
+	serverID, err := lookupServerID(ctx, s.db, serverID)
+	if err != nil {
+		return nil, err
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 WHERE server_id = ?
-		 ORDER BY created_at DESC`,
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 WHERE j.server_id = ?
+		 ORDER BY j.created_at DESC`,
 		serverID,
 	)
 	if err != nil {
@@ -291,16 +304,18 @@ func (s *Store) ListJobsByServer(ctx context.Context, serverID int64) ([]Job, er
 }
 
 // GetLatestJobForServer returns the most recent job for a server.
-func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job, error) {
-	if serverID <= 0 {
-		return nil, fmt.Errorf("server_id must be greater than zero")
+func (s *Store) GetLatestJobForServer(ctx context.Context, serverID string) (*Job, error) {
+	serverID, err := lookupServerID(ctx, s.db, serverID)
+	if err != nil {
+		return nil, err
 	}
 
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, server_id, kind, status, current_step, retry_count, last_error, payload, started_at, finished_at, timeout_at, created_at, updated_at, command_id
-		 FROM jobs
-		 WHERE server_id = ?
-		 ORDER BY created_at DESC
+		`SELECT j.id, COALESCE(s.id, ''), j.kind, j.status, j.current_step, j.retry_count, j.last_error, j.payload, j.started_at, j.finished_at, j.timeout_at, j.created_at, j.updated_at, j.command_id
+		 FROM jobs j
+		 LEFT JOIN servers s ON s.id = j.server_id
+		 WHERE j.server_id = ?
+		 ORDER BY j.created_at DESC
 		 LIMIT 1`,
 		serverID,
 	)
@@ -314,18 +329,20 @@ func (s *Store) GetLatestJobForServer(ctx context.Context, serverID int64) (*Job
 	return &job, nil
 }
 
-func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, limit int) ([]JobEvent, error) {
-	if jobID <= 0 {
-		return nil, fmt.Errorf("job_id must be greater than zero")
+func (s *Store) ListEvents(ctx context.Context, jobID string, afterSeq int64, limit int) ([]JobEvent, error) {
+	jobID, err := s.lookupJobID(ctx, jobID)
+	if err != nil {
+		return nil, err
 	}
 	if limit <= 0 {
 		limit = 100
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT job_id, seq, event_type, level, step_key, status, message, payload, created_at
-		 FROM job_events
-		 WHERE job_id = ? AND seq > ?
+		`SELECT e.id, j.id, e.seq, e.event_type, e.level, e.step_key, e.status, e.message, e.payload, e.created_at
+		 FROM job_events e
+		 JOIN jobs j ON j.id = e.job_id
+		 WHERE e.job_id = ? AND e.seq > ?
 		 ORDER BY seq ASC
 		 LIMIT ?`,
 		jobID,
@@ -341,15 +358,17 @@ func (s *Store) ListEvents(ctx context.Context, jobID int64, afterSeq int64, lim
 }
 
 // ListAllEvents returns all events for a job, ordered by sequence.
-func (s *Store) ListAllEvents(ctx context.Context, jobID int64) ([]JobEvent, error) {
-	if jobID <= 0 {
-		return nil, fmt.Errorf("job_id must be greater than zero")
+func (s *Store) ListAllEvents(ctx context.Context, jobID string) ([]JobEvent, error) {
+	jobID, err := s.lookupJobID(ctx, jobID)
+	if err != nil {
+		return nil, err
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT job_id, seq, event_type, level, step_key, status, message, payload, created_at
-		 FROM job_events
-		 WHERE job_id = ?
+		`SELECT e.id, j.id, e.seq, e.event_type, e.level, e.step_key, e.status, e.message, e.payload, e.created_at
+		 FROM job_events e
+		 JOIN jobs j ON j.id = e.job_id
+		 WHERE e.job_id = ?
 		 ORDER BY seq ASC`,
 		jobID,
 	)
@@ -374,9 +393,9 @@ func (s *Store) RecoverStuckJobs(ctx context.Context) (int64, error) {
 	}
 	defer rows.Close()
 
-	var ids []int64
+	var ids []string
 	for rows.Next() {
-		var id int64
+		var id string
 		if err := rows.Scan(&id); err != nil {
 			return 0, fmt.Errorf("scan recoverable job id: %w", err)
 		}
@@ -397,7 +416,7 @@ func (s *Store) RecoverStuckJobs(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
-func (s *Store) failActiveJob(ctx context.Context, id int64, eventType, level, message string) (Job, bool, error) {
+func (s *Store) failActiveJob(ctx context.Context, id string, eventType, level, message string) (Job, bool, error) {
 	job, err := s.GetJob(ctx, id)
 	if err != nil {
 		return Job{}, false, err
@@ -421,7 +440,7 @@ func (s *Store) failActiveJob(ctx context.Context, id int64, eventType, level, m
 		message,
 		now,
 		now,
-		id,
+		job.ID,
 		JobStatusQueued,
 		JobStatusRunning,
 	)
@@ -436,7 +455,7 @@ func (s *Store) failActiveJob(ctx context.Context, id int64, eventType, level, m
 		return current, false, nil
 	}
 
-	if _, err := appendEventTx(ctx, tx, id, CreateEventInput{
+	if _, err := appendEventTx(ctx, tx, job.ID, CreateEventInput{
 		EventType: eventType,
 		Level:     level,
 		StepKey:   job.CurrentStep,
@@ -456,7 +475,7 @@ func (s *Store) failActiveJob(ctx context.Context, id int64, eventType, level, m
 	return updated, true, nil
 }
 
-func appendEventTx(ctx context.Context, tx *sql.Tx, jobID int64, in CreateEventInput) (JobEvent, error) {
+func appendEventTx(ctx context.Context, tx *sql.Tx, jobID string, in CreateEventInput) (JobEvent, error) {
 	var seq int64
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COALESCE(MAX(seq), 0) + 1 FROM job_events WHERE job_id = ?`,
@@ -465,10 +484,15 @@ func appendEventTx(ctx context.Context, tx *sql.Tx, jobID int64, in CreateEventI
 		return JobEvent{}, fmt.Errorf("next event seq: %w", err)
 	}
 
+	eventID, err := idutil.New()
+	if err != nil {
+		return JobEvent{}, err
+	}
 	now := nowRFC3339().Format(time.RFC3339)
-	_, err := tx.ExecContext(ctx,
-		`INSERT INTO job_events (job_id, seq, event_type, level, step_key, status, message, payload, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO job_events (id, job_id, seq, event_type, level, step_key, status, message, payload, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		eventID,
 		jobID,
 		seq,
 		in.EventType,
@@ -484,6 +508,7 @@ func appendEventTx(ctx context.Context, tx *sql.Tx, jobID int64, in CreateEventI
 	}
 
 	return JobEvent{
+		ID:         eventID,
 		JobID:      jobID,
 		Seq:        seq,
 		EventType:  in.EventType,
@@ -521,6 +546,7 @@ func scanEvents(rows *sql.Rows) ([]JobEvent, error) {
 			payload sql.NullString
 		)
 		if err := rows.Scan(
+			&e.ID,
 			&e.JobID,
 			&e.Seq,
 			&e.EventType,
@@ -551,7 +577,7 @@ type rowScanner interface {
 func scanJob(scanner rowScanner) (Job, error) {
 	var (
 		job        Job
-		serverID   sql.NullInt64
+		serverID   sql.NullString
 		lastErr    sql.NullString
 		payload    sql.NullString
 		startedAt  sql.NullString
@@ -578,9 +604,7 @@ func scanJob(scanner rowScanner) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	if serverID.Valid {
-		job.ServerID = serverID.Int64
-	}
+	job.ServerID = nullString(serverID)
 	job.LastError = nullString(lastErr)
 	job.Payload = nullString(payload)
 	job.StartedAt = nullString(startedAt)
@@ -594,13 +618,6 @@ func scanJob(scanner rowScanner) (Job, error) {
 
 func nowRFC3339() time.Time {
 	return time.Now().UTC()
-}
-
-func nullableInt64(v int64) any {
-	if v <= 0 {
-		return nil
-	}
-	return v
 }
 
 func nullableString(v string) any {
@@ -623,4 +640,34 @@ func nullString(v sql.NullString) string {
 		return ""
 	}
 	return v.String
+}
+
+func (s *Store) lookupJobID(ctx context.Context, id string) (string, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return "", err
+	}
+	var jobID string
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM jobs WHERE id = ?`, publicID).Scan(&jobID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("job %s not found", publicID)
+		}
+		return "", fmt.Errorf("lookup job id: %w", err)
+	}
+	return jobID, nil
+}
+
+func lookupServerID(ctx context.Context, db *sql.DB, id string) (string, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return "", err
+	}
+	var serverID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM servers WHERE id = ?`, publicID).Scan(&serverID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("server %s not found", publicID)
+		}
+		return "", fmt.Errorf("lookup server id: %w", err)
+	}
+	return serverID, nil
 }

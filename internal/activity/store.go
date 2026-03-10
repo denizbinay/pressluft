@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"pressluft/internal/idutil"
 )
 
 // Store persists activity entries.
@@ -44,22 +46,28 @@ func (s *Store) Emit(ctx context.Context, in EmitInput) (Activity, error) {
 		requiresAttention = 1
 	}
 
-	res, err := s.db.ExecContext(ctx,
+	publicID, err := idutil.New()
+	if err != nil {
+		return Activity{}, err
+	}
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO activity (
+			id,
 			event_type, category, level,
 			resource_type, resource_id,
 			parent_resource_type, parent_resource_id,
 			actor_type, actor_id,
 			title, message, payload,
 			requires_attention, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		publicID,
 		in.EventType,
 		in.Category,
 		in.Level,
 		nullableString(string(in.ResourceType)),
-		nullableInt64(in.ResourceID),
+		nullableString(in.ResourceID),
 		nullableString(string(in.ParentResourceType)),
-		nullableInt64(in.ParentResourceID),
+		nullableString(in.ParentResourceID),
 		in.ActorType,
 		nullableString(in.ActorID),
 		in.Title,
@@ -72,26 +80,22 @@ func (s *Store) Emit(ctx context.Context, in EmitInput) (Activity, error) {
 		return Activity{}, fmt.Errorf("insert activity: %w", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return Activity{}, fmt.Errorf("activity insert id: %w", err)
-	}
-
-	return s.GetByID(ctx, id)
+	return s.GetByID(ctx, publicID)
 }
 
 // GetByID retrieves a single activity entry by ID.
-func (s *Store) GetByID(ctx context.Context, id int64) (Activity, error) {
-	if id <= 0 {
-		return Activity{}, fmt.Errorf("id must be greater than zero")
+func (s *Store) GetByID(ctx context.Context, id string) (Activity, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return Activity{}, err
 	}
 
 	var (
 		a                  Activity
 		resourceType       sql.NullString
-		resourceID         sql.NullInt64
+		resourceID         sql.NullString
 		parentResourceType sql.NullString
-		parentResourceID   sql.NullInt64
+		parentResourceID   sql.NullString
 		actorID            sql.NullString
 		message            sql.NullString
 		payload            sql.NullString
@@ -99,7 +103,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (Activity, error) {
 		requiresAttention  int
 	)
 
-	err := s.db.QueryRowContext(ctx,
+	err = s.db.QueryRowContext(ctx,
 		`SELECT id, event_type, category, level,
 			resource_type, resource_id,
 			parent_resource_type, parent_resource_id,
@@ -108,7 +112,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (Activity, error) {
 			requires_attention, read_at, created_at
 		FROM activity
 		WHERE id = ?`,
-		id,
+		publicID,
 	).Scan(
 		&a.ID,
 		&a.EventType,
@@ -129,7 +133,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (Activity, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return Activity{}, fmt.Errorf("activity %d not found", id)
+			return Activity{}, fmt.Errorf("activity %s not found", publicID)
 		}
 		return Activity{}, fmt.Errorf("query activity: %w", err)
 	}
@@ -137,15 +141,11 @@ func (s *Store) GetByID(ctx context.Context, id int64) (Activity, error) {
 	if resourceType.Valid {
 		a.ResourceType = ResourceType(resourceType.String)
 	}
-	if resourceID.Valid {
-		a.ResourceID = resourceID.Int64
-	}
+	a.ResourceID = nullString(resourceID)
 	if parentResourceType.Valid {
 		a.ParentResourceType = ResourceType(parentResourceType.String)
 	}
-	if parentResourceID.Valid {
-		a.ParentResourceID = parentResourceID.Int64
-	}
+	a.ParentResourceID = nullString(parentResourceID)
 	if actorID.Valid {
 		a.ActorID = actorID.String
 	}
@@ -188,9 +188,9 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 	args := make([]any, 0)
 
 	// Cursor pagination (descending by id)
-	if filter.Cursor > 0 {
+	if cursor := parseCursor(filter.Cursor); cursor != "" {
 		query.WriteString(" AND id < ?")
-		args = append(args, filter.Cursor)
+		args = append(args, cursor)
 	}
 
 	// Category filter
@@ -204,7 +204,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 		query.WriteString(" AND resource_type = ?")
 		args = append(args, filter.ResourceType)
 	}
-	if filter.ResourceID > 0 {
+	if strings.TrimSpace(filter.ResourceID) != "" {
 		query.WriteString(" AND resource_id = ?")
 		args = append(args, filter.ResourceID)
 	}
@@ -214,7 +214,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 		query.WriteString(" AND parent_resource_type = ?")
 		args = append(args, filter.ParentResourceType)
 	}
-	if filter.ParentResourceID > 0 {
+	if strings.TrimSpace(filter.ParentResourceID) != "" {
 		query.WriteString(" AND parent_resource_id = ?")
 		args = append(args, filter.ParentResourceID)
 	}
@@ -247,9 +247,9 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 		var (
 			a                  Activity
 			resourceType       sql.NullString
-			resourceID         sql.NullInt64
+			resourceID         sql.NullString
 			parentResourceType sql.NullString
-			parentResourceID   sql.NullInt64
+			parentResourceID   sql.NullString
 			actorID            sql.NullString
 			message            sql.NullString
 			payload            sql.NullString
@@ -281,15 +281,11 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 		if resourceType.Valid {
 			a.ResourceType = ResourceType(resourceType.String)
 		}
-		if resourceID.Valid {
-			a.ResourceID = resourceID.Int64
-		}
+		a.ResourceID = nullString(resourceID)
 		if parentResourceType.Valid {
 			a.ParentResourceType = ResourceType(parentResourceType.String)
 		}
-		if parentResourceID.Valid {
-			a.ParentResourceID = parentResourceID.Int64
-		}
+		a.ParentResourceID = nullString(parentResourceID)
 		if actorID.Valid {
 			a.ActorID = actorID.String
 		}
@@ -315,7 +311,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 	if len(out) > limit {
 		// We have more results, return cursor for next page
 		out = out[:limit]
-		nextCursor = fmt.Sprintf("%d", out[len(out)-1].ID)
+		nextCursor = out[len(out)-1].ID
 	}
 
 	return out, nextCursor, nil
@@ -323,9 +319,9 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string
 
 // ListForServer retrieves activity entries for a server, including server events
 // and related child events (e.g., jobs attached to the server).
-func (s *Store) ListForServer(ctx context.Context, serverID int64, filter ListFilter) ([]Activity, string, error) {
-	if serverID <= 0 {
-		return nil, "", fmt.Errorf("server id must be greater than zero")
+func (s *Store) ListForServer(ctx context.Context, serverID string, filter ListFilter) ([]Activity, string, error) {
+	if strings.TrimSpace(serverID) == "" {
+		return nil, "", fmt.Errorf("server id is required")
 	}
 
 	limit := filter.Limit
@@ -348,9 +344,9 @@ func (s *Store) ListForServer(ctx context.Context, serverID int64, filter ListFi
 
 	args := []any{ResourceServer, serverID, ResourceServer, serverID}
 
-	if filter.Cursor > 0 {
+	if cursor := parseCursor(filter.Cursor); cursor != "" {
 		query.WriteString(" AND id < ?")
-		args = append(args, filter.Cursor)
+		args = append(args, cursor)
 	}
 
 	if filter.Category != "" {
@@ -384,9 +380,9 @@ func (s *Store) ListForServer(ctx context.Context, serverID int64, filter ListFi
 		var (
 			a                  Activity
 			resourceType       sql.NullString
-			resourceID         sql.NullInt64
+			resourceID         sql.NullString
 			parentResourceType sql.NullString
-			parentResourceID   sql.NullInt64
+			parentResourceID   sql.NullString
 			actorID            sql.NullString
 			message            sql.NullString
 			payload            sql.NullString
@@ -418,15 +414,11 @@ func (s *Store) ListForServer(ctx context.Context, serverID int64, filter ListFi
 		if resourceType.Valid {
 			a.ResourceType = ResourceType(resourceType.String)
 		}
-		if resourceID.Valid {
-			a.ResourceID = resourceID.Int64
-		}
+		a.ResourceID = nullString(resourceID)
 		if parentResourceType.Valid {
 			a.ParentResourceType = ResourceType(parentResourceType.String)
 		}
-		if parentResourceID.Valid {
-			a.ParentResourceID = parentResourceID.Int64
-		}
+		a.ParentResourceID = nullString(parentResourceID)
 		if actorID.Valid {
 			a.ActorID = actorID.String
 		}
@@ -450,23 +442,24 @@ func (s *Store) ListForServer(ctx context.Context, serverID int64, filter ListFi
 	nextCursor := ""
 	if len(out) > limit {
 		out = out[:limit]
-		nextCursor = fmt.Sprintf("%d", out[len(out)-1].ID)
+		nextCursor = out[len(out)-1].ID
 	}
 
 	return out, nextCursor, nil
 }
 
 // MarkRead marks a single activity entry as read.
-func (s *Store) MarkRead(ctx context.Context, id int64) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *Store) MarkRead(ctx context.Context, id string) error {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return err
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE activity SET read_at = ? WHERE id = ? AND read_at IS NULL`,
 		now,
-		id,
+		publicID,
 	)
 	if err != nil {
 		return fmt.Errorf("mark read: %w", err)
@@ -476,9 +469,9 @@ func (s *Store) MarkRead(ctx context.Context, id int64) error {
 	if rows == 0 {
 		// Check if the activity exists
 		var exists int
-		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM activity WHERE id = ?`, id).Scan(&exists)
+		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM activity WHERE id = ?`, publicID).Scan(&exists)
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("activity %d not found", id)
+			return fmt.Errorf("activity %s not found", publicID)
 		}
 		// Entry exists but was already read - that's fine
 	}
@@ -505,7 +498,7 @@ func (s *Store) MarkAllRead(ctx context.Context, filter ListFilter) error {
 		query.WriteString(" AND resource_type = ?")
 		args = append(args, filter.ResourceType)
 	}
-	if filter.ResourceID > 0 {
+	if strings.TrimSpace(filter.ResourceID) != "" {
 		query.WriteString(" AND resource_id = ?")
 		args = append(args, filter.ResourceID)
 	}
@@ -515,7 +508,7 @@ func (s *Store) MarkAllRead(ctx context.Context, filter ListFilter) error {
 		query.WriteString(" AND parent_resource_type = ?")
 		args = append(args, filter.ParentResourceType)
 	}
-	if filter.ParentResourceID > 0 {
+	if strings.TrimSpace(filter.ParentResourceID) != "" {
 		query.WriteString(" AND parent_resource_id = ?")
 		args = append(args, filter.ParentResourceID)
 	}
@@ -551,7 +544,7 @@ func (s *Store) CountUnread(ctx context.Context, filter ListFilter) (int64, erro
 		query.WriteString(" AND resource_type = ?")
 		args = append(args, filter.ResourceType)
 	}
-	if filter.ResourceID > 0 {
+	if strings.TrimSpace(filter.ResourceID) != "" {
 		query.WriteString(" AND resource_id = ?")
 		args = append(args, filter.ResourceID)
 	}
@@ -561,7 +554,7 @@ func (s *Store) CountUnread(ctx context.Context, filter ListFilter) (int64, erro
 		query.WriteString(" AND parent_resource_type = ?")
 		args = append(args, filter.ParentResourceType)
 	}
-	if filter.ParentResourceID > 0 {
+	if strings.TrimSpace(filter.ParentResourceID) != "" {
 		query.WriteString(" AND parent_resource_id = ?")
 		args = append(args, filter.ParentResourceID)
 	}
@@ -581,22 +574,25 @@ func (s *Store) CountUnread(ctx context.Context, filter ListFilter) (int64, erro
 }
 
 // GetLatestID returns the ID of the most recent activity entry.
-// Returns 0 if no entries exist (not an error).
-func (s *Store) GetLatestID(ctx context.Context) (int64, error) {
-	var id sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM activity`).Scan(&id)
+// Returns empty string if no entries exist (not an error).
+func (s *Store) GetLatestID(ctx context.Context) (string, error) {
+	var id sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM activity ORDER BY id DESC LIMIT 1`).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("get latest id: %w", err)
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("get latest id: %w", err)
 	}
 	if !id.Valid {
-		return 0, nil
+		return "", nil
 	}
-	return id.Int64, nil
+	return id.String, nil
 }
 
 // ListSince returns activity entries with ID greater than sinceID.
 // Used for SSE streaming to poll for new entries.
-func (s *Store) ListSince(ctx context.Context, sinceID int64, limit int) ([]Activity, error) {
+func (s *Store) ListSince(ctx context.Context, sinceID string, limit int) ([]Activity, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -604,6 +600,9 @@ func (s *Store) ListSince(ctx context.Context, sinceID int64, limit int) ([]Acti
 		limit = 200
 	}
 
+	if strings.TrimSpace(sinceID) == "" {
+		sinceID = "00000000-0000-7000-8000-000000000000"
+	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, event_type, category, level,
 			resource_type, resource_id,
@@ -628,9 +627,9 @@ func (s *Store) ListSince(ctx context.Context, sinceID int64, limit int) ([]Acti
 		var (
 			a                  Activity
 			resourceType       sql.NullString
-			resourceID         sql.NullInt64
+			resourceID         sql.NullString
 			parentResourceType sql.NullString
-			parentResourceID   sql.NullInt64
+			parentResourceID   sql.NullString
 			actorID            sql.NullString
 			message            sql.NullString
 			payload            sql.NullString
@@ -662,15 +661,11 @@ func (s *Store) ListSince(ctx context.Context, sinceID int64, limit int) ([]Acti
 		if resourceType.Valid {
 			a.ResourceType = ResourceType(resourceType.String)
 		}
-		if resourceID.Valid {
-			a.ResourceID = resourceID.Int64
-		}
+		a.ResourceID = nullString(resourceID)
 		if parentResourceType.Valid {
 			a.ParentResourceType = ResourceType(parentResourceType.String)
 		}
-		if parentResourceID.Valid {
-			a.ParentResourceID = parentResourceID.Int64
-		}
+		a.ParentResourceID = nullString(parentResourceID)
 		if actorID.Valid {
 			a.ActorID = actorID.String
 		}
@@ -694,17 +689,29 @@ func (s *Store) ListSince(ctx context.Context, sinceID int64, limit int) ([]Acti
 	return out, nil
 }
 
-func nullableInt64(v int64) any {
-	if v <= 0 {
-		return nil
-	}
-	return v
-}
-
 func nullableString(v string) any {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return nil
 	}
 	return v
+}
+
+func nullString(v sql.NullString) string {
+	if !v.Valid {
+		return ""
+	}
+	return v.String
+}
+
+func parseCursor(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	normalized, err := idutil.Normalize(v)
+	if err != nil {
+		return ""
+	}
+	return normalized
 }

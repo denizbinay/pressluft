@@ -1,14 +1,10 @@
 package worker
 
-import (
-	"strconv"
-
-	"pressluft/internal/platform"
-)
+import "pressluft/internal/platform"
 
 // ConfigureContract is the worker-to-configure-playbook boundary.
 type ConfigureContract struct {
-	ServerID           int64
+	ServerID           string
 	ControlPlaneURL    string
 	ExecutionMode      platform.ExecutionMode
 	ProfileKey         string
@@ -20,7 +16,7 @@ type ConfigureContract struct {
 
 func (c ConfigureContract) ExtraVars() map[string]string {
 	return map[string]string{
-		"server_id":                   strconv.FormatInt(c.ServerID, 10),
+		"server_id":                   c.ServerID,
 		"control_plane_url":           c.ControlPlaneURL,
 		"pressluft_execution_mode":    string(c.ExecutionMode),
 		"profile_key":                 c.ProfileKey,

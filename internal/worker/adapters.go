@@ -18,31 +18,31 @@ func NewServerStoreAdapter(store *server.ServerStore) *ServerStoreAdapter {
 	return &ServerStoreAdapter{store: store}
 }
 
-func (a *ServerStoreAdapter) GetByID(ctx context.Context, id int64) (*server.StoredServer, error) {
+func (a *ServerStoreAdapter) GetByID(ctx context.Context, id string) (*server.StoredServer, error) {
 	return a.store.GetByID(ctx, id)
 }
 
-func (a *ServerStoreAdapter) UpdateStatus(ctx context.Context, id int64, status platform.ServerStatus) error {
+func (a *ServerStoreAdapter) UpdateStatus(ctx context.Context, id string, status platform.ServerStatus) error {
 	return a.store.UpdateStatus(ctx, id, status)
 }
 
-func (a *ServerStoreAdapter) UpdateSetupState(ctx context.Context, id int64, setupState platform.SetupState, setupLastError string) error {
+func (a *ServerStoreAdapter) UpdateSetupState(ctx context.Context, id string, setupState platform.SetupState, setupLastError string) error {
 	return a.store.UpdateSetupState(ctx, id, setupState, setupLastError)
 }
 
-func (a *ServerStoreAdapter) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
+func (a *ServerStoreAdapter) UpdateProvisioning(ctx context.Context, id string, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
 	return a.store.UpdateProvisioning(ctx, id, providerServerID, actionID, actionStatus, status, ipv4, ipv6)
 }
 
-func (a *ServerStoreAdapter) UpdateServerType(ctx context.Context, id int64, serverType string) error {
+func (a *ServerStoreAdapter) UpdateServerType(ctx context.Context, id string, serverType string) error {
 	return a.store.UpdateServerType(ctx, id, serverType)
 }
 
-func (a *ServerStoreAdapter) UpdateImage(ctx context.Context, id int64, image string) error {
+func (a *ServerStoreAdapter) UpdateImage(ctx context.Context, id string, image string) error {
 	return a.store.UpdateImage(ctx, id, image)
 }
 
-func (a *ServerStoreAdapter) GetKey(ctx context.Context, serverID int64) (*server.StoredServerKey, error) {
+func (a *ServerStoreAdapter) GetKey(ctx context.Context, serverID string) (*server.StoredServerKey, error) {
 	return a.store.GetKey(ctx, serverID)
 }
 
@@ -60,6 +60,6 @@ func NewProviderStoreAdapter(store *provider.Store) *ProviderStoreAdapter {
 	return &ProviderStoreAdapter{store: store}
 }
 
-func (a *ProviderStoreAdapter) GetByID(ctx context.Context, id int64) (*provider.StoredProvider, error) {
+func (a *ProviderStoreAdapter) GetByID(ctx context.Context, id string) (*provider.StoredProvider, error) {
 	return a.store.GetByID(ctx, id)
 }

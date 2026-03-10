@@ -16,7 +16,7 @@ import (
 
 func TestWorkerRecoversInterruptedJobsOnStartup(t *testing.T) {
 	store := newWorkerJobStore(t)
-	job, err := store.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: 1})
+	job, err := store.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindDeleteServer), ServerID: "00000000-0000-7000-8000-000000000001"})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestWorkerRecoversInterruptedJobsOnStartup(t *testing.T) {
 
 func TestWorkerMarksTimedOutJobFailed(t *testing.T) {
 	store := newWorkerJobStore(t)
-	job, err := store.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: 2})
+	job, err := store.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: "00000000-0000-7000-8000-000000000002"})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -112,9 +112,12 @@ func newWorkerJobStore(t *testing.T) *orchestrator.Store {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`
+		CREATE TABLE servers (
+			id TEXT PRIMARY KEY
+		);
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -129,8 +132,8 @@ func newWorkerJobStore(t *testing.T) *orchestrator.Store {
 			updated_at   TEXT    NOT NULL
 		);
 		CREATE TABLE job_events (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -140,6 +143,9 @@ func newWorkerJobStore(t *testing.T) *orchestrator.Store {
 			payload    TEXT,
 			created_at TEXT    NOT NULL
 		);
+		INSERT INTO servers (id) VALUES
+			('00000000-0000-7000-8000-000000000001'),
+			('00000000-0000-7000-8000-000000000002');
 	`); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

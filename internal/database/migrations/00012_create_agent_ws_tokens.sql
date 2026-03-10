@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS agent_ws_tokens (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    server_id    INTEGER NOT NULL,
+    id           TEXT PRIMARY KEY,
+    server_id    TEXT    NOT NULL,
     token_hash   TEXT    NOT NULL UNIQUE,
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     expires_at   TEXT    NOT NULL,

@@ -13,14 +13,14 @@ export type Capability = "manage_providers" | "manage_servers" | "queue_jobs" | 
 export type Role = 'admin'
 
 export interface Activity {
-  id: number
+  id: string
   event_type: string
   category: string
   level: string
   resource_type?: string
-  resource_id?: number
+  resource_id?: string
   parent_resource_type?: string
-  parent_resource_id?: number
+  parent_resource_id?: string
   actor_type: string
   actor_id?: string
   title: string
@@ -60,7 +60,7 @@ export interface AuthActor {
 
 export interface CreateJobRequest {
   kind: string
-  server_id: number
+  server_id?: string
   payload: unknown
 }
 
@@ -71,12 +71,12 @@ export interface CreateProviderRequest {
 }
 
 export interface CreateProviderResponse {
-  id: number
+  id: string
   validation: ValidationResult
 }
 
 export interface CreateServerRequest {
-  provider_id: number
+  provider_id: string
   name: string
   location: string
   server_type: string
@@ -84,14 +84,14 @@ export interface CreateServerRequest {
 }
 
 export interface CreateServerResponse {
-  server_id: number
-  job_id: number
+  server_id: string
+  job_id: string
   status: ServerStatus
 }
 
 export interface DeleteServerResponse {
-  server_id: number
-  job_id: number
+  server_id: string
+  job_id: string
   status: ServerStatus
   job_status: JobStatus
   async: boolean
@@ -99,7 +99,7 @@ export interface DeleteServerResponse {
 }
 
 export interface FirewallsResponse {
-  server_id: number
+  server_id: string
   firewalls: { id: number; name: string }[]
 }
 
@@ -110,8 +110,8 @@ export interface HealthResponse {
 }
 
 export interface Job {
-  id: number
-  server_id?: number
+  id: string
+  server_id?: string
   kind: string
   status: JobStatus
   current_step: string
@@ -127,7 +127,8 @@ export interface Job {
 }
 
 export interface JobEvent {
-  job_id: number
+  id: string
+  job_id: string
   seq: number
   event_type: string
   level: string
@@ -152,14 +153,14 @@ export interface ProviderType {
 }
 
 export interface RebuildOptionsResponse {
-  server_id: number
+  server_id: string
   server_type: string
   architecture: string
   images: { id: number; name: string; type: string; architecture: string; deprecated: boolean; status: string }[]
 }
 
 export interface ResizeOptionsResponse {
-  server_id: number
+  server_id: string
   location: string
   server_type: string
   architecture: string
@@ -221,7 +222,7 @@ export interface Service {
 }
 
 export interface ServicesResponse {
-  server_id: number
+  server_id: string
   agent_connected: boolean
   services: Service[]
 }
@@ -231,7 +232,7 @@ export interface StatusResponse {
 }
 
 export interface StoredProvider {
-  id: number
+  id: string
   type: string
   name: string
   status: string
@@ -240,8 +241,8 @@ export interface StoredProvider {
 }
 
 export interface StoredServer {
-  id: number
-  provider_id: number
+  id: string
+  provider_id: string
   provider_type: string
   provider_server_id?: string
   ipv4?: string
@@ -281,7 +282,7 @@ export interface ValidationResult {
 }
 
 export interface VolumesResponse {
-  server_id: number
+  server_id: string
   volumes: { id: number; name: string; size_gb: number; location: string; status: string; server_id?: number }[]
 }
 

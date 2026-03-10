@@ -10,7 +10,7 @@ import (
 
 // StoredServerKey is a persisted SSH key for a server.
 type StoredServerKey struct {
-	ServerID            int64  `json:"server_id"`
+	ServerID            string `json:"server_id"`
 	PublicKey           string `json:"public_key"`
 	PrivateKeyEncrypted string `json:"private_key_encrypted"`
 	EncryptionKeyID     string `json:"encryption_key_id"`
@@ -20,7 +20,7 @@ type StoredServerKey struct {
 
 // CreateServerKeyInput is required to store a server key.
 type CreateServerKeyInput struct {
-	ServerID            int64
+	ServerID            string
 	PublicKey           string
 	PrivateKeyEncrypted string
 	EncryptionKeyID     string
@@ -28,16 +28,17 @@ type CreateServerKeyInput struct {
 }
 
 // GetKey returns the SSH key for a server, if present.
-func (s *ServerStore) GetKey(ctx context.Context, serverID int64) (*StoredServerKey, error) {
-	if serverID <= 0 {
-		return nil, fmt.Errorf("server_id must be greater than zero")
+func (s *ServerStore) GetKey(ctx context.Context, serverID string) (*StoredServerKey, error) {
+	serverID, err := s.lookupServerID(ctx, serverID)
+	if err != nil {
+		return nil, err
 	}
 
 	var (
 		key       StoredServerKey
 		rotatedAt sql.NullString
 	)
-	err := s.db.QueryRowContext(ctx,
+	err = s.db.QueryRowContext(ctx,
 		`SELECT server_id, public_key, private_key_encrypted, encryption_key_id, created_at, rotated_at
          FROM server_keys
          WHERE server_id = ?`,
@@ -67,11 +68,15 @@ func (s *ServerStore) CreateKey(ctx context.Context, in CreateServerKeyInput) er
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	serverID, err := s.lookupServerID(ctx, in.ServerID)
+	if err != nil {
+		return err
+	}
 	rotatedAt := sql.NullString{String: strings.TrimSpace(in.RotatedAt), Valid: strings.TrimSpace(in.RotatedAt) != ""}
-	_, err := s.db.ExecContext(ctx,
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO server_keys (server_id, public_key, private_key_encrypted, encryption_key_id, created_at, rotated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-		in.ServerID,
+		serverID,
 		in.PublicKey,
 		in.PrivateKeyEncrypted,
 		in.EncryptionKeyID,
@@ -85,8 +90,8 @@ func (s *ServerStore) CreateKey(ctx context.Context, in CreateServerKeyInput) er
 }
 
 func validateCreateServerKeyInput(in CreateServerKeyInput) error {
-	if in.ServerID <= 0 {
-		return fmt.Errorf("server_id must be greater than zero")
+	if strings.TrimSpace(in.ServerID) == "" {
+		return fmt.Errorf("server_id is required")
 	}
 	if strings.TrimSpace(in.PublicKey) == "" {
 		return fmt.Errorf("public_key is required")

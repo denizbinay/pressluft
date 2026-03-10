@@ -172,6 +172,57 @@ func ensureJobsColumns(db *sql.DB, definitions []string) error {
 	return nil
 }
 
+func ensureTableColumns(db *sql.DB, table string, definitions []string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return fmt.Errorf("inspect %s schema: %w", table, err)
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{})
+	foundTable := false
+	for rows.Next() {
+		foundTable = true
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan %s schema: %w", table, err)
+		}
+		existing[strings.ToLower(name)] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate %s schema: %w", table, err)
+	}
+	if !foundTable {
+		return nil
+	}
+
+	for _, definition := range definitions {
+		parts := strings.Fields(definition)
+		if len(parts) == 0 {
+			continue
+		}
+		name := strings.ToLower(parts[0])
+		if _, ok := existing[name]; ok {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + definition); err != nil {
+			return fmt.Errorf("add %s.%s: %w", table, name, err)
+		}
+	}
+	return nil
+}
+func tableExists(db *sql.DB, table string) bool {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
+}
+
 func ensureProvidersColumns(db *sql.DB, definitions []string) error {
 	rows, err := db.Query(`PRAGMA table_info(providers)`)
 	if err != nil {

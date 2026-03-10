@@ -15,7 +15,7 @@ func (c *Config) registrationURL() (string, error) {
 	if base.Scheme != "https" {
 		return "", fmt.Errorf("production agent registration requires an https control_plane URL")
 	}
-	base.Path = path.Join(base.Path, fmt.Sprintf("/api/nodes/%d/register", c.ServerID))
+	base.Path = path.Join(base.Path, "/api/nodes/", c.ServerID, "register")
 	return base.String(), nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"pressluft/internal/activity"
@@ -70,7 +69,7 @@ func TestActivityGetEndpoint(t *testing.T) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/activity/"+strconv.FormatInt(act.ID, 10), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/activity/"+act.ID, nil)
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
 
@@ -84,7 +83,7 @@ func TestActivityGetEndpoint(t *testing.T) {
 	}
 
 	if fetched.ID != act.ID {
-		t.Errorf("id = %d, want %d", fetched.ID, act.ID)
+		t.Errorf("id = %q, want %q", fetched.ID, act.ID)
 	}
 	if fetched.Title != "Server created" {
 		t.Errorf("title = %q, want %q", fetched.Title, "Server created")
@@ -95,7 +94,7 @@ func TestActivityGetNotFound(t *testing.T) {
 	db := mustOpenActivityHandlerDB(t)
 	handler := NewHandler(db)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/activity/999", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/activity/00000000-0000-7000-8000-000000000999", nil)
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
 
@@ -121,7 +120,7 @@ func TestActivityMarkReadEndpoint(t *testing.T) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/activity/"+strconv.FormatInt(act.ID, 10)+"/read", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/activity/"+act.ID+"/read", nil)
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
 
@@ -323,7 +322,7 @@ func TestActivityListWithPagination(t *testing.T) {
 	for _, p1 := range page1.Data {
 		for _, p2 := range page2.Data {
 			if p1.ID == p2.ID {
-				t.Errorf("overlap: activity %d appears in both pages", p1.ID)
+				t.Errorf("overlap: activity %s appears in both pages", p1.ID)
 			}
 		}
 	}
@@ -345,12 +344,12 @@ func mustOpenActivityHandlerDB(t *testing.T) *sql.DB {
 	// Create minimal schema needed for handler tests
 	if _, err := db.Exec(`
 		CREATE TABLE servers (
-			id INTEGER PRIMARY KEY AUTOINCREMENT
+			id TEXT PRIMARY KEY
 		);
 
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -367,8 +366,8 @@ func mustOpenActivityHandlerDB(t *testing.T) *sql.DB {
 		);
 
 		CREATE TABLE job_events (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -381,14 +380,14 @@ func mustOpenActivityHandlerDB(t *testing.T) *sql.DB {
 		);
 
 		CREATE TABLE IF NOT EXISTS activity (
-			id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+			id                   TEXT PRIMARY KEY,
 			event_type           TEXT NOT NULL,
 			category             TEXT NOT NULL,
 			level                TEXT NOT NULL,
 			resource_type        TEXT,
-			resource_id          INTEGER,
+			resource_id          TEXT,
 			parent_resource_type TEXT,
-			parent_resource_id   INTEGER,
+			parent_resource_id   TEXT,
 			actor_type           TEXT NOT NULL,
 			actor_id             TEXT,
 			title                TEXT NOT NULL,

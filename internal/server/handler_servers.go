@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -65,8 +64,8 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		serverID, err := strconv.ParseInt(parts[0], 10, 64)
-		if err != nil || serverID <= 0 {
+		serverID, err := apitypes.ParseAppID(parts[0])
+		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -140,7 +139,7 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (sh *serversHandler) routeServerByID(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) routeServerByID(w http.ResponseWriter, r *http.Request, serverID string) {
 	switch r.Method {
 	case http.MethodGet:
 		sh.handleGetServer(w, r, serverID)
@@ -151,7 +150,7 @@ func (sh *serversHandler) routeServerByID(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request, serverID string) {
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
@@ -160,7 +159,7 @@ func (sh *serversHandler) handleGetServer(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, apiStoredServer(*server))
 }
 
-func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Request, serverID string) {
 	slog.Default().Info("server action requested", "action", "delete_server", "server_id", serverID)
 	serverRecord, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
@@ -214,7 +213,7 @@ func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Requ
 	slog.Default().Info("server action queued", "action", "delete_server", "server_id", serverID, "job_id", job.ID, "server_status", platform.ServerStatusDeleting)
 
 	respondJSON(w, http.StatusAccepted, apitypes.DeleteServerResponse{
-		ServerID:    serverID,
+		ServerID:    apitypes.FormatAppID(serverID),
 		JobID:       job.ID,
 		Status:      platform.ServerStatusDeleting,
 		JobStatus:   job.Status,
@@ -223,13 +222,13 @@ func (sh *serversHandler) handleDeleteServer(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-func (sh *serversHandler) handleListServerJobs(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleListServerJobs(w http.ResponseWriter, r *http.Request, serverID string) {
 	jobs, err := sh.jobStore.ListJobsByServer(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, jobs)
+	respondJSON(w, http.StatusOK, apitypes.APIJobs(jobs))
 }
 
 func (sh *serversHandler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -384,14 +383,14 @@ func (sh *serversHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusAccepted, apitypes.CreateServerResponse{
-		ServerID: serverID,
+		ServerID: apitypes.FormatAppID(serverID),
 		JobID:    job.ID,
 		Status:   platform.ServerStatusPending,
 	})
 	slog.Default().Info("server action queued", "action", "create_server", "server_id", serverID, "job_id", job.ID, "server_status", platform.ServerStatusPending)
 }
 
-func (sh *serversHandler) handleRebuildOptions(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleRebuildOptions(w http.ResponseWriter, r *http.Request, serverID string) {
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
@@ -435,14 +434,14 @@ func (sh *serversHandler) handleRebuildOptions(w http.ResponseWriter, r *http.Re
 	}
 
 	respondJSON(w, http.StatusOK, apitypes.RebuildOptionsResponse{
-		ServerID:     server.ID,
+		ServerID:     apitypes.FormatAppID(server.ID),
 		ServerType:   server.ServerType,
 		Architecture: architecture,
 		Images:       images,
 	})
 }
 
-func (sh *serversHandler) handleResizeOptions(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleResizeOptions(w http.ResponseWriter, r *http.Request, serverID string) {
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
@@ -477,7 +476,7 @@ func (sh *serversHandler) handleResizeOptions(w http.ResponseWriter, r *http.Req
 	}
 
 	respondJSON(w, http.StatusOK, apitypes.ResizeOptionsResponse{
-		ServerID:     server.ID,
+		ServerID:     apitypes.FormatAppID(server.ID),
 		Location:     server.Location,
 		ServerType:   server.ServerType,
 		Architecture: architecture,
@@ -485,7 +484,7 @@ func (sh *serversHandler) handleResizeOptions(w http.ResponseWriter, r *http.Req
 	})
 }
 
-func (sh *serversHandler) handleServerFirewalls(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleServerFirewalls(w http.ResponseWriter, r *http.Request, serverID string) {
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
@@ -513,12 +512,12 @@ func (sh *serversHandler) handleServerFirewalls(w http.ResponseWriter, r *http.R
 	}
 
 	respondJSON(w, http.StatusOK, apitypes.FirewallsResponse{
-		ServerID:  server.ID,
+		ServerID:  apitypes.FormatAppID(server.ID),
 		Firewalls: firewalls,
 	})
 }
 
-func (sh *serversHandler) handleServerVolumes(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleServerVolumes(w http.ResponseWriter, r *http.Request, serverID string) {
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
@@ -546,26 +545,26 @@ func (sh *serversHandler) handleServerVolumes(w http.ResponseWriter, r *http.Req
 	}
 
 	respondJSON(w, http.StatusOK, apitypes.VolumesResponse{
-		ServerID: server.ID,
+		ServerID: apitypes.FormatAppID(server.ID),
 		Volumes:  volumes,
 	})
 }
 
-func parseProviderIDQuery(r *http.Request) (int64, error) {
+func parseProviderIDQuery(r *http.Request) (string, error) {
 	raw := strings.TrimSpace(r.URL.Query().Get("provider_id"))
 	if raw == "" {
-		return 0, fmt.Errorf("provider_id is required")
+		return "", fmt.Errorf("provider_id is required")
 	}
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("provider_id must be a positive integer")
+	id, err := apitypes.ParseAppID(raw)
+	if err != nil {
+		return "", fmt.Errorf("provider_id must be a valid app id")
 	}
 	return id, nil
 }
 
 func validateCreateServerHTTPRequest(req apitypes.CreateServerRequest) error {
-	if req.ProviderID <= 0 {
-		return fmt.Errorf("provider_id must be a positive integer")
+	if strings.TrimSpace(req.ProviderID) == "" {
+		return fmt.Errorf("provider_id is required")
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		return fmt.Errorf("name is required")
@@ -642,7 +641,7 @@ func (sh *serversHandler) handleAllAgentStatus(w http.ResponseWriter, r *http.Re
 
 	result := make(apitypes.AgentStatusMapResponse, len(servers))
 	for _, server := range servers {
-		result[server.ID] = storedAgentInfo(server)
+		result[apitypes.FormatAppID(server.ID)] = storedAgentInfo(server)
 	}
 
 	if sh.hub != nil {
@@ -655,7 +654,7 @@ func (sh *serversHandler) handleAllAgentStatus(w http.ResponseWriter, r *http.Re
 }
 
 // handleAgentStatus returns real-time agent connection status and metrics.
-func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Request, serverID string) {
 	// First verify the server exists
 	server, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
@@ -664,8 +663,8 @@ func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Reque
 	}
 
 	if sh.hub != nil {
-		if _, ok := sh.hub.Get(serverID); ok {
-			info := sh.hub.GetAgentInfo(serverID)
+		if _, ok := sh.hub.Get(server.ID); ok {
+			info := sh.hub.GetAgentInfo(server.ID)
 			respondJSON(w, http.StatusOK, info)
 			return
 		}
@@ -676,7 +675,7 @@ func (sh *serversHandler) handleAgentStatus(w http.ResponseWriter, r *http.Reque
 
 // handleListServices returns the list of running services on the server.
 // This requires an active agent connection to fetch real-time data.
-func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Request, serverID string) {
 	// Verify server exists
 	_, err := sh.serverStore.GetByID(r.Context(), serverID)
 	if err != nil {
@@ -687,17 +686,23 @@ func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Requ
 	// Check if agent is connected
 	if sh.hub == nil {
 		respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
-			ServerID:       serverID,
+			ServerID:       apitypes.FormatAppID(serverID),
 			AgentConnected: false,
 			Services:       []agentcommand.Service{},
 		})
 		return
 	}
 
-	info := sh.hub.GetAgentInfo(serverID)
+	server, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	info := sh.hub.GetAgentInfo(server.ID)
 	if !info.Connected {
 		respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
-			ServerID:       serverID,
+			ServerID:       apitypes.FormatAppID(serverID),
 			AgentConnected: false,
 			Services:       []agentcommand.Service{},
 		})
@@ -716,7 +721,7 @@ func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Requ
 		Type: agentcommand.TypeListServices,
 	}
 
-	result, err := sh.hub.SendCommandAndWait(ctx, serverID, cmd)
+	result, err := sh.hub.SendCommandAndWait(ctx, server.ID, cmd)
 	if err != nil {
 		respondError(w, http.StatusBadGateway, "failed to fetch services: "+err.Error())
 		return
@@ -738,7 +743,7 @@ func (sh *serversHandler) handleListServices(w http.ResponseWriter, r *http.Requ
 	}
 
 	respondJSON(w, http.StatusOK, apitypes.ServicesResponse{
-		ServerID:       serverID,
+		ServerID:       apitypes.FormatAppID(serverID),
 		AgentConnected: true,
 		Services:       payload.Services,
 	})
@@ -764,7 +769,7 @@ func storedAgentInfo(server StoredServer) ws.AgentInfo {
 
 func apiStoredServer(in StoredServer) apitypes.StoredServer {
 	return apitypes.StoredServer{
-		ID:               in.ID,
+		ID:               apitypes.FormatAppID(in.ID),
 		ProviderID:       in.ProviderID,
 		ProviderType:     in.ProviderType,
 		ProviderServerID: in.ProviderServerID,

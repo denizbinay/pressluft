@@ -21,7 +21,7 @@ func TestCompleterHandleResultMarksJobSucceededAndEmitsActivity(t *testing.T) {
 	activityStore := activity.NewStore(db)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: 3})
+	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: "00000000-0000-7000-8000-000000000003"})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCompleterHandleLogEntryAppendsTimelineEvent(t *testing.T) {
 	jobStore := orchestrator.NewStore(db)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: 5})
+	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: "00000000-0000-7000-8000-000000000005"})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -109,9 +109,12 @@ func newCompleterDB(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`
+		CREATE TABLE servers (
+			id TEXT PRIMARY KEY
+		);
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -126,8 +129,8 @@ func newCompleterDB(t *testing.T) *sql.DB {
 			updated_at   TEXT    NOT NULL
 		);
 		CREATE TABLE job_events (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -138,14 +141,14 @@ func newCompleterDB(t *testing.T) *sql.DB {
 			created_at TEXT    NOT NULL
 		);
 		CREATE TABLE activity (
-			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+			id                 TEXT PRIMARY KEY,
 			event_type         TEXT NOT NULL,
 			category           TEXT NOT NULL,
 			level              TEXT NOT NULL,
 			resource_type      TEXT,
-			resource_id        INTEGER,
+			resource_id        TEXT,
 			parent_resource_type TEXT,
-			parent_resource_id INTEGER,
+			parent_resource_id TEXT,
 			actor_type         TEXT NOT NULL,
 			actor_id           TEXT,
 			title              TEXT NOT NULL,

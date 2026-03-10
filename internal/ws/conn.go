@@ -12,7 +12,7 @@ import (
 
 type Conn struct {
 	conn       *websocket.Conn
-	serverID   int64
+	serverID   string
 	lastSeen   time.Time
 	version    string
 	cpuPercent float64
@@ -21,7 +21,7 @@ type Conn struct {
 	mu         sync.RWMutex
 }
 
-func NewConn(wsConn *websocket.Conn, serverID int64) *Conn {
+func NewConn(wsConn *websocket.Conn, serverID string) *Conn {
 	return &Conn{
 		conn:     wsConn,
 		serverID: serverID,
@@ -29,7 +29,7 @@ func NewConn(wsConn *websocket.Conn, serverID int64) *Conn {
 	}
 }
 
-func (c *Conn) ServerID() int64 {
+func (c *Conn) ServerID() string {
 	return c.serverID
 }
 

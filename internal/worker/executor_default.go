@@ -12,7 +12,7 @@ import (
 	"pressluft/internal/platform"
 )
 
-func (e *Executor) extraAgentVars(ctx context.Context, serverID int64) (map[string]string, error) {
+func (e *Executor) extraAgentVars(ctx context.Context, serverID string) (map[string]string, error) {
 	if e.executionMode != platform.ExecutionModeProductionBootstrap {
 		return nil, fmt.Errorf("agent bootstrap requires %q control-plane mode; current mode is %q", platform.ExecutionModeProductionBootstrap, e.executionMode)
 	}

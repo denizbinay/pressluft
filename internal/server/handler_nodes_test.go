@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -28,24 +27,24 @@ import (
 
 func TestNodeRegisterConsumesTokenOnce(t *testing.T) {
 	h, stores := newNodeHandlerTestHarness(t)
-	token, err := stores.registration.Create(1, time.Hour)
+	token, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	body := registerRequestBody(t, 1, token)
+	body := registerRequestBody(t, "00000000-0000-7000-8000-000000000001", token)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(body))
 	h.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("first status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if err := stores.registration.Validate(token, 1); !errors.Is(err, registration.ErrConsumedToken) {
+	if err := stores.registration.Validate(token, "00000000-0000-7000-8000-000000000001"); !errors.Is(err, registration.ErrConsumedToken) {
 		t.Fatalf("Validate() after consume error = %v, want %v", err, registration.ErrConsumedToken)
 	}
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(body))
+	req = httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(body))
 	h.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("replay status = %d, body = %s", rec.Code, rec.Body.String())
@@ -55,7 +54,7 @@ func TestNodeRegisterConsumesTokenOnce(t *testing.T) {
 func TestNodeRegisterRejectsExpiredTokenAndCNMismatchWithoutConsuming(t *testing.T) {
 	h, stores := newNodeHandlerTestHarness(t)
 
-	expired, err := stores.registration.Create(1, time.Hour)
+	expired, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() expired error = %v", err)
 	}
@@ -63,49 +62,49 @@ func TestNodeRegisterRejectsExpiredTokenAndCNMismatchWithoutConsuming(t *testing
 		t.Fatalf("expire token: %v", err)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(registerRequestBody(t, 1, expired)))
+	req := httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000001", expired)))
 	h.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expired status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
-	cnMismatch, err := stores.registration.Create(1, time.Hour)
+	cnMismatch, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() cn mismatch error = %v", err)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(registerRequestBody(t, 2, cnMismatch)))
+	req = httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000002", cnMismatch)))
 	h.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("cn mismatch status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if err := stores.registration.Validate(cnMismatch, 1); err != nil {
+	if err := stores.registration.Validate(cnMismatch, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Validate() after CN mismatch error = %v", err)
 	}
 }
 
 func TestNodeRegisterBlocksExistingValidCert(t *testing.T) {
 	h, stores := newNodeHandlerTestHarness(t)
-	csr := newCSR(t, 1)
+	csr := newCSR(t, "00000000-0000-7000-8000-000000000001")
 	cert, err := stores.ca.SignCSR(csr, 90)
 	if err != nil {
 		t.Fatalf("SignCSR() error = %v", err)
 	}
-	if err := stores.pki.SaveNodeCertificate(1, cert); err != nil {
+	if err := stores.pki.SaveNodeCertificate("00000000-0000-7000-8000-000000000001", cert); err != nil {
 		t.Fatalf("SaveNodeCertificate() error = %v", err)
 	}
-	token, err := stores.registration.Create(1, time.Hour)
+	token, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(registerRequestBody(t, 1, token)))
+	req := httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000001", token)))
 	h.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if err := stores.registration.Validate(token, 1); err != nil {
+	if err := stores.registration.Validate(token, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Validate() after conflict error = %v", err)
 	}
 }
@@ -113,33 +112,33 @@ func TestNodeRegisterBlocksExistingValidCert(t *testing.T) {
 func TestNodeRegisterKeepsTokenWhenCAOrPersistenceFails(t *testing.T) {
 	base, stores := newNodeHandlerTestHarness(t)
 
-	caToken, err := stores.registration.Create(1, time.Hour)
+	caToken, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() ca token error = %v", err)
 	}
 	caFail := &NodeHandler{db: stores.db, pkiStore: stores.pki, registrationStore: stores.registration, ca: failingCA{err: errors.New("boom")}, logger: base.logger}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(registerRequestBody(t, 1, caToken)))
+	req := httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000001", caToken)))
 	caFail.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("ca failure status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if err := stores.registration.Validate(caToken, 1); err != nil {
+	if err := stores.registration.Validate(caToken, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Validate() after CA failure error = %v", err)
 	}
 
-	persistToken, err := stores.registration.Create(1, time.Hour)
+	persistToken, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() persistence token error = %v", err)
 	}
 	persistFail := &NodeHandler{db: stores.db, pkiStore: failingPKIStore{stores.pki}, registrationStore: stores.registration, ca: stores.ca, logger: base.logger}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/nodes/1/register", bytes.NewReader(registerRequestBody(t, 1, persistToken)))
+	req = httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000001/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000001", persistToken)))
 	persistFail.handleNodeRegister(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("persistence failure status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if err := stores.registration.Validate(persistToken, 1); err != nil {
+	if err := stores.registration.Validate(persistToken, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Validate() after persistence failure error = %v", err)
 	}
 }
@@ -160,11 +159,11 @@ func newNodeHandlerTestHarness(t *testing.T) (*NodeHandler, nodeHandlerStores) {
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
 		`PRAGMA foreign_keys = ON`,
-		`CREATE TABLE servers (id INTEGER PRIMARY KEY)`,
-		`INSERT INTO servers (id) VALUES (1)`,
-		`CREATE TABLE ca_certificates (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT UNIQUE NOT NULL, certificate BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))`,
-		`CREATE TABLE node_certificates (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES servers(id), fingerprint TEXT UNIQUE NOT NULL, serial_number TEXT UNIQUE NOT NULL, certificate BLOB NOT NULL, issued_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, revoked_at TEXT)`,
-		`CREATE TABLE registration_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES servers(id), token_hash TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, consumed_at TEXT)`,
+		`CREATE TABLE servers (id TEXT PRIMARY KEY)`,
+		`INSERT INTO servers (id) VALUES ('00000000-0000-7000-8000-000000000001')`,
+		`CREATE TABLE ca_certificates (id TEXT PRIMARY KEY, fingerprint TEXT UNIQUE NOT NULL, certificate BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))`,
+		`CREATE TABLE node_certificates (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id), fingerprint TEXT UNIQUE NOT NULL, serial_number TEXT UNIQUE NOT NULL, certificate BLOB NOT NULL, issued_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, revoked_at TEXT)`,
+		`CREATE TABLE registration_tokens (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id), token_hash TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), expires_at TEXT NOT NULL, consumed_at TEXT)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatalf("exec %q: %v", statement, err)
@@ -184,7 +183,7 @@ func newNodeHandlerTestHarness(t *testing.T) (*NodeHandler, nodeHandlerStores) {
 	return h, nodeHandlerStores{db: db, pki: pkiStore, registration: regStore, ca: ca}
 }
 
-func registerRequestBody(t *testing.T, serverID int64, token string) []byte {
+func registerRequestBody(t *testing.T, serverID string, token string) []byte {
 	t.Helper()
 	body, err := json.Marshal(RegisterRequest{Token: token, CSR: string(csrPEM(t, serverID))})
 	if err != nil {
@@ -193,7 +192,7 @@ func registerRequestBody(t *testing.T, serverID int64, token string) []byte {
 	return body
 }
 
-func csrPEM(t *testing.T, serverID int64) []byte {
+func csrPEM(t *testing.T, serverID string) []byte {
 	t.Helper()
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: serverCommonName(serverID)}}, newEd25519Signer(t))
 	if err != nil {
@@ -202,7 +201,7 @@ func csrPEM(t *testing.T, serverID int64) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr})
 }
 
-func newCSR(t *testing.T, serverID int64) *x509.CertificateRequest {
+func newCSR(t *testing.T, serverID string) *x509.CertificateRequest {
 	t.Helper()
 	csr, err := x509.ParseCertificateRequest(pemBlockBytes(t, csrPEM(t, serverID)))
 	if err != nil {
@@ -229,8 +228,8 @@ func newEd25519Signer(t *testing.T) ed25519.PrivateKey {
 	return key
 }
 
-func serverCommonName(serverID int64) string {
-	return "server-" + big.NewInt(serverID).String()
+func serverCommonName(serverID string) string {
+	return "server:" + serverID
 }
 
 type failingCA struct{ err error }
@@ -242,6 +241,6 @@ func (f failingCA) Certificate() *x509.Certificate { return &x509.Certificate{} 
 
 type failingPKIStore struct{ *pki.Store }
 
-func (f failingPKIStore) SaveNodeCertificateTx(_ context.Context, _ *sql.Tx, _ int64, _ *x509.Certificate) error {
+func (f failingPKIStore) SaveNodeCertificateTx(_ context.Context, _ *sql.Tx, _ string, _ *x509.Certificate) error {
 	return errors.New("write failed")
 }

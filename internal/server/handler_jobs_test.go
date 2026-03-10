@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,7 @@ func TestJobsCreateAndGetEndpoints(t *testing.T) {
 	db := mustOpenJobsHandlerDB(t)
 	handler := NewHandler(db)
 
-	body, _ := json.Marshal(map[string]any{"kind": "provision_server", "server_id": 0})
+	body, _ := json.Marshal(map[string]any{"kind": "provision_server"})
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -29,20 +30,20 @@ func TestJobsCreateAndGetEndpoints(t *testing.T) {
 	}
 
 	var created struct {
-		ID     int64  `json:"id"`
+		ID     string `json:"id"`
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	if created.ID <= 0 {
+	if created.ID == "" {
 		t.Fatal("expected job id")
 	}
 	if created.Status != "queued" {
 		t.Fatalf("status = %q, want %q", created.Status, "queued")
 	}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/jobs/"+intToString(created.ID), nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
 	getRes := httptest.NewRecorder()
 	handler.ServeHTTP(getRes, getReq)
 
@@ -60,21 +61,21 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 	tests := []struct {
 		name     string
 		kind     string
-		serverID int64
+		serverID bool
 		payload  any
 		wantCode int
 	}{
 		{
 			name:     "unknown kind rejected",
 			kind:     "unknown_job",
-			serverID: 1,
+			serverID: true,
 			payload:  map[string]any{},
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "rebuild valid payload",
 			kind:     "rebuild_server",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"server_name":  "agency-prod-01",
 				"server_image": "ubuntu-24.04",
@@ -84,14 +85,14 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "rebuild invalid payload type",
 			kind:     "rebuild_server",
-			serverID: 1,
+			serverID: true,
 			payload:  "not-an-object",
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "resize missing server_type",
 			kind:     "resize_server",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"upgrade_disk": upgrade,
 			},
@@ -100,7 +101,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "resize missing upgrade_disk",
 			kind:     "resize_server",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"server_type": "cx32",
 			},
@@ -109,7 +110,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "resize valid payload",
 			kind:     "resize_server",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"server_type":  "cx32",
 				"upgrade_disk": upgrade,
@@ -119,7 +120,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "update firewalls empty list",
 			kind:     "update_firewalls",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"firewalls": []string{},
 			},
@@ -128,7 +129,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "update firewalls valid payload",
 			kind:     "update_firewalls",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"firewalls": []string{"web", ""},
 			},
@@ -137,7 +138,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "manage volume missing name",
 			kind:     "manage_volume",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"state":     "present",
 				"size_gb":   10,
@@ -149,7 +150,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "manage volume missing automount",
 			kind:     "manage_volume",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"volume_name": "data",
 				"state":       "present",
@@ -161,7 +162,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "manage volume missing size_gb",
 			kind:     "manage_volume",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"volume_name": "data",
 				"state":       "present",
@@ -172,7 +173,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "manage volume absent valid",
 			kind:     "manage_volume",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"volume_name": "data",
 				"state":       "absent",
@@ -182,7 +183,7 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 		{
 			name:     "manage volume present valid",
 			kind:     "manage_volume",
-			serverID: 1,
+			serverID: true,
 			payload: map[string]any{
 				"volume_name": "data",
 				"state":       "present",
@@ -195,8 +196,8 @@ func TestJobsCreatePayloadValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			serverID := int64(0)
-			if tt.serverID > 0 {
+			serverID := ""
+			if tt.serverID {
 				serverID = mustInsertJobServer(t, db, string(platform.ServerStatusReady))
 			}
 			bodyBytes, _ := json.Marshal(map[string]any{
@@ -221,7 +222,7 @@ func TestJobsCreateRejectsMissingKind(t *testing.T) {
 	db := mustOpenJobsHandlerDB(t)
 	handler := NewHandler(db)
 
-	body, _ := json.Marshal(map[string]any{"server_id": 1})
+	body, _ := json.Marshal(map[string]any{"server_id": testPublicID(999)})
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -328,9 +329,13 @@ func mustOpenJobsHandlerDB(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
+		CREATE TABLE providers (
+			id TEXT PRIMARY KEY
+		);
+
 		CREATE TABLE servers (
-			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-			provider_id        INTEGER,
+			id                 TEXT PRIMARY KEY,
+			provider_id        TEXT,
 			provider_type      TEXT,
 			provider_server_id TEXT,
 			ipv4               TEXT,
@@ -353,7 +358,7 @@ func mustOpenJobsHandlerDB(t *testing.T) *sql.DB {
 		);
 
 		CREATE TABLE server_keys (
-			server_id             INTEGER PRIMARY KEY,
+			server_id             TEXT PRIMARY KEY,
 			public_key            TEXT    NOT NULL,
 			private_key_encrypted TEXT    NOT NULL,
 			encryption_key_id     TEXT    NOT NULL,
@@ -363,8 +368,8 @@ func mustOpenJobsHandlerDB(t *testing.T) *sql.DB {
 		);
 
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -381,8 +386,8 @@ func mustOpenJobsHandlerDB(t *testing.T) *sql.DB {
 		);
 
 		CREATE TABLE job_events (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -400,20 +405,32 @@ func mustOpenJobsHandlerDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func mustInsertJobServer(t *testing.T, db *sql.DB, status string) int64 {
+func mustInsertJobServer(t *testing.T, db *sql.DB, status string) string {
 	t.Helper()
+	providerID := nextJobsPublicID(t, db, "providers")
+	if _, err := db.Exec(`INSERT INTO providers (id) VALUES (?)`, providerID); err != nil {
+		t.Fatalf("insert provider: %v", err)
+	}
+	serverID := nextJobsPublicID(t, db, "servers")
 
-	res, err := db.Exec(
-		`INSERT INTO servers (provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
-		 VALUES (1, 'hetzner', 'job-server', 'fsn1', 'cx22', 'ubuntu-24.04', 'nginx-stack', ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+	_, err := db.Exec(
+		`INSERT INTO servers (id, provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
+		 VALUES (?, ?, 'hetzner', 'job-server', 'fsn1', 'cx22', 'ubuntu-24.04', 'nginx-stack', ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		serverID,
+		providerID,
 		status,
 	)
 	if err != nil {
 		t.Fatalf("insert server: %v", err)
 	}
-	serverID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("server insert id: %v", err)
-	}
 	return serverID
+}
+
+func nextJobsPublicID(t *testing.T, db *sql.DB, table string) string {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+		t.Fatalf("count %s rows: %v", table, err)
+	}
+	return fmt.Sprintf("00000000-0000-7000-8000-%012d", count+1)
 }

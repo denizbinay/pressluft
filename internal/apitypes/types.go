@@ -8,6 +8,7 @@ import (
 	"pressluft/internal/activity"
 	"pressluft/internal/agentcommand"
 	"pressluft/internal/auth"
+	"pressluft/internal/idutil"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
 	"pressluft/internal/provider"
@@ -67,12 +68,12 @@ func (r *ValidateProviderRequest) Validate() error {
 }
 
 type CreateProviderResponse struct {
-	ID         int64                     `json:"id"`
+	ID         string                    `json:"id"`
 	Validation provider.ValidationResult `json:"validation"`
 }
 
 type CreateServerRequest struct {
-	ProviderID int64  `json:"provider_id"`
+	ProviderID string `json:"provider_id"`
 	Name       string `json:"name"`
 	Location   string `json:"location"`
 	ServerType string `json:"server_type"`
@@ -85,14 +86,14 @@ type ServerCatalogResponse struct {
 }
 
 type CreateServerResponse struct {
-	ServerID int64                 `json:"server_id"`
-	JobID    int64                 `json:"job_id"`
+	ServerID string                `json:"server_id"`
+	JobID    string                `json:"job_id"`
 	Status   platform.ServerStatus `json:"status"`
 }
 
 type StoredServer struct {
-	ID               int64                 `json:"id"`
-	ProviderID       int64                 `json:"provider_id"`
+	ID               string                `json:"id"`
+	ProviderID       string                `json:"provider_id"`
 	ProviderType     string                `json:"provider_type"`
 	ProviderServerID string                `json:"provider_server_id,omitempty"`
 	IPv4             string                `json:"ipv4,omitempty"`
@@ -116,8 +117,8 @@ type StoredServer struct {
 }
 
 type DeleteServerResponse struct {
-	ServerID    int64                  `json:"server_id"`
-	JobID       int64                  `json:"job_id"`
+	ServerID    string                 `json:"server_id"`
+	JobID       string                 `json:"job_id"`
 	Status      platform.ServerStatus  `json:"status"`
 	JobStatus   orchestrator.JobStatus `json:"job_status"`
 	Async       bool                   `json:"async"`
@@ -125,14 +126,14 @@ type DeleteServerResponse struct {
 }
 
 type RebuildOptionsResponse struct {
-	ServerID     int64                        `json:"server_id"`
+	ServerID     string                       `json:"server_id"`
 	ServerType   string                       `json:"server_type"`
 	Architecture string                       `json:"architecture"`
 	Images       []provider.ServerImageOption `json:"images"`
 }
 
 type ResizeOptionsResponse struct {
-	ServerID     int64                       `json:"server_id"`
+	ServerID     string                      `json:"server_id"`
 	Location     string                      `json:"location"`
 	ServerType   string                      `json:"server_type"`
 	Architecture string                      `json:"architecture"`
@@ -140,26 +141,26 @@ type ResizeOptionsResponse struct {
 }
 
 type FirewallsResponse struct {
-	ServerID  int64                     `json:"server_id"`
+	ServerID  string                    `json:"server_id"`
 	Firewalls []provider.FirewallOption `json:"firewalls"`
 }
 
 type VolumesResponse struct {
-	ServerID int64                   `json:"server_id"`
+	ServerID string                  `json:"server_id"`
 	Volumes  []provider.VolumeOption `json:"volumes"`
 }
 
-type AgentStatusMapResponse map[int64]ws.AgentInfo
+type AgentStatusMapResponse map[string]ws.AgentInfo
 
 type ServicesResponse struct {
-	ServerID       int64                  `json:"server_id"`
+	ServerID       string                 `json:"server_id"`
 	AgentConnected bool                   `json:"agent_connected"`
 	Services       []agentcommand.Service `json:"services"`
 }
 
 type CreateJobRequest struct {
 	Kind     string          `json:"kind"`
-	ServerID int64           `json:"server_id"`
+	ServerID string          `json:"server_id,omitempty"`
 	Payload  json.RawMessage `json:"payload"`
 }
 
@@ -172,12 +173,124 @@ func (r *CreateJobRequest) Validate() error {
 }
 
 type ActivityListResponse struct {
-	Data       []activity.Activity `json:"data"`
-	NextCursor string              `json:"next_cursor,omitempty"`
+	Data       []Activity `json:"data"`
+	NextCursor string     `json:"next_cursor,omitempty"`
 }
 
 type UnreadCountResponse struct {
 	Count int64 `json:"count"`
+}
+
+type Job struct {
+	ID          string                 `json:"id"`
+	ServerID    string                 `json:"server_id,omitempty"`
+	Kind        string                 `json:"kind"`
+	Status      orchestrator.JobStatus `json:"status"`
+	CurrentStep string                 `json:"current_step"`
+	RetryCount  int                    `json:"retry_count"`
+	LastError   string                 `json:"last_error,omitempty"`
+	Payload     string                 `json:"payload,omitempty"`
+	StartedAt   string                 `json:"started_at,omitempty"`
+	FinishedAt  string                 `json:"finished_at,omitempty"`
+	TimeoutAt   string                 `json:"timeout_at,omitempty"`
+	CreatedAt   string                 `json:"created_at"`
+	UpdatedAt   string                 `json:"updated_at"`
+	CommandID   *string                `json:"command_id,omitempty"`
+}
+
+type Activity struct {
+	ID                 string                `json:"id"`
+	EventType          activity.EventType    `json:"event_type"`
+	Category           activity.Category     `json:"category"`
+	Level              activity.Level        `json:"level"`
+	ResourceType       activity.ResourceType `json:"resource_type,omitempty"`
+	ResourceID         string                `json:"resource_id,omitempty"`
+	ParentResourceType activity.ResourceType `json:"parent_resource_type,omitempty"`
+	ParentResourceID   string                `json:"parent_resource_id,omitempty"`
+	ActorType          activity.ActorType    `json:"actor_type"`
+	ActorID            string                `json:"actor_id,omitempty"`
+	Title              string                `json:"title"`
+	Message            string                `json:"message,omitempty"`
+	Payload            string                `json:"payload,omitempty"`
+	RequiresAttention  bool                  `json:"requires_attention"`
+	ReadAt             string                `json:"read_at,omitempty"`
+	CreatedAt          string                `json:"created_at"`
+}
+
+func FormatAppID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	normalized, err := idutil.Normalize(id)
+	if err != nil {
+		return id
+	}
+	return normalized
+}
+
+func ParseAppID(raw string) (string, error) {
+	id, err := idutil.Normalize(raw)
+	if err != nil {
+		return "", fmt.Errorf("app id: %w", err)
+	}
+	return id, nil
+}
+
+func APIJob(in orchestrator.Job) Job {
+	return Job{
+		ID:          in.ID,
+		ServerID:    FormatAppID(in.ServerID),
+		Kind:        in.Kind,
+		Status:      in.Status,
+		CurrentStep: in.CurrentStep,
+		RetryCount:  in.RetryCount,
+		LastError:   in.LastError,
+		Payload:     in.Payload,
+		StartedAt:   in.StartedAt,
+		FinishedAt:  in.FinishedAt,
+		TimeoutAt:   in.TimeoutAt,
+		CreatedAt:   in.CreatedAt,
+		UpdatedAt:   in.UpdatedAt,
+		CommandID:   in.CommandID,
+	}
+}
+
+func APIJobs(in []orchestrator.Job) []Job {
+	out := make([]Job, 0, len(in))
+	for _, item := range in {
+		out = append(out, APIJob(item))
+	}
+	return out
+}
+
+func APIActivity(in activity.Activity) Activity {
+	return Activity{
+		ID:                 in.ID,
+		EventType:          in.EventType,
+		Category:           in.Category,
+		Level:              in.Level,
+		ResourceType:       in.ResourceType,
+		ResourceID:         FormatAppID(in.ResourceID),
+		ParentResourceType: in.ParentResourceType,
+		ParentResourceID:   FormatAppID(in.ParentResourceID),
+		ActorType:          in.ActorType,
+		ActorID:            in.ActorID,
+		Title:              in.Title,
+		Message:            in.Message,
+		Payload:            in.Payload,
+		RequiresAttention:  in.RequiresAttention,
+		ReadAt:             in.ReadAt,
+		CreatedAt:          in.CreatedAt,
+	}
+}
+
+func APIActivities(in []activity.Activity) []Activity {
+	out := make([]Activity, 0, len(in))
+	for _, item := range in {
+		out = append(out, APIActivity(item))
+	}
+	return out
 }
 
 var PublishedTypes = map[string]any{
@@ -210,9 +323,9 @@ var PublishedTypes = map[string]any{
 	"ServicesResponse":        ServicesResponse{},
 	"AuthActor":               auth.Actor{},
 	"CreateJobRequest":        CreateJobRequest{},
-	"Job":                     orchestrator.Job{},
+	"Job":                     Job{},
 	"JobEvent":                orchestrator.JobEvent{},
-	"Activity":                activity.Activity{},
+	"Activity":                Activity{},
 	"ActivityListResponse":    ActivityListResponse{},
 	"UnreadCountResponse":     UnreadCountResponse{},
 }

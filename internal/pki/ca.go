@@ -37,8 +37,8 @@ type CA struct {
 }
 
 type NodeCertificate struct {
-	ID           int64
-	ServerID     int64
+	ID           string
+	ServerID     string
 	Fingerprint  string
 	SerialNumber string
 	IssuedAt     time.Time
@@ -107,8 +107,9 @@ func LoadOrCreateCA(db *sql.DB, ageKeyPath, caKeyPath string) (*CA, error) {
 		}
 
 		certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-		_, err = db.Exec("INSERT INTO ca_certificates (fingerprint, certificate) VALUES (?, ?)",
-			calculateFingerprint(cert), certPEM)
+		caID := calculateFingerprint(cert)
+		_, err = db.Exec("INSERT INTO ca_certificates (id, fingerprint, certificate) VALUES (?, ?, ?)",
+			caID, caID, certPEM)
 		if err != nil {
 			return nil, fmt.Errorf("save CA certificate: %w", err)
 		}

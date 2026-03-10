@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,15 +22,15 @@ const nodeCertificateReissueWindow = 14 * 24 * time.Hour
 const nodeRegistrationBodyLimit int64 = 256 << 10
 
 type nodePKIStore interface {
-	GetValidCertForServer(serverID int64) (*pki.NodeCertificate, error)
-	GetValidCertForServerTx(ctx context.Context, tx *sql.Tx, serverID int64) (*pki.NodeCertificate, error)
-	SaveNodeCertificateTx(ctx context.Context, tx *sql.Tx, serverID int64, cert *x509.Certificate) error
+	GetValidCertForServer(serverID string) (*pki.NodeCertificate, error)
+	GetValidCertForServerTx(ctx context.Context, tx *sql.Tx, serverID string) (*pki.NodeCertificate, error)
+	SaveNodeCertificateTx(ctx context.Context, tx *sql.Tx, serverID string, cert *x509.Certificate) error
 	RevokeCertificateTx(ctx context.Context, tx *sql.Tx, serialNumber string) error
 }
 
 type nodeRegistrationStore interface {
-	Validate(plaintext string, serverID int64) error
-	ConsumeTx(ctx context.Context, tx *sql.Tx, plaintext string, serverID int64) error
+	Validate(plaintext string, serverID string) error
+	ConsumeTx(ctx context.Context, tx *sql.Tx, plaintext string, serverID string) error
 }
 
 type nodeCertificateAuthority interface {
@@ -75,8 +74,8 @@ func (h *NodeHandler) handleNodeRegister(w http.ResponseWriter, r *http.Request)
 
 	serverIDStr := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
 	serverIDStr = strings.TrimSuffix(serverIDStr, "/register")
-	serverID, err := strconv.ParseInt(serverIDStr, 10, 64)
-	if err != nil {
+	serverID := strings.TrimSpace(serverIDStr)
+	if serverID == "" {
 		respondError(w, http.StatusBadRequest, "invalid server id")
 		return
 	}
@@ -128,8 +127,7 @@ func (h *NodeHandler) handleNodeRegister(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	expectedCN := fmt.Sprintf("server-%d", serverID)
-	if csr.Subject.CommonName != expectedCN {
+	if csr.Subject.CommonName != fmt.Sprintf("server:%s", serverID) {
 		respondError(w, http.StatusBadRequest, "CSR CN must match server ID")
 		return
 	}
@@ -202,7 +200,7 @@ func shouldAllowReissue(cert *pki.NodeCertificate, now time.Time) bool {
 	return cert.ExpiresAt.Sub(now) <= nodeCertificateReissueWindow
 }
 
-func (h *NodeHandler) handleRegistrationTokenError(w http.ResponseWriter, serverID int64, err error) {
+func (h *NodeHandler) handleRegistrationTokenError(w http.ResponseWriter, serverID string, err error) {
 	h.logger.Warn("agent registration token rejected", "server_id", serverID, "error", err)
 	switch {
 	case errors.Is(err, registration.ErrExpiredToken):

@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS jobs (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    server_id    INTEGER,
+    id           TEXT PRIMARY KEY,
+    server_id    TEXT,
     kind         TEXT    NOT NULL,
     status       TEXT    NOT NULL,
     current_step TEXT    NOT NULL DEFAULT '',
@@ -23,8 +23,8 @@ CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_command_id ON jobs(command_id) WHERE command_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS job_events (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id     INTEGER NOT NULL,
+    id         TEXT PRIMARY KEY,
+    job_id     TEXT    NOT NULL,
     seq        INTEGER NOT NULL,
     event_type TEXT    NOT NULL,
     level      TEXT    NOT NULL,

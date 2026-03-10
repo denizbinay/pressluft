@@ -43,16 +43,16 @@ type AgentInfo struct {
 
 type Command struct {
 	ID       string          `json:"id"`
-	JobID    int64           `json:"job_id"`
-	ServerID int64           `json:"server_id,omitempty"`
+	JobID    string          `json:"job_id"`
+	ServerID string          `json:"server_id,omitempty"`
 	Type     string          `json:"type"`
 	Payload  json.RawMessage `json:"payload"`
 }
 
 type CommandResult struct {
 	CommandID string          `json:"command_id"`
-	JobID     int64           `json:"job_id,omitempty"`
-	ServerID  int64           `json:"server_id,omitempty"`
+	JobID     string          `json:"job_id,omitempty"`
+	ServerID  string          `json:"server_id,omitempty"`
 	Success   bool            `json:"success"`
 	Error     string          `json:"error,omitempty"`
 	ErrorCode string          `json:"error_code,omitempty"`
@@ -62,8 +62,8 @@ type CommandResult struct {
 
 type LogEntry struct {
 	CommandID string    `json:"command_id"`
-	JobID     int64     `json:"job_id,omitempty"`
-	ServerID  int64     `json:"server_id,omitempty"`
+	JobID     string    `json:"job_id,omitempty"`
+	ServerID  string    `json:"server_id,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 	Level     string    `json:"level"`
 	Message   string    `json:"message"`

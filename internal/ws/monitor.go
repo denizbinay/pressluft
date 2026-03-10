@@ -10,7 +10,7 @@ import (
 )
 
 type ServerStore interface {
-	UpdateNodeStatus(ctx context.Context, serverID int64, status platform.NodeStatus, lastSeen, version string) error
+	UpdateNodeStatus(ctx context.Context, serverID string, status platform.NodeStatus, lastSeen, version string) error
 	MarkNodesOfflineBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
@@ -49,7 +49,7 @@ func (m *Monitor) Start(ctx context.Context) {
 func (m *Monitor) checkConnections() {
 	now := time.Now()
 
-	m.hub.Range(func(serverID int64, conn *Conn) bool {
+	m.hub.Range(func(serverID string, conn *Conn) bool {
 		lastSeen := conn.LastSeen()
 		elapsed := now.Sub(lastSeen)
 		version := conn.Version()

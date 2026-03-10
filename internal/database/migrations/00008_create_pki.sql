@@ -1,14 +1,14 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS ca_certificates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     fingerprint TEXT UNIQUE NOT NULL,
     certificate BLOB NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS node_certificates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    server_id INTEGER NOT NULL REFERENCES servers(id),
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id),
     fingerprint TEXT UNIQUE NOT NULL,
     serial_number TEXT UNIQUE NOT NULL,
     certificate BLOB NOT NULL,

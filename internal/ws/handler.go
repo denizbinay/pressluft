@@ -24,7 +24,7 @@ type Handler struct {
 }
 
 type NodeStatusStore interface {
-	UpdateNodeStatus(ctx context.Context, serverID int64, status platform.NodeStatus, lastSeen, version string) error
+	UpdateNodeStatus(ctx context.Context, serverID string, status platform.NodeStatus, lastSeen, version string) error
 }
 
 func NewHandler(hub *Hub, completer Completer, waiter *ResultWaiter, store NodeStatusStore, logger *slog.Logger) *Handler {
@@ -109,10 +109,11 @@ func (h *Handler) handleCommandResult(ctx context.Context, conn *Conn, env Envel
 		h.logger.Debug("command result decode failed", "server_id", conn.ServerID(), "error", err)
 		return
 	}
-	if result.ServerID == 0 {
-		result.ServerID = conn.ServerID()
+	serverID := conn.ServerID()
+	if result.ServerID == "" {
+		result.ServerID = serverID
 	}
-	h.logger.Info("command result received", observability.Correlation{JobID: result.JobID, ServerID: result.ServerID, CommandID: result.CommandID}.LogArgs("success", result.Success, "error_code", result.ErrorCode)...)
+	h.logger.Info("command result received", observability.Correlation{ServerID: serverID, CommandID: result.CommandID}.LogArgs("success", result.Success, "error_code", result.ErrorCode)...)
 
 	if h.waiter != nil && h.waiter.Resolve(result) {
 		return
@@ -123,7 +124,7 @@ func (h *Handler) handleCommandResult(ctx context.Context, conn *Conn, env Envel
 	}
 
 	if err := h.completer.HandleResult(result); err != nil {
-		h.logger.Error("command result handling failed", observability.Correlation{JobID: result.JobID, ServerID: result.ServerID, CommandID: result.CommandID}.LogArgs("error", err)...)
+		h.logger.Error("command result handling failed", observability.Correlation{ServerID: serverID, CommandID: result.CommandID}.LogArgs("error", err)...)
 	}
 }
 
@@ -133,21 +134,22 @@ func (h *Handler) handleLogEntry(ctx context.Context, conn *Conn, env Envelope) 
 		h.logger.Debug("command log entry decode failed", "server_id", conn.ServerID(), "error", err)
 		return
 	}
-	if entry.ServerID == 0 {
-		entry.ServerID = conn.ServerID()
+	serverID := conn.ServerID()
+	if entry.ServerID == "" {
+		entry.ServerID = serverID
 	}
-	h.logger.Debug("command log entry received", observability.Correlation{JobID: entry.JobID, ServerID: entry.ServerID, CommandID: entry.CommandID}.LogArgs("level", entry.Level, "message", entry.Message)...)
+	h.logger.Debug("command log entry received", observability.Correlation{ServerID: serverID, CommandID: entry.CommandID}.LogArgs("level", entry.Level, "message", entry.Message)...)
 
 	if h.completer == nil {
 		return
 	}
 
 	if err := h.completer.HandleLogEntry(entry); err != nil {
-		h.logger.Error("command log entry handling failed", observability.Correlation{JobID: entry.JobID, ServerID: entry.ServerID, CommandID: entry.CommandID}.LogArgs("error", err)...)
+		h.logger.Error("command log entry handling failed", observability.Correlation{ServerID: serverID, CommandID: entry.CommandID}.LogArgs("error", err)...)
 	}
 }
 
-func (h *Handler) persistNodeStatus(ctx context.Context, serverID int64, status platform.NodeStatus, lastSeen time.Time, version string, reason string) {
+func (h *Handler) persistNodeStatus(ctx context.Context, serverID string, status platform.NodeStatus, lastSeen time.Time, version string, reason string) {
 	if h.store == nil {
 		return
 	}

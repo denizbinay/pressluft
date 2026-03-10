@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestServerStoreCreateAndList(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewServerStore(db)
 
-	providerID := mustInsertProvider(t, db, "hetzner", "main")
+	providerID, _ := mustInsertProvider(t, db, "hetzner", "main")
 
 	_, err := store.Create(context.Background(), CreateServerNodeInput{
 		ProviderID:   providerID,
@@ -68,7 +69,7 @@ func TestServerStoreUpdateProvisioning(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewServerStore(db)
 
-	providerID := mustInsertProvider(t, db, "hetzner", "main")
+	providerID, _ := mustInsertProvider(t, db, "hetzner", "main")
 
 	serverID, err := store.Create(context.Background(), CreateServerNodeInput{
 		ProviderID:   providerID,
@@ -110,7 +111,7 @@ func TestServerStoreUpdateProvisioning(t *testing.T) {
 func TestServerStoreQueueServerJobUpdatesLifecycleStatus(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewServerStore(db)
-	providerID := mustInsertProvider(t, db, "hetzner", "main")
+	providerID, _ := mustInsertProvider(t, db, "hetzner", "main")
 
 	serverID, err := store.Create(context.Background(), CreateServerNodeInput{
 		ProviderID:   providerID,
@@ -252,7 +253,7 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE providers (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			id         TEXT PRIMARY KEY,
 			type       TEXT    NOT NULL,
 			name       TEXT    NOT NULL,
 			api_token_encrypted TEXT NOT NULL,
@@ -268,8 +269,8 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE servers (
-			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-			provider_id        INTEGER NOT NULL,
+			id                 TEXT PRIMARY KEY,
+			provider_id        TEXT    NOT NULL,
 			provider_type      TEXT    NOT NULL,
 			provider_server_id TEXT,
 			ipv4               TEXT,
@@ -297,7 +298,7 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE server_keys (
-			server_id             INTEGER PRIMARY KEY,
+			server_id             TEXT PRIMARY KEY,
 			public_key            TEXT    NOT NULL,
 			private_key_encrypted TEXT    NOT NULL,
 			encryption_key_id     TEXT    NOT NULL,
@@ -311,8 +312,8 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL,
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -328,7 +329,8 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (server_id) REFERENCES servers(id)
 		);
 		CREATE TABLE job_events (
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -337,7 +339,6 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 			message    TEXT    NOT NULL,
 			payload    TEXT,
 			created_at TEXT    NOT NULL,
-			PRIMARY KEY (job_id, seq),
 			FOREIGN KEY (job_id) REFERENCES jobs(id)
 		);
 	`); err != nil {
@@ -347,17 +348,19 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func mustInsertProvider(t *testing.T, db *sql.DB, providerType, name string) int64 {
+func mustInsertProvider(t *testing.T, db *sql.DB, providerType, name string) (string, string) {
 	t.Helper()
 
+	publicID := nextTestPublicID(t, db, "providers")
 	encrypted, keyID, version, err := security.EncryptProviderToken("secret-token")
 	if err != nil {
 		t.Fatalf("encrypt provider token: %v", err)
 	}
 
-	res, err := db.Exec(
-		`INSERT INTO providers (type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+	_, err = db.Exec(
+		`INSERT INTO providers (id, type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		publicID,
 		providerType,
 		name,
 		encrypted,
@@ -368,20 +371,17 @@ func mustInsertProvider(t *testing.T, db *sql.DB, providerType, name string) int
 		t.Fatalf("insert provider: %v", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("provider insert id: %v", err)
-	}
-
-	return id
+	return publicID, publicID
 }
 
-func mustInsertServerWithStatus(t *testing.T, db *sql.DB, status string) int64 {
+func mustInsertServerWithStatus(t *testing.T, db *sql.DB, status string) string {
 	t.Helper()
-	providerID := mustInsertProvider(t, db, "hetzner", "secondary")
-	res, err := db.Exec(
-		`INSERT INTO servers (provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+	providerID, _ := mustInsertProvider(t, db, "hetzner", "secondary")
+	publicID := nextTestPublicID(t, db, "servers")
+	_, err := db.Exec(
+		`INSERT INTO servers (id, provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		publicID,
 		providerID,
 		"hetzner",
 		"server-under-test",
@@ -394,9 +394,14 @@ func mustInsertServerWithStatus(t *testing.T, db *sql.DB, status string) int64 {
 	if err != nil {
 		t.Fatalf("insert server: %v", err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("server insert id: %v", err)
+	return publicID
+}
+
+func nextTestPublicID(t *testing.T, db *sql.DB, table string) string {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+		t.Fatalf("count %s rows: %v", table, err)
 	}
-	return id
+	return fmt.Sprintf("00000000-0000-7000-8000-%012d", count+1)
 }

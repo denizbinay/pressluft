@@ -15,7 +15,7 @@ import {
 } from "~/lib/platform-contract.generated"
 
 interface Props {
-  jobId: number
+  jobId: string
   autoConnect?: boolean
   /** Compact mode for embedding in modals */
   compact?: boolean

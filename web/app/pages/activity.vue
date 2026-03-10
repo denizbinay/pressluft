@@ -209,7 +209,7 @@ const activityCountLabel = computed(() => {
 onMounted(async () => {
   await loadInitial()
   stopStream.value = streamActivity({
-    sinceId: activities.value[0]?.id ?? 0,
+    sinceId: activities.value[0]?.id ?? "",
     filter: matchesFilter,
   })
   await nextTick()
@@ -220,7 +220,7 @@ watch([selectedCategory, attentionOnly], async () => {
   stopStream.value?.()
   await loadInitial()
   stopStream.value = streamActivity({
-    sinceId: activities.value[0]?.id ?? 0,
+    sinceId: activities.value[0]?.id ?? "",
     filter: matchesFilter,
   })
   await nextTick()

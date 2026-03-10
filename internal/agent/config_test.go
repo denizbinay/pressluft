@@ -53,8 +53,8 @@ registration_token_file: /etc/pressluft/token
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if cfg.ServerID != 42 {
-		t.Fatalf("server_id = %d, want 42", cfg.ServerID)
+	if cfg.ServerID != "42" {
+		t.Fatalf("server_id = %q, want %q", cfg.ServerID, "42")
 	}
 }
 

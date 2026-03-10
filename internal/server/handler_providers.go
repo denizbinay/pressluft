@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"pressluft/internal/activity"
@@ -47,7 +46,7 @@ func (ph *providerHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := strconv.ParseInt(tail, 10, 64)
+	id, err := apitypes.ParseAppID(tail)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid provider id")
 		return
@@ -130,7 +129,7 @@ func (ph *providerHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, providers)
 }
 
-func (ph *providerHandler) handleDelete(w http.ResponseWriter, r *http.Request, id int64) {
+func (ph *providerHandler) handleDelete(w http.ResponseWriter, r *http.Request, id string) {
 	// Get provider name before deletion for activity message
 	var providerName string
 	if p, err := ph.store.GetByID(r.Context(), id); err == nil {

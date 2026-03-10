@@ -1,15 +1,27 @@
 <script setup lang="ts">
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { useServers, type StoredServer, type AgentInfo, type Service } from "~/composables/useServers"
-import { useJobs } from "~/composables/useJobs"
-import { useServerOptions } from "~/composables/useServerOptions"
-import { useAgentStatus } from "~/composables/useAgentStatus"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
+  useServers,
+  type StoredServer,
+  type AgentInfo,
+  type Service,
+} from "~/composables/useServers";
+import { useJobs } from "~/composables/useJobs";
+import { useServerOptions } from "~/composables/useServerOptions";
+import { useAgentStatus } from "~/composables/useAgentStatus";
 import {
   destructiveServerStatuses,
   inProgressServerStatuses,
@@ -18,235 +30,328 @@ import {
   type JobTerminalStatus,
   type NodeStatus,
   type ServerStatus,
-} from "~/lib/platform-contract.generated"
+} from "~/lib/platform-contract.generated";
 
 interface ServerSection {
-  key: string
-  label: string
-  icon: string
-  description: string
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
 }
 
 const sections: ServerSection[] = [
-  { key: 'overview', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', description: 'Server status and quick actions' },
-  { key: 'services', label: 'Services', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01', description: 'Running services and management' },
-  { key: 'sites', label: 'Sites (planned)', icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9', description: 'Reserved for future site workflows on this server' },
-  { key: 'settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', description: 'Server configuration and management' },
-  { key: 'activity', label: 'Activity', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', description: 'Recent events and job history' },
-]
+  {
+    key: "overview",
+    label: "Overview",
+    icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+    description: "Server status and quick actions",
+  },
+  {
+    key: "services",
+    label: "Services",
+    icon: "M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01",
+    description: "Running services and management",
+  },
+  {
+    key: "sites",
+    label: "Sites (planned)",
+    icon: "M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9",
+    description: "Reserved for future site workflows on this server",
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+    description: "Server configuration and management",
+  },
+  {
+    key: "activity",
+    label: "Activity",
+    icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+    description: "Recent events and job history",
+  },
+];
 
-const visibleSectionKeys = new Set(['overview', 'services', 'settings', 'activity'])
+const visibleSectionKeys = new Set([
+  "overview",
+  "services",
+  "settings",
+  "activity",
+]);
 
-const visibleSections = sections.filter((section) => visibleSectionKeys.has(section.key))
+const visibleSections = sections.filter((section) =>
+  visibleSectionKeys.has(section.key),
+);
 
-const route = useRoute()
-const router = useRouter()
+const route = useRoute();
+const router = useRouter();
 
 const serverId = computed(() => {
-  const id = Number(route.params.id)
-  return Number.isNaN(id) ? null : id
-})
+  const raw = route.params.id;
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  return id.length > 0 ? id : null;
+});
 
-const { fetchServer, fetchServices } = useServers()
-const { createJob, fetchJob } = useJobs()
+const { fetchServer, fetchServices } = useServers();
+const { createJob, fetchJob } = useJobs();
 
-const server = ref<StoredServer | null>(null)
-const loading = ref(true)
-const error = ref('')
+const server = ref<StoredServer | null>(null);
+const loading = ref(true);
+const error = ref("");
 
 // Agent status
-const { agentInfo, fetch: fetchAgentStatus, startPolling: startAgentPolling, stopPolling: stopAgentPolling } = useAgentStatus(serverId, { autoStart: false })
+const {
+  agentInfo,
+  fetch: fetchAgentStatus,
+  startPolling: startAgentPolling,
+  stopPolling: stopAgentPolling,
+} = useAgentStatus(serverId, { autoStart: false });
 
 // Services
-const services = ref<Service[]>([])
-const servicesLoading = ref(false)
-const servicesError = ref('')
-type ServiceActionStatus = 'idle' | 'queued' | 'running' | 'succeeded' | 'failed'
+const services = ref<Service[]>([]);
+const servicesLoading = ref(false);
+const servicesError = ref("");
+type ServiceActionStatus =
+  | "idle"
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed";
 
 interface ServiceActionState {
-  status: ServiceActionStatus
-  message: string
-  jobId?: number
+  status: ServiceActionStatus;
+  message: string;
+  jobId?: number;
 }
 
-const serviceActions = reactive<Record<string, ServiceActionState>>({})
-const serviceMonitors = new Map<string, ReturnType<typeof setInterval>>()
+const serviceActions = reactive<Record<string, ServiceActionState>>({});
+const serviceMonitors = new Map<string, ReturnType<typeof setInterval>>();
 
-const agentConnected = computed(() => agentInfo.value?.connected ?? false)
-const agentStatus = computed<NodeStatus>(() => agentInfo.value?.status ?? 'unknown')
+const agentConnected = computed(() => agentInfo.value?.connected ?? false);
+const agentStatus = computed<NodeStatus>(
+  () => agentInfo.value?.status ?? "unknown",
+);
 
 const agentStatusLabel = computed(() => {
   switch (agentStatus.value) {
-    case 'online': return 'Online'
-    case 'unhealthy': return 'Unhealthy'
-    case 'offline': return 'Offline'
-    default: return 'Unknown'
+    case "online":
+      return "Online";
+    case "unhealthy":
+      return "Unhealthy";
+    case "offline":
+      return "Offline";
+    default:
+      return "Unknown";
   }
-})
+});
 
 const memPercent = computed(() => {
-  if (!agentInfo.value?.mem_total_mb) return 0
-  return Math.round((agentInfo.value.mem_used_mb ?? 0) / agentInfo.value.mem_total_mb * 100)
-})
+  if (!agentInfo.value?.mem_total_mb) return 0;
+  return Math.round(
+    ((agentInfo.value.mem_used_mb ?? 0) / agentInfo.value.mem_total_mb) * 100,
+  );
+});
 
 const loadServices = async () => {
-  if (!serverId.value) return
-  servicesLoading.value = true
-  servicesError.value = ''
+  if (!serverId.value) return;
+  servicesLoading.value = true;
+  servicesError.value = "";
   try {
-    const res = await fetchServices(serverId.value)
-    services.value = res.services
+    const res = await fetchServices(serverId.value);
+    services.value = res.services;
   } catch (e: any) {
-    servicesError.value = e.message
+    servicesError.value = e.message;
   } finally {
-    servicesLoading.value = false
+    servicesLoading.value = false;
   }
-}
+};
 
-const terminalStatuses = new Set<string>(jobTerminalStatuses)
+const terminalStatuses = new Set<string>(jobTerminalStatuses);
 
-const setServiceAction = (serviceName: string, next: Partial<ServiceActionState>) => {
-  const current = serviceActions[serviceName] || { status: 'idle', message: '' }
-  serviceActions[serviceName] = { ...current, ...next }
-}
+const setServiceAction = (
+  serviceName: string,
+  next: Partial<ServiceActionState>,
+) => {
+  const current = serviceActions[serviceName] || {
+    status: "idle",
+    message: "",
+  };
+  serviceActions[serviceName] = { ...current, ...next };
+};
 
 const clearServiceMonitor = (serviceName: string) => {
-  const monitor = serviceMonitors.get(serviceName)
-  if (monitor) clearInterval(monitor)
-  serviceMonitors.delete(serviceName)
-}
+  const monitor = serviceMonitors.get(serviceName);
+  if (monitor) clearInterval(monitor);
+  serviceMonitors.delete(serviceName);
+};
 
-const monitorServiceJob = (serviceName: string, jobId: number) => {
-  clearServiceMonitor(serviceName)
+const monitorServiceJob = (serviceName: string, jobId: string) => {
+  clearServiceMonitor(serviceName);
 
   const monitor = setInterval(async () => {
     try {
-      const job = await fetchJob(jobId)
+      const job = await fetchJob(jobId);
       if (terminalStatuses.has(job.status as JobTerminalStatus)) {
-        clearServiceMonitor(serviceName)
+        clearServiceMonitor(serviceName);
 
-        if (job.status === 'succeeded') {
-          setServiceAction(serviceName, { status: 'succeeded', message: 'Service restarted', jobId })
-          loadServices()
-          return
+        if (job.status === "succeeded") {
+          setServiceAction(serviceName, {
+            status: "succeeded",
+            message: "Service restarted",
+            jobId,
+          });
+          loadServices();
+          return;
         }
 
         const errorMessage = job.last_error
           ? `Failed: ${job.last_error}`
-          : 'Restart failed'
+          : "Restart failed";
 
-        setServiceAction(serviceName, { status: 'failed', message: errorMessage, jobId })
-        return
+        setServiceAction(serviceName, {
+          status: "failed",
+          message: errorMessage,
+          jobId,
+        });
+        return;
       }
 
-      if (job.status === 'running') {
-        setServiceAction(serviceName, { status: 'running', message: 'Restarting...', jobId })
-      } else if (job.status === 'queued') {
-        setServiceAction(serviceName, { status: 'queued', message: 'Queued for restart', jobId })
+      if (job.status === "running") {
+        setServiceAction(serviceName, {
+          status: "running",
+          message: "Restarting...",
+          jobId,
+        });
+      } else if (job.status === "queued") {
+        setServiceAction(serviceName, {
+          status: "queued",
+          message: "Queued for restart",
+          jobId,
+        });
       }
     } catch (e: any) {
-      clearServiceMonitor(serviceName)
+      clearServiceMonitor(serviceName);
       setServiceAction(serviceName, {
-        status: 'failed',
-        message: e?.message || 'Failed to fetch job status',
+        status: "failed",
+        message: e?.message || "Failed to fetch job status",
         jobId,
-      })
+      });
     }
-  }, 1200)
+  }, 1200);
 
-  serviceMonitors.set(serviceName, monitor)
-}
+  serviceMonitors.set(serviceName, monitor);
+};
 
 const restartService = async (serviceName: string) => {
-  if (!serverId.value) return
-  if (serviceActions[serviceName]?.status === 'queued' || serviceActions[serviceName]?.status === 'running') {
-    return
+  if (!serverId.value) return;
+  if (
+    serviceActions[serviceName]?.status === "queued" ||
+    serviceActions[serviceName]?.status === "running"
+  ) {
+    return;
   }
-  setServiceAction(serviceName, { status: 'queued', message: 'Queuing restart...' })
+  setServiceAction(serviceName, {
+    status: "queued",
+    message: "Queuing restart...",
+  });
   try {
     const job = await createJob({
-      kind: 'restart_service',
+      kind: "restart_service",
       server_id: serverId.value,
       payload: { service_name: serviceName },
-    })
-    setServiceAction(serviceName, { status: 'queued', message: 'Queued for restart', jobId: job.id })
-    monitorServiceJob(serviceName, job.id)
+    });
+    setServiceAction(serviceName, {
+      status: "queued",
+      message: "Queued for restart",
+      jobId: job.id,
+    });
+    monitorServiceJob(serviceName, job.id);
   } catch (e: any) {
     setServiceAction(serviceName, {
-      status: 'failed',
-      message: e?.message || 'Failed to restart service',
-    })
+      status: "failed",
+      message: e?.message || "Failed to restart service",
+    });
   }
-}
+};
 
 const activeSection = computed(() => {
-  const tab = route.query.tab as string
-  const isValid = visibleSections.some((section) => section.key === tab)
-  return isValid ? tab : 'overview'
-})
+  const tab = route.query.tab as string;
+  const isValid = visibleSections.some((section) => section.key === tab);
+  return isValid ? tab : "overview";
+});
 
-const currentSection = computed(() =>
-  sections.find((s) => s.key === activeSection.value)!,
-)
+const currentSection = computed(
+  () => sections.find((s) => s.key === activeSection.value)!,
+);
 
 const navigateTo = (key: string) => {
-  router.push({ query: { tab: key } })
-}
+  router.push({ query: { tab: key } });
+};
 
-const isMobileSidebarOpen = ref(false)
+const isMobileSidebarOpen = ref(false);
 
 const toggleMobileSidebar = () => {
-  isMobileSidebarOpen.value = !isMobileSidebarOpen.value
-}
+  isMobileSidebarOpen.value = !isMobileSidebarOpen.value;
+};
 
 const selectSection = (key: string) => {
-  navigateTo(key)
-  isMobileSidebarOpen.value = false
-}
+  navigateTo(key);
+  isMobileSidebarOpen.value = false;
+};
 
-const statusVariant = (status: ServerStatus): 'success' | 'warning' | 'danger' | 'default' => {
-  if (status === 'ready') return 'success'
-  if (status === 'failed') return 'danger'
-  if (inProgressServerStatuses.includes(status)) return 'warning'
-  return 'default'
-}
+const statusVariant = (
+  status: ServerStatus,
+): "success" | "warning" | "danger" | "default" => {
+  if (status === "ready") return "success";
+  if (status === "failed") return "danger";
+  if (inProgressServerStatuses.includes(status)) return "warning";
+  return "default";
+};
 
-const serverIsDeleted = computed(() => server.value?.status === 'deleted')
+const serverIsDeleted = computed(() => server.value?.status === "deleted");
 const serverBlocksMutations = computed(() => {
-  const status = server.value?.status
-  return status ? mutationBlockedServerStatuses.includes(status) : false
-})
+  const status = server.value?.status;
+  return status ? mutationBlockedServerStatuses.includes(status) : false;
+});
 const destructiveActionInProgress = computed(() => {
-  const status = server.value?.status
-  return status ? destructiveServerStatuses.includes(status) : false
-})
-const settingsDisabled = computed(() => serverBlocksMutations.value || destructiveActionInProgress.value)
+  const status = server.value?.status;
+  return status ? destructiveServerStatuses.includes(status) : false;
+});
+const settingsDisabled = computed(
+  () => serverBlocksMutations.value || destructiveActionInProgress.value,
+);
 const settingsBlockedReason = computed(() => {
-  if (server.value?.status === 'deleting') return 'This server is deleting. New actions are blocked until deletion succeeds or fails.'
-  if (server.value?.status === 'deleted') return 'This server is deleted. The record is retained only as a tombstone.'
-  if (server.value?.status === 'rebuilding') return 'A rebuild job is already in progress.'
-  if (server.value?.status === 'resizing') return 'A resize job is already in progress.'
-  return ''
-})
+  if (server.value?.status === "deleting")
+    return "This server is deleting. New actions are blocked until deletion succeeds or fails.";
+  if (server.value?.status === "deleted")
+    return "This server is deleted. The record is retained only as a tombstone.";
+  if (server.value?.status === "rebuilding")
+    return "A rebuild job is already in progress.";
+  if (server.value?.status === "resizing")
+    return "A resize job is already in progress.";
+  return "";
+});
 
-const rebuildServerImage = ref("")
-const resizeServerType = ref("")
-const resizeUpgradeDisk = ref(false)
-const firewallsSelected = ref<string[]>([])
-const firewallsCustom = ref("")
-const firewallsUseCustom = ref(false)
-const volumeName = ref("")
-const volumeSizeGb = ref("")
-const volumeState = ref("present")
-const volumeAutomount = ref(false)
+const rebuildServerImage = ref("");
+const resizeServerType = ref("");
+const resizeUpgradeDisk = ref(false);
+const firewallsSelected = ref<string[]>([]);
+const firewallsCustom = ref("");
+const firewallsUseCustom = ref(false);
+const volumeName = ref("");
+const volumeSizeGb = ref("");
+const volumeState = ref("present");
+const volumeAutomount = ref(false);
 
-const rebuildState = reactive({ loading: false, error: "", success: "" })
-const resizeState = reactive({ loading: false, error: "", success: "" })
-const firewallsState = reactive({ loading: false, error: "", success: "" })
-const volumeStateUi = reactive({ loading: false, error: "", success: "" })
-const setupRetryState = reactive({ loading: false, error: "", success: "" })
+const rebuildState = reactive({ loading: false, error: "", success: "" });
+const resizeState = reactive({ loading: false, error: "", success: "" });
+const firewallsState = reactive({ loading: false, error: "", success: "" });
+const volumeStateUi = reactive({ loading: false, error: "", success: "" });
+const setupRetryState = reactive({ loading: false, error: "", success: "" });
 
-const controlClass = "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+const controlClass =
+  "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const {
   images: imageOptions,
@@ -256,35 +361,38 @@ const {
   loading: optionsLoading,
   error: optionsError,
   fetchAll: fetchServerOptions,
-} = useServerOptions()
+} = useServerOptions();
 
-const normalizeText = (value: string) => value.trim()
-const normalizeList = (value: string) => value
-  .split(",")
-  .map((item) => item.trim())
-  .filter(Boolean)
+const normalizeText = (value: string) => value.trim();
+const normalizeList = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
-const showFirewallCustomInput = computed(() =>
-  firewallOptions.value.length === 0 || firewallsUseCustom.value,
-)
+const showFirewallCustomInput = computed(
+  () => firewallOptions.value.length === 0 || firewallsUseCustom.value,
+);
 
 const toggleFirewallSelection = (value: string) => {
   if (firewallsSelected.value.includes(value)) {
-    firewallsSelected.value = firewallsSelected.value.filter((item) => item !== value)
-    return
+    firewallsSelected.value = firewallsSelected.value.filter(
+      (item) => item !== value,
+    );
+    return;
   }
-  firewallsSelected.value = [...firewallsSelected.value, value]
-}
+  firewallsSelected.value = [...firewallsSelected.value, value];
+};
 
 const submitRebuild = async () => {
-  if (!serverId.value) return
-  rebuildState.loading = true
-  rebuildState.error = ""
-  rebuildState.success = ""
+  if (!serverId.value) return;
+  rebuildState.loading = true;
+  rebuildState.error = "";
+  rebuildState.success = "";
   try {
-    const serverImage = normalizeText(rebuildServerImage.value)
+    const serverImage = normalizeText(rebuildServerImage.value);
     if (!serverImage) {
-      throw new Error("Server image is required")
+      throw new Error("Server image is required");
     }
     const job = await createJob({
       kind: "rebuild_server",
@@ -292,25 +400,25 @@ const submitRebuild = async () => {
       payload: {
         server_image: serverImage,
       },
-    })
-    rebuildState.success = `Rebuild job #${job.id} queued`
-    server.value = await fetchServer(serverId.value)
+    });
+    rebuildState.success = `Rebuild job #${job.id} queued`;
+    server.value = await fetchServer(serverId.value);
   } catch (e: any) {
-    rebuildState.error = e.message || "Failed to create rebuild job"
+    rebuildState.error = e.message || "Failed to create rebuild job";
   } finally {
-    rebuildState.loading = false
+    rebuildState.loading = false;
   }
-}
+};
 
 const submitResize = async () => {
-  if (!serverId.value) return
-  resizeState.loading = true
-  resizeState.error = ""
-  resizeState.success = ""
+  if (!serverId.value) return;
+  resizeState.loading = true;
+  resizeState.error = "";
+  resizeState.success = "";
   try {
-    const serverType = normalizeText(resizeServerType.value)
+    const serverType = normalizeText(resizeServerType.value);
     if (!serverType) {
-      throw new Error("Server type is required")
+      throw new Error("Server type is required");
     }
     const job = await createJob({
       kind: "resize_server",
@@ -319,211 +427,234 @@ const submitResize = async () => {
         server_type: serverType,
         upgrade_disk: resizeUpgradeDisk.value,
       },
-    })
-    resizeState.success = `Resize job #${job.id} queued`
-    server.value = await fetchServer(serverId.value)
+    });
+    resizeState.success = `Resize job #${job.id} queued`;
+    server.value = await fetchServer(serverId.value);
   } catch (e: any) {
-    resizeState.error = e.message || "Failed to create resize job"
+    resizeState.error = e.message || "Failed to create resize job";
   } finally {
-    resizeState.loading = false
+    resizeState.loading = false;
   }
-}
+};
 
 const submitUpdateFirewalls = async () => {
-  if (!serverId.value) return
-  firewallsState.loading = true
-  firewallsState.error = ""
-  firewallsState.success = ""
+  if (!serverId.value) return;
+  firewallsState.loading = true;
+  firewallsState.error = "";
+  firewallsState.success = "";
   try {
     const customFirewalls = showFirewallCustomInput.value
       ? normalizeList(firewallsCustom.value)
-      : []
-    const firewalls = Array.from(new Set([
-      ...firewallsSelected.value,
-      ...customFirewalls,
-    ]))
+      : [];
+    const firewalls = Array.from(
+      new Set([...firewallsSelected.value, ...customFirewalls]),
+    );
     if (firewalls.length === 0) {
-      throw new Error("At least one firewall is required")
+      throw new Error("At least one firewall is required");
     }
     const job = await createJob({
       kind: "update_firewalls",
       server_id: serverId.value,
       payload: { firewalls },
-    })
-    firewallsState.success = `Job #${job.id} created`
+    });
+    firewallsState.success = `Job #${job.id} created`;
   } catch (e: any) {
-    firewallsState.error = e.message || "Failed to create firewall update job"
+    firewallsState.error = e.message || "Failed to create firewall update job";
   } finally {
-    firewallsState.loading = false
+    firewallsState.loading = false;
   }
-}
+};
 
 const submitManageVolume = async () => {
-  if (!serverId.value) return
-  volumeStateUi.loading = true
-  volumeStateUi.error = ""
-  volumeStateUi.success = ""
+  if (!serverId.value) return;
+  volumeStateUi.loading = true;
+  volumeStateUi.error = "";
+  volumeStateUi.success = "";
   try {
-    const name = normalizeText(volumeName.value)
-    const state = normalizeText(volumeState.value)
-    const sizeGb = Number.parseInt(volumeSizeGb.value, 10)
+    const name = normalizeText(volumeName.value);
+    const state = normalizeText(volumeState.value);
+    const sizeGb = Number.parseInt(volumeSizeGb.value, 10);
     if (!name || !state) {
-      throw new Error("Volume name and state are required")
+      throw new Error("Volume name and state are required");
     }
     if (state === "present") {
       if (!Number.isFinite(sizeGb) || sizeGb <= 0) {
-        throw new Error("Size must be a positive number")
+        throw new Error("Size must be a positive number");
       }
     }
     const payload: Record<string, unknown> = {
       volume_name: name,
       state,
-    }
+    };
     if (state === "present") {
-      payload.size_gb = sizeGb
-      payload.automount = volumeAutomount.value
+      payload.size_gb = sizeGb;
+      payload.automount = volumeAutomount.value;
     }
     const job = await createJob({
       kind: "manage_volume",
       server_id: serverId.value,
       payload,
-    })
-    volumeStateUi.success = `Job #${job.id} created`
+    });
+    volumeStateUi.success = `Job #${job.id} created`;
   } catch (e: any) {
-    volumeStateUi.error = e.message || "Failed to create volume job"
+    volumeStateUi.error = e.message || "Failed to create volume job";
   } finally {
-    volumeStateUi.loading = false
+    volumeStateUi.loading = false;
   }
-}
+};
 
 watch(server, (value) => {
-  if (!value) return
-  if (!rebuildServerImage.value) rebuildServerImage.value = value.image || ""
-  if (!resizeServerType.value) resizeServerType.value = value.server_type || ""
-})
+  if (!value) return;
+  if (!rebuildServerImage.value) rebuildServerImage.value = value.image || "";
+  if (!resizeServerType.value) resizeServerType.value = value.server_type || "";
+});
 
 watch(imageOptions, (options) => {
   if (!rebuildServerImage.value && server.value?.image) {
-    rebuildServerImage.value = server.value.image
+    rebuildServerImage.value = server.value.image;
   }
-  const firstOption = options[0]
-  if (firstOption && !options.some((option) => option.value === rebuildServerImage.value)) {
-    rebuildServerImage.value = firstOption.value
+  const firstOption = options[0];
+  if (
+    firstOption &&
+    !options.some((option) => option.value === rebuildServerImage.value)
+  ) {
+    rebuildServerImage.value = firstOption.value;
   }
-})
+});
 
 watch(serverTypeOptions, (options) => {
   if (!resizeServerType.value && server.value?.server_type) {
-    resizeServerType.value = server.value.server_type
+    resizeServerType.value = server.value.server_type;
   }
-  const firstOption = options[0]
-  if (firstOption && !options.some((option) => option.value === resizeServerType.value)) {
-    resizeServerType.value = firstOption.value
+  const firstOption = options[0];
+  if (
+    firstOption &&
+    !options.some((option) => option.value === resizeServerType.value)
+  ) {
+    resizeServerType.value = firstOption.value;
   }
-})
+});
 
 watch(volumeOptions, (options) => {
-  const firstOption = options[0]
+  const firstOption = options[0];
   if (!volumeName.value && firstOption) {
-    volumeName.value = firstOption.value
+    volumeName.value = firstOption.value;
   }
-})
+});
 
 const selectedVolume = computed(() =>
   volumeOptions.value.find((option) => option.value === volumeName.value),
-)
+);
 
 watch([selectedVolume, volumeState], ([option, state]) => {
-  if (state !== "present" || !option?.size_gb) return
-  const current = Number.parseInt(volumeSizeGb.value, 10)
+  if (state !== "present" || !option?.size_gb) return;
+  const current = Number.parseInt(volumeSizeGb.value, 10);
   if (!Number.isFinite(current) || current < option.size_gb) {
-    volumeSizeGb.value = String(option.size_gb)
+    volumeSizeGb.value = String(option.size_gb);
   }
-})
+});
 
 const formatDate = (iso: string): string => {
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    return new Date(iso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   } catch {
-    return iso
+    return iso;
   }
-}
+};
 
-const setupVariant = (setupState: string): 'success' | 'warning' | 'danger' | 'default' => {
-  if (setupState === 'ready') return 'success'
-  if (setupState === 'degraded') return 'danger'
-  if (setupState === 'running') return 'warning'
-  return 'default'
-}
+const setupVariant = (
+  setupState: string,
+): "success" | "warning" | "danger" | "default" => {
+  if (setupState === "ready") return "success";
+  if (setupState === "degraded") return "danger";
+  if (setupState === "running") return "warning";
+  return "default";
+};
 
 const retrySetup = async () => {
-  if (!serverId.value) return
-  setupRetryState.loading = true
-  setupRetryState.error = ""
-  setupRetryState.success = ""
+  if (!serverId.value) return;
+  setupRetryState.loading = true;
+  setupRetryState.error = "";
+  setupRetryState.success = "";
   try {
     const job = await createJob({
       kind: "configure_server",
       server_id: serverId.value,
       payload: {},
-    })
-    setupRetryState.success = `Setup job #${job.id} queued`
-    await refreshServer()
+    });
+    setupRetryState.success = `Setup job #${job.id} queued`;
+    await refreshServer();
   } catch (e: any) {
-    setupRetryState.error = e.message || "Failed to queue setup retry"
+    setupRetryState.error = e.message || "Failed to queue setup retry";
   } finally {
-    setupRetryState.loading = false
+    setupRetryState.loading = false;
   }
-}
+};
 
 const refreshServer = async () => {
-  if (!serverId.value) return
-  server.value = await fetchServer(serverId.value)
-}
+  if (!serverId.value) return;
+  server.value = await fetchServer(serverId.value);
+};
 
 onMounted(async () => {
   if (!serverId.value) {
-    error.value = 'Invalid server ID'
-    loading.value = false
-    return
+    error.value = "Invalid server ID";
+    loading.value = false;
+    return;
   }
 
   try {
-    await refreshServer()
-    await fetchServerOptions(serverId.value)
-    if (server.value?.setup_state === 'ready') {
-      startAgentPolling()
-      loadServices()
+    await refreshServer();
+    await fetchServerOptions(serverId.value);
+    if (server.value?.setup_state === "ready") {
+      startAgentPolling();
+      loadServices();
     }
   } catch (e: any) {
-    error.value = e.message || 'Failed to load server'
+    error.value = e.message || "Failed to load server";
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-})
+});
 
 onUnmounted(() => {
-  stopAgentPolling()
+  stopAgentPolling();
   for (const monitor of serviceMonitors.values()) {
-    clearInterval(monitor)
+    clearInterval(monitor);
   }
-  serviceMonitors.clear()
-})
+  serviceMonitors.clear();
+});
 </script>
 
 <template>
   <div>
     <!-- Loading state -->
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <svg class="h-6 w-6 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      <svg
+        class="h-6 w-6 animate-spin text-muted-foreground"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        />
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+        />
       </svg>
     </div>
 
@@ -537,8 +668,18 @@ onUnmounted(() => {
         to="/servers"
         class="inline-flex items-center gap-1 text-sm text-accent transition-colors hover:text-accent/80"
       >
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"
+          />
         </svg>
         Back to Servers
       </NuxtLink>
@@ -549,20 +690,30 @@ onUnmounted(() => {
       <!-- Page header -->
       <div class="mb-6">
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
-          <NuxtLink to="/servers" class="hover:text-foreground/80 transition-colors">Servers</NuxtLink>
+          <NuxtLink
+            to="/servers"
+            class="hover:text-foreground/80 transition-colors"
+            >Servers</NuxtLink
+          >
           <span>/</span>
           <span class="text-foreground/80">{{ server.name }}</span>
         </div>
         <div class="mt-2 flex items-center gap-3">
-          <h1 class="text-2xl font-semibold text-foreground">{{ server.name }}</h1>
+          <h1 class="text-2xl font-semibold text-foreground">
+            {{ server.name }}
+          </h1>
           <Badge
             variant="outline"
             :class="[
               'px-2.5 py-1 text-sm border',
-              statusVariant(server.status) === 'success' && 'border-primary/30 bg-primary/10 text-primary',
-              statusVariant(server.status) === 'warning' && 'border-accent/30 bg-accent/10 text-accent',
-              statusVariant(server.status) === 'danger' && 'border-destructive/30 bg-destructive/10 text-destructive',
-              statusVariant(server.status) === 'default' && 'border-border/60 bg-muted/60 text-foreground',
+              statusVariant(server.status) === 'success' &&
+                'border-primary/30 bg-primary/10 text-primary',
+              statusVariant(server.status) === 'warning' &&
+                'border-accent/30 bg-accent/10 text-accent',
+              statusVariant(server.status) === 'danger' &&
+                'border-destructive/30 bg-destructive/10 text-destructive',
+              statusVariant(server.status) === 'default' &&
+                'border-border/60 bg-muted/60 text-foreground',
             ]"
           >
             {{ server.status }}
@@ -571,10 +722,14 @@ onUnmounted(() => {
             variant="outline"
             :class="[
               'px-2.5 py-1 text-sm border',
-              setupVariant(server.setup_state) === 'success' && 'border-primary/30 bg-primary/10 text-primary',
-              setupVariant(server.setup_state) === 'warning' && 'border-accent/30 bg-accent/10 text-accent',
-              setupVariant(server.setup_state) === 'danger' && 'border-destructive/30 bg-destructive/10 text-destructive',
-              setupVariant(server.setup_state) === 'default' && 'border-border/60 bg-muted/60 text-foreground',
+              setupVariant(server.setup_state) === 'success' &&
+                'border-primary/30 bg-primary/10 text-primary',
+              setupVariant(server.setup_state) === 'warning' &&
+                'border-accent/30 bg-accent/10 text-accent',
+              setupVariant(server.setup_state) === 'danger' &&
+                'border-destructive/30 bg-destructive/10 text-destructive',
+              setupVariant(server.setup_state) === 'default' &&
+                'border-border/60 bg-muted/60 text-foreground',
             ]"
           >
             setup {{ server.setup_state }}
@@ -585,10 +740,14 @@ onUnmounted(() => {
             variant="outline"
             :class="[
               'px-2.5 py-1 text-sm border flex items-center gap-1.5',
-              agentStatus === 'online' && 'border-primary/30 bg-primary/10 text-primary',
-              agentStatus === 'unhealthy' && 'border-amber-500/30 bg-amber-500/10 text-amber-600',
-              agentStatus === 'offline' && 'border-border/60 bg-muted/60 text-muted-foreground',
-              agentStatus === 'unknown' && 'border-border/40 bg-muted/40 text-muted-foreground',
+              agentStatus === 'online' &&
+                'border-primary/30 bg-primary/10 text-primary',
+              agentStatus === 'unhealthy' &&
+                'border-amber-500/30 bg-amber-500/10 text-amber-600',
+              agentStatus === 'offline' &&
+                'border-border/60 bg-muted/60 text-muted-foreground',
+              agentStatus === 'unknown' &&
+                'border-border/40 bg-muted/40 text-muted-foreground',
             ]"
           >
             <span
@@ -604,7 +763,8 @@ onUnmounted(() => {
           </Badge>
         </div>
         <p class="mt-1 text-sm text-muted-foreground">
-          {{ server.location }} · {{ server.server_type }} · {{ server.profile_key }}
+          {{ server.location }} · {{ server.server_type }} ·
+          {{ server.profile_key }}
         </p>
       </div>
 
@@ -640,7 +800,11 @@ onUnmounted(() => {
             stroke="currentColor"
             stroke-width="2"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </button>
 
@@ -677,7 +841,11 @@ onUnmounted(() => {
                   stroke="currentColor"
                   stroke-width="2"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" :d="section.icon" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    :d="section.icon"
+                  />
                 </svg>
                 {{ section.label }}
               </button>
@@ -710,7 +878,11 @@ onUnmounted(() => {
                 stroke="currentColor"
                 stroke-width="2"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" :d="section.icon" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  :d="section.icon"
+                />
               </svg>
               {{ section.label }}
             </button>
@@ -719,7 +891,9 @@ onUnmounted(() => {
 
         <!-- Content area -->
         <div class="min-w-0 flex-1">
-          <Card class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none">
+          <Card
+            class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
+          >
             <CardHeader class="border-b border-border/40 px-6 py-5">
               <div>
                 <h2 class="text-lg font-semibold text-foreground">
@@ -734,563 +908,1029 @@ onUnmounted(() => {
             <CardContent class="px-6 py-5">
               <!-- Section content -->
               <div class="space-y-6">
-              <!-- Overview -->
-              <div v-if="activeSection === 'overview'" class="space-y-4">
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Status</p>
-                    <div class="mt-1 flex items-center gap-2">
-                      <span
-                        class="h-2 w-2 rounded-full"
-                        :class="{
-                          'bg-primary': server.status === 'ready',
-                          'bg-destructive': server.status === 'failed',
-                          'bg-accent animate-pulse': inProgressServerStatuses.includes(server.status),
-                          'bg-muted-foreground': !['ready', 'failed', 'pending', 'provisioning', 'configuring', 'rebuilding', 'resizing', 'deleting'].includes(server.status),
-                        }"
-                      />
-                      <span class="text-sm font-medium text-foreground/80 capitalize">{{ server.status }}</span>
+                <!-- Overview -->
+                <div v-if="activeSection === 'overview'" class="space-y-4">
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Status
+                      </p>
+                      <div class="mt-1 flex items-center gap-2">
+                        <span
+                          class="h-2 w-2 rounded-full"
+                          :class="{
+                            'bg-primary': server.status === 'ready',
+                            'bg-destructive': server.status === 'failed',
+                            'bg-accent animate-pulse':
+                              inProgressServerStatuses.includes(server.status),
+                            'bg-muted-foreground': ![
+                              'ready',
+                              'failed',
+                              'pending',
+                              'provisioning',
+                              'configuring',
+                              'rebuilding',
+                              'resizing',
+                              'deleting',
+                            ].includes(server.status),
+                          }"
+                        />
+                        <span
+                          class="text-sm font-medium text-foreground/80 capitalize"
+                          >{{ server.status }}</span
+                        >
+                      </div>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Setup
+                      </p>
+                      <div class="mt-1 flex items-center gap-2">
+                        <span
+                          class="h-2 w-2 rounded-full"
+                          :class="{
+                            'bg-primary': server.setup_state === 'ready',
+                            'bg-destructive': server.setup_state === 'degraded',
+                            'bg-accent animate-pulse':
+                              server.setup_state === 'running',
+                            'bg-muted-foreground': ![
+                              'ready',
+                              'degraded',
+                              'running',
+                            ].includes(server.setup_state),
+                          }"
+                        />
+                        <span
+                          class="text-sm font-medium text-foreground/80 capitalize"
+                          >{{ server.setup_state }}</span
+                        >
+                      </div>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Provider
+                      </p>
+                      <p class="mt-1 text-sm font-medium text-foreground/80">
+                        {{ server.provider_type }}
+                      </p>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Location
+                      </p>
+                      <p class="mt-1 text-sm font-medium text-foreground/80">
+                        {{ server.location }}
+                      </p>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Server Type
+                      </p>
+                      <p class="mt-1 text-sm font-medium text-foreground/80">
+                        {{ server.server_type }}
+                      </p>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Profile
+                      </p>
+                      <p class="mt-1 text-sm font-medium text-foreground/80">
+                        {{ server.profile_key }}
+                      </p>
+                    </div>
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Created
+                      </p>
+                      <p class="mt-1 text-sm font-medium text-foreground/80">
+                        {{ formatDate(server.created_at) }}
+                      </p>
                     </div>
                   </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Setup</p>
-                    <div class="mt-1 flex items-center gap-2">
-                      <span
-                        class="h-2 w-2 rounded-full"
-                        :class="{
-                          'bg-primary': server.setup_state === 'ready',
-                          'bg-destructive': server.setup_state === 'degraded',
-                          'bg-accent animate-pulse': server.setup_state === 'running',
-                          'bg-muted-foreground': !['ready', 'degraded', 'running'].includes(server.setup_state),
-                        }"
-                      />
-                      <span class="text-sm font-medium text-foreground/80 capitalize">{{ server.setup_state }}</span>
-                    </div>
-                  </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Provider</p>
-                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.provider_type }}</p>
-                  </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Location</p>
-                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.location }}</p>
-                  </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Server Type</p>
-                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.server_type }}</p>
-                  </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Profile</p>
-                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ server.profile_key }}</p>
-                  </div>
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Created</p>
-                    <p class="mt-1 text-sm font-medium text-foreground/80">{{ formatDate(server.created_at) }}</p>
-                  </div>
-                </div>
 
-                <!-- Provider Server ID (if available) -->
-                  <div v-if="server.provider_server_id" class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Provider Server ID</p>
-                    <p class="mt-1 font-mono text-sm text-foreground/80">{{ server.provider_server_id }}</p>
+                  <!-- Provider Server ID (if available) -->
+                  <div
+                    v-if="server.provider_server_id"
+                    class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                  >
+                    <p class="text-xs font-medium text-muted-foreground">
+                      Provider Server ID
+                    </p>
+                    <p class="mt-1 font-mono text-sm text-foreground/80">
+                      {{ server.provider_server_id }}
+                    </p>
                   </div>
 
-                  <div v-if="server.status === 'deleting'" class="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
-                    Deletion is in progress asynchronously. The record stays visible until provider-side removal finishes and the server becomes a tombstone.
+                  <div
+                    v-if="server.status === 'deleting'"
+                    class="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent"
+                  >
+                    Deletion is in progress asynchronously. The record stays
+                    visible until provider-side removal finishes and the server
+                    becomes a tombstone.
                   </div>
-                  <div v-else-if="serverIsDeleted" class="rounded-lg border border-border/60 bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-                    This server has been deleted. Pressluft keeps this record as a tombstone for audit history.
+                  <div
+                    v-else-if="serverIsDeleted"
+                    class="rounded-lg border border-border/60 bg-muted/60 px-4 py-3 text-sm text-muted-foreground"
+                  >
+                    This server has been deleted. Pressluft keeps this record as
+                    a tombstone for audit history.
                   </div>
-                  <div v-else-if="server.setup_state === 'degraded'" class="space-y-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <div
+                    v-else-if="server.setup_state === 'degraded'"
+                    class="space-y-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                  >
                     <p>
-                      Setup needs attention<span v-if="server.setup_last_error">: {{ server.setup_last_error }}</span>
+                      Setup needs attention<span v-if="server.setup_last_error"
+                        >: {{ server.setup_last_error }}</span
+                      >
                     </p>
                     <div class="flex flex-wrap items-center gap-3">
                       <Button
-                        :disabled="setupRetryState.loading || serverBlocksMutations"
+                        :disabled="
+                          setupRetryState.loading || serverBlocksMutations
+                        "
                         @click="retrySetup"
                       >
-                        {{ setupRetryState.loading ? 'Queuing setup...' : 'Retry setup' }}
+                        {{
+                          setupRetryState.loading
+                            ? "Queuing setup..."
+                            : "Retry setup"
+                        }}
                       </Button>
-                      <span v-if="setupRetryState.success" class="text-xs text-primary">{{ setupRetryState.success }}</span>
-                      <span v-if="setupRetryState.error" class="text-xs text-destructive">{{ setupRetryState.error }}</span>
-                    </div>
-                  </div>
-
-                <!-- Agent Metrics (only show when server is ready) -->
-                <template v-if="server.setup_state === 'ready'">
-                  <div class="grid gap-4 sm:grid-cols-2">
-                    <!-- CPU Usage -->
-                    <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                      <div class="flex items-center justify-between">
-                        <p class="text-xs font-medium text-muted-foreground">CPU Usage</p>
-                        <span
-                          v-if="agentConnected"
-                          class="flex items-center gap-1 text-xs text-primary"
-                        >
-                          <span class="h-1 w-1 animate-pulse rounded-full bg-primary" />
-                          Live
-                        </span>
-                      </div>
-                      <template v-if="agentConnected">
-                        <div class="mt-2 flex items-center gap-3">
-                          <div class="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                            <div
-                              class="h-2 rounded-full bg-accent transition-all duration-500"
-                              :style="{ width: `${Math.min(agentInfo?.cpu_percent ?? 0, 100)}%` }"
-                            />
-                          </div>
-                          <span class="w-12 text-right text-sm font-medium text-foreground/80">
-                            {{ (agentInfo?.cpu_percent ?? 0).toFixed(1) }}%
-                          </span>
-                        </div>
-                      </template>
-                      <div v-else class="mt-1 text-sm text-muted-foreground/60">
-                        Agent not connected
-                      </div>
-                    </div>
-
-                    <!-- Memory Usage -->
-                    <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                      <div class="flex items-center justify-between">
-                        <p class="text-xs font-medium text-muted-foreground">Memory</p>
-                        <span
-                          v-if="agentConnected"
-                          class="flex items-center gap-1 text-xs text-primary"
-                        >
-                          <span class="h-1 w-1 animate-pulse rounded-full bg-primary" />
-                          Live
-                        </span>
-                      </div>
-                      <template v-if="agentConnected">
-                        <div class="mt-2 flex items-center gap-3">
-                          <div class="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                            <div
-                              class="h-2 rounded-full bg-primary transition-all duration-500"
-                              :style="{ width: `${memPercent}%` }"
-                            />
-                          </div>
-                          <span class="w-24 text-right text-sm font-medium text-foreground/80">
-                            {{ agentInfo?.mem_used_mb ?? 0 }} / {{ agentInfo?.mem_total_mb ?? 0 }} MB
-                          </span>
-                        </div>
-                      </template>
-                      <div v-else class="mt-1 text-sm text-muted-foreground/60">
-                        Agent not connected
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Agent info -->
-                  <div v-if="agentConnected && agentInfo?.version" class="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
-                    <p class="text-xs font-medium text-muted-foreground">Agent Version</p>
-                    <p class="mt-1 font-mono text-sm text-foreground/80">{{ agentInfo.version }}</p>
-                  </div>
-                </template>
-
-                <!-- Quick actions placeholder -->
-                <div class="rounded-lg border border-dashed border-border/50 px-4 py-6 text-center">
-                  <p class="text-sm text-muted-foreground">
-                    Quick actions (reboot, stop, start, SSH access) will be available here.
-                  </p>
-                </div>
-              </div>
-
-              <!-- Services -->
-              <div v-if="activeSection === 'services'" class="space-y-4">
-                <!-- Agent not connected state -->
-                <div v-if="!agentConnected" class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-                  <h3 class="text-sm font-medium text-foreground">Agent not connected</h3>
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    Service management requires an active agent connection.
-                  </p>
-                  <p class="mt-3 text-xs text-muted-foreground">
-                    Agent status: {{ agentStatusLabel }}
-                  </p>
-                </div>
-
-                <!-- Services list -->
-                <template v-else>
-                  <div class="flex items-center justify-between">
-                    <p class="text-sm text-muted-foreground">
-                      Running systemd services on this server.
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :disabled="servicesLoading"
-                      class="text-muted-foreground hover:text-foreground"
-                      @click="loadServices"
-                    >
-                      <svg
-                        class="h-4 w-4"
-                        :class="{ 'animate-spin': servicesLoading }"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        stroke-width="2"
+                      <span
+                        v-if="setupRetryState.success"
+                        class="text-xs text-primary"
+                        >{{ setupRetryState.success }}</span
                       >
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Refresh
-                    </Button>
+                      <span
+                        v-if="setupRetryState.error"
+                        class="text-xs text-destructive"
+                        >{{ setupRetryState.error }}</span
+                      >
+                    </div>
                   </div>
 
-                  <div v-if="servicesError" class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    {{ servicesError }}
-                  </div>
-
-                  <div v-if="servicesLoading && services.length === 0" class="flex items-center justify-center py-8">
-                    <svg class="h-6 w-6 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  </div>
-
-                  <div v-else-if="services.length === 0" class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-                    <p class="text-sm text-muted-foreground">No services found.</p>
-                  </div>
-
-                  <div v-else class="space-y-2">
-                    <div
-                      v-for="service in services"
-                      :key="service.name"
-                      class="flex items-center justify-between rounded-lg border border-border/60 bg-card/40 px-4 py-3"
-                    >
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2">
+                  <!-- Agent Metrics (only show when server is ready) -->
+                  <template v-if="server.setup_state === 'ready'">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                      <!-- CPU Usage -->
+                      <div
+                        class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                      >
+                        <div class="flex items-center justify-between">
+                          <p class="text-xs font-medium text-muted-foreground">
+                            CPU Usage
+                          </p>
                           <span
-                            class="h-2 w-2 rounded-full"
-                            :class="{
-                              'bg-primary': service.active_state === 'running',
-                              'bg-muted-foreground': service.active_state !== 'running',
-                            }"
-                          />
-                          <span class="font-mono text-sm font-medium text-foreground">{{ service.name }}</span>
+                            v-if="agentConnected"
+                            class="flex items-center gap-1 text-xs text-primary"
+                          >
+                            <span
+                              class="h-1 w-1 animate-pulse rounded-full bg-primary"
+                            />
+                            Live
+                          </span>
                         </div>
-                        <p class="mt-0.5 truncate text-xs text-muted-foreground">{{ service.description }}</p>
-                        <p
-                          v-if="serviceActions[service.name]?.message"
-                          class="mt-0.5 text-xs"
-                          :class="{
-                            'text-destructive': serviceActions[service.name]?.status === 'failed',
-                            'text-primary': serviceActions[service.name]?.status === 'succeeded',
-                            'text-muted-foreground': serviceActions[service.name]?.status !== 'failed' && serviceActions[service.name]?.status !== 'succeeded',
-                          }"
+                        <template v-if="agentConnected">
+                          <div class="mt-2 flex items-center gap-3">
+                            <div
+                              class="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                            >
+                              <div
+                                class="h-2 rounded-full bg-accent transition-all duration-500"
+                                :style="{
+                                  width: `${Math.min(agentInfo?.cpu_percent ?? 0, 100)}%`,
+                                }"
+                              />
+                            </div>
+                            <span
+                              class="w-12 text-right text-sm font-medium text-foreground/80"
+                            >
+                              {{ (agentInfo?.cpu_percent ?? 0).toFixed(1) }}%
+                            </span>
+                          </div>
+                        </template>
+                        <div
+                          v-else
+                          class="mt-1 text-sm text-muted-foreground/60"
                         >
-                          {{ serviceActions[service.name]?.message }}
-                        </p>
+                          Agent not connected
+                        </div>
                       </div>
+
+                      <!-- Memory Usage -->
+                      <div
+                        class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                      >
+                        <div class="flex items-center justify-between">
+                          <p class="text-xs font-medium text-muted-foreground">
+                            Memory
+                          </p>
+                          <span
+                            v-if="agentConnected"
+                            class="flex items-center gap-1 text-xs text-primary"
+                          >
+                            <span
+                              class="h-1 w-1 animate-pulse rounded-full bg-primary"
+                            />
+                            Live
+                          </span>
+                        </div>
+                        <template v-if="agentConnected">
+                          <div class="mt-2 flex items-center gap-3">
+                            <div
+                              class="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                            >
+                              <div
+                                class="h-2 rounded-full bg-primary transition-all duration-500"
+                                :style="{ width: `${memPercent}%` }"
+                              />
+                            </div>
+                            <span
+                              class="w-24 text-right text-sm font-medium text-foreground/80"
+                            >
+                              {{ agentInfo?.mem_used_mb ?? 0 }} /
+                              {{ agentInfo?.mem_total_mb ?? 0 }} MB
+                            </span>
+                          </div>
+                        </template>
+                        <div
+                          v-else
+                          class="mt-1 text-sm text-muted-foreground/60"
+                        >
+                          Agent not connected
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Agent info -->
+                    <div
+                      v-if="agentConnected && agentInfo?.version"
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        Agent Version
+                      </p>
+                      <p class="mt-1 font-mono text-sm text-foreground/80">
+                        {{ agentInfo.version }}
+                      </p>
+                    </div>
+                  </template>
+
+                  <!-- Quick actions placeholder -->
+                  <div
+                    class="rounded-lg border border-dashed border-border/50 px-4 py-6 text-center"
+                  >
+                    <p class="text-sm text-muted-foreground">
+                      Quick actions (reboot, stop, start, SSH access) will be
+                      available here.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Services -->
+                <div v-if="activeSection === 'services'" class="space-y-4">
+                  <!-- Agent not connected state -->
+                  <div
+                    v-if="!agentConnected"
+                    class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center"
+                  >
+                    <h3 class="text-sm font-medium text-foreground">
+                      Agent not connected
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      Service management requires an active agent connection.
+                    </p>
+                    <p class="mt-3 text-xs text-muted-foreground">
+                      Agent status: {{ agentStatusLabel }}
+                    </p>
+                  </div>
+
+                  <!-- Services list -->
+                  <template v-else>
+                    <div class="flex items-center justify-between">
+                      <p class="text-sm text-muted-foreground">
+                        Running systemd services on this server.
+                      </p>
                       <Button
                         variant="ghost"
                         size="sm"
-                        :disabled="serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running'"
-                        class="ml-4 text-muted-foreground hover:text-foreground"
-                        @click="restartService(service.name)"
+                        :disabled="servicesLoading"
+                        class="text-muted-foreground hover:text-foreground"
+                        @click="loadServices"
                       >
                         <svg
                           class="h-4 w-4"
-                          :class="{ 'animate-spin': serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running' }"
+                          :class="{ 'animate-spin': servicesLoading }"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
                           stroke-width="2"
                         >
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
                         </svg>
-                        {{ serviceActions[service.name]?.status === 'queued' || serviceActions[service.name]?.status === 'running' ? 'Restarting...' : 'Restart' }}
+                        Refresh
                       </Button>
                     </div>
-                  </div>
-                </template>
-              </div>
 
-              <!-- Sites -->
-              <div v-if="activeSection === 'sites'" class="space-y-4">
-                <div class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-                  <h3 class="text-sm font-medium text-foreground">No sites yet</h3>
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    This server-level sites view is reserved for a future round.
-                  </p>
-                  <p class="mt-3 text-xs text-muted-foreground">
-                    Site workflows are not implemented on this branch yet.
-                  </p>
-                </div>
-              </div>
-
-              <!-- Settings -->
-              <div v-if="activeSection === 'settings'" class="space-y-4">
-                <div v-if="settingsBlockedReason" class="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent">
-                  {{ settingsBlockedReason }}
-                </div>
-                <!-- Execution mode indicator -->
-                <div class="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2">
-                  <span
-                    class="h-2 w-2 rounded-full"
-                    :class="agentConnected ? 'bg-primary animate-pulse' : 'bg-muted-foreground'"
-                  />
-                  <span class="text-xs text-muted-foreground">
-                    {{ agentConnected ? 'Jobs will execute via Agent (fast)' : 'Jobs will execute via Ansible (SSH)' }}
-                  </span>
-                </div>
-                <div class="grid gap-4 lg:grid-cols-2">
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
-                    <div>
-                      <h3 class="text-sm font-semibold text-foreground">Rebuild server</h3>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        Reinstall the server with a new image.
-                      </p>
+                    <div
+                      v-if="servicesError"
+                      class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                    >
+                      {{ servicesError }}
                     </div>
-                    <form class="mt-4 space-y-3" @submit.prevent="submitRebuild">
-                      <div class="space-y-1.5">
-                        <Label class="text-xs font-medium text-muted-foreground">Server image</Label>
-                        <Select v-if="imageOptions.length" v-model="rebuildServerImage" :disabled="optionsLoading">
-                          <SelectTrigger :class="controlClass">
-                            <SelectValue placeholder="Select image" />
-                          </SelectTrigger>
-                          <SelectContent class="border-border/60 bg-popover text-popover-foreground">
-                            <SelectItem
-                              v-for="option in imageOptions"
-                              :key="option.value"
-                              :value="option.value"
-                              class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
-                            >
-                              <SelectItemText>{{ option.label }}</SelectItemText>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          v-else
-                          v-model="rebuildServerImage"
-                          :disabled="true"
-                          placeholder="Current image"
+
+                    <div
+                      v-if="servicesLoading && services.length === 0"
+                      class="flex items-center justify-center py-8"
+                    >
+                      <svg
+                        class="h-6 w-6 animate-spin text-muted-foreground"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
                         />
-                        <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading images...</p>
-                        <p v-else-if="!imageOptions.length" class="text-xs text-muted-foreground">Using current image only.</p>
-                      </div>
-                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
-                      <div class="flex flex-wrap items-center gap-3">
-                        <Button
-                          type="submit"
-                          size="sm"
-                          :disabled="settingsDisabled || rebuildState.loading || (!rebuildServerImage && !imageOptions.length)"
-                        >
-                          Queue rebuild job
-                        </Button>
-                        <span v-if="rebuildState.loading" class="text-xs text-muted-foreground">Submitting...</span>
-                        <span v-if="rebuildState.success" class="text-xs text-primary">{{ rebuildState.success }}</span>
-                        <span v-if="rebuildState.error" class="text-xs text-destructive">{{ rebuildState.error }}</span>
-                      </div>
-                    </form>
-                  </div>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    </div>
 
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
-                    <div>
-                      <h3 class="text-sm font-semibold text-foreground">Resize server</h3>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        Update the server type and disk upgrade preference.
+                    <div
+                      v-else-if="services.length === 0"
+                      class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center"
+                    >
+                      <p class="text-sm text-muted-foreground">
+                        No services found.
                       </p>
                     </div>
-                    <form class="mt-4 space-y-3" @submit.prevent="submitResize">
-                      <div class="grid gap-3 sm:grid-cols-2">
+
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="service in services"
+                        :key="service.name"
+                        class="flex items-center justify-between rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2">
+                            <span
+                              class="h-2 w-2 rounded-full"
+                              :class="{
+                                'bg-primary':
+                                  service.active_state === 'running',
+                                'bg-muted-foreground':
+                                  service.active_state !== 'running',
+                              }"
+                            />
+                            <span
+                              class="font-mono text-sm font-medium text-foreground"
+                              >{{ service.name }}</span
+                            >
+                          </div>
+                          <p
+                            class="mt-0.5 truncate text-xs text-muted-foreground"
+                          >
+                            {{ service.description }}
+                          </p>
+                          <p
+                            v-if="serviceActions[service.name]?.message"
+                            class="mt-0.5 text-xs"
+                            :class="{
+                              'text-destructive':
+                                serviceActions[service.name]?.status ===
+                                'failed',
+                              'text-primary':
+                                serviceActions[service.name]?.status ===
+                                'succeeded',
+                              'text-muted-foreground':
+                                serviceActions[service.name]?.status !==
+                                  'failed' &&
+                                serviceActions[service.name]?.status !==
+                                  'succeeded',
+                            }"
+                          >
+                            {{ serviceActions[service.name]?.message }}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          :disabled="
+                            serviceActions[service.name]?.status === 'queued' ||
+                            serviceActions[service.name]?.status === 'running'
+                          "
+                          class="ml-4 text-muted-foreground hover:text-foreground"
+                          @click="restartService(service.name)"
+                        >
+                          <svg
+                            class="h-4 w-4"
+                            :class="{
+                              'animate-spin':
+                                serviceActions[service.name]?.status ===
+                                  'queued' ||
+                                serviceActions[service.name]?.status ===
+                                  'running',
+                            }"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="2"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                          {{
+                            serviceActions[service.name]?.status === "queued" ||
+                            serviceActions[service.name]?.status === "running"
+                              ? "Restarting..."
+                              : "Restart"
+                          }}
+                        </Button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Sites -->
+                <div v-if="activeSection === 'sites'" class="space-y-4">
+                  <div
+                    class="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center"
+                  >
+                    <h3 class="text-sm font-medium text-foreground">
+                      No sites yet
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      This server-level sites view is reserved for a future
+                      round.
+                    </p>
+                    <p class="mt-3 text-xs text-muted-foreground">
+                      Site workflows are not implemented on this branch yet.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Settings -->
+                <div v-if="activeSection === 'settings'" class="space-y-4">
+                  <div
+                    v-if="settingsBlockedReason"
+                    class="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent"
+                  >
+                    {{ settingsBlockedReason }}
+                  </div>
+                  <!-- Execution mode indicator -->
+                  <div
+                    class="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2"
+                  >
+                    <span
+                      class="h-2 w-2 rounded-full"
+                      :class="
+                        agentConnected
+                          ? 'bg-primary animate-pulse'
+                          : 'bg-muted-foreground'
+                      "
+                    />
+                    <span class="text-xs text-muted-foreground">
+                      {{
+                        agentConnected
+                          ? "Jobs will execute via Agent (fast)"
+                          : "Jobs will execute via Ansible (SSH)"
+                      }}
+                    </span>
+                  </div>
+                  <div class="grid gap-4 lg:grid-cols-2">
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-4"
+                    >
+                      <div>
+                        <h3 class="text-sm font-semibold text-foreground">
+                          Rebuild server
+                        </h3>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                          Reinstall the server with a new image.
+                        </p>
+                      </div>
+                      <form
+                        class="mt-4 space-y-3"
+                        @submit.prevent="submitRebuild"
+                      >
                         <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Server type</Label>
-                          <Select v-if="serverTypeOptions.length" v-model="resizeServerType" :disabled="optionsLoading">
+                          <Label
+                            class="text-xs font-medium text-muted-foreground"
+                            >Server image</Label
+                          >
+                          <Select
+                            v-if="imageOptions.length"
+                            v-model="rebuildServerImage"
+                            :disabled="optionsLoading"
+                          >
                             <SelectTrigger :class="controlClass">
-                              <SelectValue placeholder="Select server type" />
+                              <SelectValue placeholder="Select image" />
                             </SelectTrigger>
-                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
+                            <SelectContent
+                              class="border-border/60 bg-popover text-popover-foreground"
+                            >
                               <SelectItem
-                                v-for="option in serverTypeOptions"
+                                v-for="option in imageOptions"
                                 :key="option.value"
                                 :value="option.value"
                                 class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
                               >
-                                <SelectItemText>{{ option.label }}</SelectItemText>
+                                <SelectItemText>{{
+                                  option.label
+                                }}</SelectItemText>
                               </SelectItem>
                             </SelectContent>
                           </Select>
                           <Input
                             v-else
-                            v-model="resizeServerType"
+                            v-model="rebuildServerImage"
                             :disabled="true"
-                            placeholder="Current server type"
+                            placeholder="Current image"
                           />
-                          <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading server types...</p>
-                          <p v-else-if="!serverTypeOptions.length" class="text-xs text-muted-foreground">Resize options unavailable.</p>
-                        </div>
-                        <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Upgrade disk</Label>
-                          <div class="flex items-center gap-2">
-                            <Switch v-model:checked="resizeUpgradeDisk" />
-                            <span class="text-xs text-muted-foreground">
-                              {{ resizeUpgradeDisk ? 'Yes' : 'No' }}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
-                      <div class="flex flex-wrap items-center gap-3">
-                          <Button type="submit" size="sm" :disabled="settingsDisabled || resizeState.loading || !serverTypeOptions.length">
-                           Queue resize job
-                          </Button>
-                        <span v-if="resizeState.loading" class="text-xs text-muted-foreground">Submitting...</span>
-                        <span v-if="resizeState.success" class="text-xs text-primary">{{ resizeState.success }}</span>
-                        <span v-if="resizeState.error" class="text-xs text-destructive">{{ resizeState.error }}</span>
-                      </div>
-                    </form>
-                  </div>
-
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
-                    <div>
-                      <h3 class="text-sm font-semibold text-foreground">Update firewalls</h3>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        Replace firewall assignments using firewall names or IDs.
-                      </p>
-                    </div>
-                    <form class="mt-4 space-y-3" @submit.prevent="submitUpdateFirewalls">
-                      <div class="space-y-1.5">
-                        <Label class="text-xs font-medium text-muted-foreground">Firewalls</Label>
-                        <div v-if="firewallOptions.length" class="grid gap-2 sm:grid-cols-2">
-                          <label
-                            v-for="option in firewallOptions"
-                            :key="option.value"
-                            class="flex items-start gap-2 rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80"
+                          <p
+                            v-if="optionsLoading"
+                            class="text-xs text-muted-foreground"
                           >
-                            <input
-                              type="checkbox"
-                              class="mt-0.5 h-4 w-4 rounded border-border/60 text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                              :value="option.value"
-                              :checked="firewallsSelected.includes(option.value)"
-                              @change="toggleFirewallSelection(option.value)"
-                            />
-                            <span>{{ option.label }}</span>
-                          </label>
+                            Loading images...
+                          </p>
+                          <p
+                            v-else-if="!imageOptions.length"
+                            class="text-xs text-muted-foreground"
+                          >
+                            Using current image only.
+                          </p>
                         </div>
-                        <p v-else class="text-xs text-muted-foreground">
-                          No firewall options available.
+                        <p v-if="optionsError" class="text-xs text-destructive">
+                          {{ optionsError }}
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            :disabled="
+                              settingsDisabled ||
+                              rebuildState.loading ||
+                              (!rebuildServerImage && !imageOptions.length)
+                            "
+                          >
+                            Queue rebuild job
+                          </Button>
+                          <span
+                            v-if="rebuildState.loading"
+                            class="text-xs text-muted-foreground"
+                            >Submitting...</span
+                          >
+                          <span
+                            v-if="rebuildState.success"
+                            class="text-xs text-primary"
+                            >{{ rebuildState.success }}</span
+                          >
+                          <span
+                            v-if="rebuildState.error"
+                            class="text-xs text-destructive"
+                            >{{ rebuildState.error }}</span
+                          >
+                        </div>
+                      </form>
+                    </div>
+
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-4"
+                    >
+                      <div>
+                        <h3 class="text-sm font-semibold text-foreground">
+                          Resize server
+                        </h3>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                          Update the server type and disk upgrade preference.
                         </p>
                       </div>
-                      <div v-if="firewallOptions.length" class="flex items-center gap-2">
-                        <Switch v-model:checked="firewallsUseCustom" />
-                        <span class="text-xs text-muted-foreground">Add custom firewall IDs</span>
-                      </div>
-                      <div v-if="showFirewallCustomInput" class="space-y-1.5">
-                        <Label class="text-xs font-medium text-muted-foreground">Custom firewalls</Label>
-                        <Input v-model="firewallsCustom" placeholder="fw-core, fw-web" />
-                        <p class="text-xs text-muted-foreground">Comma-separated list.</p>
-                      </div>
-                      <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading firewalls...</p>
-                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
-                      <div class="flex flex-wrap items-center gap-3">
-                        <Button type="submit" size="sm" :disabled="settingsDisabled || firewallsState.loading">
-                          Create firewall update job
-                        </Button>
-                        <span v-if="firewallsState.loading" class="text-xs text-muted-foreground">Submitting...</span>
-                        <span v-if="firewallsState.success" class="text-xs text-primary">{{ firewallsState.success }}</span>
-                        <span v-if="firewallsState.error" class="text-xs text-destructive">{{ firewallsState.error }}</span>
-                      </div>
-                    </form>
-                  </div>
-
-                  <div class="rounded-lg border border-border/60 bg-card/40 px-4 py-4">
-                    <div>
-                      <h3 class="text-sm font-semibold text-foreground">Manage volume</h3>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        Create & attach a volume or delete an existing one.
-                      </p>
-                    </div>
-                    <form class="mt-4 space-y-3" @submit.prevent="submitManageVolume">
-                      <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Volume</Label>
-                          <Select v-if="volumeOptions.length" v-model="volumeName" :disabled="optionsLoading">
-                            <SelectTrigger :class="controlClass">
-                              <SelectValue placeholder="Select volume" />
-                            </SelectTrigger>
-                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
-                              <SelectItem
-                                v-for="option in volumeOptions"
-                                :key="option.value"
-                                :value="option.value"
-                                class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                      <form
+                        class="mt-4 space-y-3"
+                        @submit.prevent="submitResize"
+                      >
+                        <div class="grid gap-3 sm:grid-cols-2">
+                          <div class="space-y-1.5">
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Server type</Label
+                            >
+                            <Select
+                              v-if="serverTypeOptions.length"
+                              v-model="resizeServerType"
+                              :disabled="optionsLoading"
+                            >
+                              <SelectTrigger :class="controlClass">
+                                <SelectValue placeholder="Select server type" />
+                              </SelectTrigger>
+                              <SelectContent
+                                class="border-border/60 bg-popover text-popover-foreground"
                               >
-                                <SelectItemText>{{ option.label }}</SelectItemText>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <div v-else class="space-y-1">
-                            <Input v-model="volumeName" placeholder="data-volume" />
-                            <p class="text-xs text-muted-foreground">No volume list available.</p>
+                                <SelectItem
+                                  v-for="option in serverTypeOptions"
+                                  :key="option.value"
+                                  :value="option.value"
+                                  class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                                >
+                                  <SelectItemText>{{
+                                    option.label
+                                  }}</SelectItemText>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              v-else
+                              v-model="resizeServerType"
+                              :disabled="true"
+                              placeholder="Current server type"
+                            />
+                            <p
+                              v-if="optionsLoading"
+                              class="text-xs text-muted-foreground"
+                            >
+                              Loading server types...
+                            </p>
+                            <p
+                              v-else-if="!serverTypeOptions.length"
+                              class="text-xs text-muted-foreground"
+                            >
+                              Resize options unavailable.
+                            </p>
+                          </div>
+                          <div class="space-y-1.5">
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Upgrade disk</Label
+                            >
+                            <div class="flex items-center gap-2">
+                              <Switch v-model:checked="resizeUpgradeDisk" />
+                              <span class="text-xs text-muted-foreground">
+                                {{ resizeUpgradeDisk ? "Yes" : "No" }}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <p v-if="optionsError" class="text-xs text-destructive">
+                          {{ optionsError }}
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            :disabled="
+                              settingsDisabled ||
+                              resizeState.loading ||
+                              !serverTypeOptions.length
+                            "
+                          >
+                            Queue resize job
+                          </Button>
+                          <span
+                            v-if="resizeState.loading"
+                            class="text-xs text-muted-foreground"
+                            >Submitting...</span
+                          >
+                          <span
+                            v-if="resizeState.success"
+                            class="text-xs text-primary"
+                            >{{ resizeState.success }}</span
+                          >
+                          <span
+                            v-if="resizeState.error"
+                            class="text-xs text-destructive"
+                            >{{ resizeState.error }}</span
+                          >
+                        </div>
+                      </form>
+                    </div>
+
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-4"
+                    >
+                      <div>
+                        <h3 class="text-sm font-semibold text-foreground">
+                          Update firewalls
+                        </h3>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                          Replace firewall assignments using firewall names or
+                          IDs.
+                        </p>
+                      </div>
+                      <form
+                        class="mt-4 space-y-3"
+                        @submit.prevent="submitUpdateFirewalls"
+                      >
                         <div class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Action</Label>
-                          <Select v-model="volumeState">
-                            <SelectTrigger :class="controlClass">
-                              <SelectValue placeholder="Select state" />
-                            </SelectTrigger>
-                            <SelectContent class="border-border/60 bg-popover text-popover-foreground">
-                              <SelectItem value="present" class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground">
-                                <SelectItemText>Create &amp; attach</SelectItemText>
-                              </SelectItem>
-                              <SelectItem value="absent" class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground">
-                                <SelectItemText>Delete volume</SelectItemText>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p v-if="volumeState === 'absent'" class="text-xs text-destructive">
-                            This deletes the volume from your cloud provider.
+                          <Label
+                            class="text-xs font-medium text-muted-foreground"
+                            >Firewalls</Label
+                          >
+                          <div
+                            v-if="firewallOptions.length"
+                            class="grid gap-2 sm:grid-cols-2"
+                          >
+                            <label
+                              v-for="option in firewallOptions"
+                              :key="option.value"
+                              class="flex items-start gap-2 rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80"
+                            >
+                              <input
+                                type="checkbox"
+                                class="mt-0.5 h-4 w-4 rounded border-border/60 text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                                :value="option.value"
+                                :checked="
+                                  firewallsSelected.includes(option.value)
+                                "
+                                @change="toggleFirewallSelection(option.value)"
+                              />
+                              <span>{{ option.label }}</span>
+                            </label>
+                          </div>
+                          <p v-else class="text-xs text-muted-foreground">
+                            No firewall options available.
                           </p>
                         </div>
-                        <div v-if="volumeState === 'present'" class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Size (GB)</Label>
+                        <div
+                          v-if="firewallOptions.length"
+                          class="flex items-center gap-2"
+                        >
+                          <Switch v-model:checked="firewallsUseCustom" />
+                          <span class="text-xs text-muted-foreground"
+                            >Add custom firewall IDs</span
+                          >
+                        </div>
+                        <div v-if="showFirewallCustomInput" class="space-y-1.5">
+                          <Label
+                            class="text-xs font-medium text-muted-foreground"
+                            >Custom firewalls</Label
+                          >
                           <Input
-                            v-model="volumeSizeGb"
-                            type="number"
-                            :min="selectedVolume?.size_gb || 1"
-                            placeholder="50"
+                            v-model="firewallsCustom"
+                            placeholder="fw-core, fw-web"
                           />
-                          <p v-if="selectedVolume?.size_gb" class="text-xs text-muted-foreground">
-                            Existing volume size is {{ selectedVolume.size_gb }}GB. You can only increase it.
+                          <p class="text-xs text-muted-foreground">
+                            Comma-separated list.
                           </p>
                         </div>
-                        <div v-if="volumeState === 'present'" class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Location</Label>
-                          <div class="rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80">
-                            {{ server.location }}
-                          </div>
-                          <p class="text-xs text-muted-foreground">Volumes are created in the server location.</p>
+                        <p
+                          v-if="optionsLoading"
+                          class="text-xs text-muted-foreground"
+                        >
+                          Loading firewalls...
+                        </p>
+                        <p v-if="optionsError" class="text-xs text-destructive">
+                          {{ optionsError }}
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            :disabled="
+                              settingsDisabled || firewallsState.loading
+                            "
+                          >
+                            Create firewall update job
+                          </Button>
+                          <span
+                            v-if="firewallsState.loading"
+                            class="text-xs text-muted-foreground"
+                            >Submitting...</span
+                          >
+                          <span
+                            v-if="firewallsState.success"
+                            class="text-xs text-primary"
+                            >{{ firewallsState.success }}</span
+                          >
+                          <span
+                            v-if="firewallsState.error"
+                            class="text-xs text-destructive"
+                            >{{ firewallsState.error }}</span
+                          >
                         </div>
-                        <div v-if="volumeState === 'present'" class="space-y-1.5">
-                          <Label class="text-xs font-medium text-muted-foreground">Automount</Label>
-                          <div class="flex items-center gap-2">
-                            <Switch v-model:checked="volumeAutomount" />
-                            <span class="text-xs text-muted-foreground">
-                              {{ volumeAutomount ? 'Yes' : 'No' }}
-                            </span>
+                      </form>
+                    </div>
+
+                    <div
+                      class="rounded-lg border border-border/60 bg-card/40 px-4 py-4"
+                    >
+                      <div>
+                        <h3 class="text-sm font-semibold text-foreground">
+                          Manage volume
+                        </h3>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                          Create & attach a volume or delete an existing one.
+                        </p>
+                      </div>
+                      <form
+                        class="mt-4 space-y-3"
+                        @submit.prevent="submitManageVolume"
+                      >
+                        <div class="grid gap-3 sm:grid-cols-2">
+                          <div class="space-y-1.5">
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Volume</Label
+                            >
+                            <Select
+                              v-if="volumeOptions.length"
+                              v-model="volumeName"
+                              :disabled="optionsLoading"
+                            >
+                              <SelectTrigger :class="controlClass">
+                                <SelectValue placeholder="Select volume" />
+                              </SelectTrigger>
+                              <SelectContent
+                                class="border-border/60 bg-popover text-popover-foreground"
+                              >
+                                <SelectItem
+                                  v-for="option in volumeOptions"
+                                  :key="option.value"
+                                  :value="option.value"
+                                  class="text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                                >
+                                  <SelectItemText>{{
+                                    option.label
+                                  }}</SelectItemText>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <div v-else class="space-y-1">
+                              <Input
+                                v-model="volumeName"
+                                placeholder="data-volume"
+                              />
+                              <p class="text-xs text-muted-foreground">
+                                No volume list available.
+                              </p>
+                            </div>
+                          </div>
+                          <div class="space-y-1.5">
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Action</Label
+                            >
+                            <Select v-model="volumeState">
+                              <SelectTrigger :class="controlClass">
+                                <SelectValue placeholder="Select state" />
+                              </SelectTrigger>
+                              <SelectContent
+                                class="border-border/60 bg-popover text-popover-foreground"
+                              >
+                                <SelectItem
+                                  value="present"
+                                  class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                                >
+                                  <SelectItemText
+                                    >Create &amp; attach</SelectItemText
+                                  >
+                                </SelectItem>
+                                <SelectItem
+                                  value="absent"
+                                  class="text-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground"
+                                >
+                                  <SelectItemText>Delete volume</SelectItemText>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p
+                              v-if="volumeState === 'absent'"
+                              class="text-xs text-destructive"
+                            >
+                              This deletes the volume from your cloud provider.
+                            </p>
+                          </div>
+                          <div
+                            v-if="volumeState === 'present'"
+                            class="space-y-1.5"
+                          >
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Size (GB)</Label
+                            >
+                            <Input
+                              v-model="volumeSizeGb"
+                              type="number"
+                              :min="selectedVolume?.size_gb || 1"
+                              placeholder="50"
+                            />
+                            <p
+                              v-if="selectedVolume?.size_gb"
+                              class="text-xs text-muted-foreground"
+                            >
+                              Existing volume size is
+                              {{ selectedVolume.size_gb }}GB. You can only
+                              increase it.
+                            </p>
+                          </div>
+                          <div
+                            v-if="volumeState === 'present'"
+                            class="space-y-1.5"
+                          >
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Location</Label
+                            >
+                            <div
+                              class="rounded-lg border border-border/60 bg-background/50 px-3 py-2 text-sm text-foreground/80"
+                            >
+                              {{ server.location }}
+                            </div>
+                            <p class="text-xs text-muted-foreground">
+                              Volumes are created in the server location.
+                            </p>
+                          </div>
+                          <div
+                            v-if="volumeState === 'present'"
+                            class="space-y-1.5"
+                          >
+                            <Label
+                              class="text-xs font-medium text-muted-foreground"
+                              >Automount</Label
+                            >
+                            <div class="flex items-center gap-2">
+                              <Switch v-model:checked="volumeAutomount" />
+                              <span class="text-xs text-muted-foreground">
+                                {{ volumeAutomount ? "Yes" : "No" }}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <p v-if="optionsLoading" class="text-xs text-muted-foreground">Loading volume options...</p>
-                      <p v-if="optionsError" class="text-xs text-destructive">{{ optionsError }}</p>
-                      <div class="flex flex-wrap items-center gap-3">
-                        <Button type="submit" size="sm" :disabled="settingsDisabled || volumeStateUi.loading">
-                          Create volume job
-                        </Button>
-                        <span v-if="volumeStateUi.loading" class="text-xs text-muted-foreground">Submitting...</span>
-                        <span v-if="volumeStateUi.success" class="text-xs text-primary">{{ volumeStateUi.success }}</span>
-                        <span v-if="volumeStateUi.error" class="text-xs text-destructive">{{ volumeStateUi.error }}</span>
-                      </div>
-                    </form>
+                        <p
+                          v-if="optionsLoading"
+                          class="text-xs text-muted-foreground"
+                        >
+                          Loading volume options...
+                        </p>
+                        <p v-if="optionsError" class="text-xs text-destructive">
+                          {{ optionsError }}
+                        </p>
+                        <div class="flex flex-wrap items-center gap-3">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            :disabled="
+                              settingsDisabled || volumeStateUi.loading
+                            "
+                          >
+                            Create volume job
+                          </Button>
+                          <span
+                            v-if="volumeStateUi.loading"
+                            class="text-xs text-muted-foreground"
+                            >Submitting...</span
+                          >
+                          <span
+                            v-if="volumeStateUi.success"
+                            class="text-xs text-primary"
+                            >{{ volumeStateUi.success }}</span
+                          >
+                          <span
+                            v-if="volumeStateUi.error"
+                            class="text-xs text-destructive"
+                            >{{ volumeStateUi.error }}</span
+                          >
+                        </div>
+                      </form>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Activity -->
-              <div v-if="activeSection === 'activity'" class="space-y-4">
-                <ServerActivity :server-id="server.id" />
-              </div>
+                <!-- Activity -->
+                <div v-if="activeSection === 'activity'" class="space-y-4">
+                  <ServerActivity :server-id="server.id" />
+                </div>
               </div>
             </CardContent>
           </Card>
