@@ -52,7 +52,7 @@ case "${1:-}" in
 esac
 
 run_devctl() {
-  PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="${PRESSLUFT_CONTROL_PLANE_URL:-}" "$GO_CMD" run ./cmd/pressluft-devctl "$@"
+  PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="${PRESSLUFT_CONTROL_PLANE_URL:-}" "$GO_CMD" run -tags dev ./cmd/pressluft-devctl "$@"
 }
 
 start_quick_tunnel() {
@@ -162,6 +162,8 @@ print_workflow_banner
 if ! run_devctl preflight --workflow="$DEV_WORKFLOW"; then
   exit 1
 fi
+
+echo "Dev state: $ROOT_DIR/.pressluft/"
 
 if ! start_backend; then
   show_backend_failure

@@ -6,6 +6,7 @@ GO_TEST ?= $(GO) test
 NPM ?= pnpm
 APP_BINARY ?= bin/pressluft
 AGENT_BINARY ?= bin/pressluft-agent
+DEVCTL_BINARY ?= bin/pressluft-devctl
 DEV_API_PORT ?= 8081
 DEV_UI_PORT ?= 8080
 DEV_UI_HOST ?= 0.0.0.0
@@ -18,6 +19,7 @@ NODE_OPTIONS ?= --max-old-space-size=8192
 WEB_DIR := web
 EMBED_DIST_DIR := internal/server/dist
 
+.PHONY: build dev run clean format lint test check agent agent-dev devctl dev-status dev-stats dev-events dev-health all
 GO_ENV = env TMPDIR="$(TMPDIR)" GOCACHE="$(GOCACHE)"
 ANSIBLE_ENV = env TMPDIR="$(TMPDIR)" ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)"
 WEB_ENV = env NODE_OPTIONS="$(NODE_OPTIONS)"
@@ -116,6 +118,21 @@ agent: prepare-env
 agent-dev: prepare-env
 	CGO_ENABLED=0 $(GO_ENV) $(GO) build -tags dev -o "$(AGENT_BINARY)" ./cmd/pressluft-agent
 
+devctl: prepare-env
+	CGO_ENABLED=0 $(GO_ENV) $(GO) build -tags dev -o "$(DEVCTL_BINARY)" ./cmd/pressluft-devctl
+
+dev-status: devctl
+	./$(DEVCTL_BINARY) status
+
+dev-stats: devctl
+	./$(DEVCTL_BINARY) stats
+
+dev-events: devctl
+	./$(DEVCTL_BINARY) events
+
+dev-health: devctl
+	./$(DEVCTL_BINARY) health
+
 all: build agent
 
 dev: agent-dev frontend-install
@@ -124,12 +141,9 @@ dev: agent-dev frontend-install
 dev-lab: agent-dev frontend-install
 	TMPDIR="$(TMPDIR)" GOCACHE="$(GOCACHE)" ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" DEV_WORKFLOW="lab" DEV_API_PORT="$(DEV_API_PORT)" DEV_UI_PORT="$(DEV_UI_PORT)" DEV_UI_HOST="$(DEV_UI_HOST)" WEB_DIR="$(WEB_DIR)" NPM="$(NPM)" GO="$(GO)" ./ops/scripts/dev.sh
 
-dev-status: prepare-env
-	$(GO_ENV) $(GO) run ./cmd/pressluft-devctl status
-
-dev-reset: prepare-env
+dev-reset: devctl
 	@test "$(CONFIRM)" = "1" || { printf '%s\n' 'dev-reset is destructive. Re-run with CONFIRM=1.'; exit 1; }
-	$(GO_ENV) $(GO) run ./cmd/pressluft-devctl reset --force
+	./$(DEVCTL_BINARY) reset --force
 
 run: build
 	./$(APP_BINARY)
@@ -181,4 +195,4 @@ validate-web: frontend-generate
 validate: validate-go ansible-validate all
 
 clean:
-	rm -f "$(APP_BINARY)" "$(AGENT_BINARY)"
+	rm -f "$(APP_BINARY)" "$(AGENT_BINARY)" "$(DEVCTL_BINARY)"
