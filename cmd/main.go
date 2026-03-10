@@ -34,33 +34,18 @@ import (
 	"pressluft/internal/worker"
 	"pressluft/internal/ws"
 
-	// Register provider implementations.
 	_ "pressluft/internal/provider/hetzner"
 )
 
 const defaultAddr = ":8080"
 
 type playbookPaths struct {
-	basePath  string // root for per-provider playbook directories
-	configure string // provider-agnostic configure playbook
+	basePath  string
+	configure string
 }
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	paths := envconfig.Resolve()
-	logger.Info(
-		"runtime paths resolved",
-		"mode", envconfig.Mode,
-		"data_dir", paths.DataDir,
-		"db_path", paths.DBPath,
-		"age_key_path", paths.AgeKeyPath,
-		"ca_key_path", paths.CAKeyPath,
-	)
-
-	ageKeyPath := paths.AgeKeyPath
-	allowGenerate := false
-	if strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH")) == "" {
-		allowGenerate = true
 	slog.SetDefault(logger)
 
 	cwd, _ := os.Getwd()
@@ -68,6 +53,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("resolve control-plane config: %v", err)
 	}
+	logger.Info(
+		"runtime paths resolved",
+		"mode", envconfig.Mode,
+		"data_dir", runtimeConfig.DataDir,
+		"db_path", runtimeConfig.DBPath,
+		"age_key_path", runtimeConfig.AgeKeyPath,
+		"ca_key_path", runtimeConfig.CAKeyPath,
+		"session_secret_path", runtimeConfig.SessionSecretPath,
+	)
 	executionMode := runtimeConfig.ExecutionMode
 	logExecutionMode(logger, executionMode)
 
@@ -80,14 +74,12 @@ func main() {
 		logger.Info("age key generated", "path", runtimeConfig.AgeKeyPath)
 	}
 
-	db, err := database.Open(paths.DBPath, logger)
 	db, err := database.Open(runtimeConfig.DBPath, logger)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
 	defer db.Close()
 
-	// Create stores for worker
 	jobStore := orchestrator.NewStore(db.DB)
 	serverStore := server.NewServerStore(db.DB)
 	providerStore := provider.NewStore(db.DB)
@@ -95,7 +87,6 @@ func main() {
 	agentTokenStore := agentauth.NewStore(db.DB)
 	pkiStore := pki.NewStore(db.DB)
 	registrationStore := registration.NewStore(db.DB)
-	ca, err := pki.LoadOrCreateCA(db.DB, ageKeyPath, paths.CAKeyPath)
 	authStore := auth.NewStore(db.DB)
 	ca, err := pki.LoadOrCreateCA(db.DB, runtimeConfig.AgeKeyPath, runtimeConfig.CAKeyPath)
 	if err != nil {
@@ -149,13 +140,11 @@ func main() {
 
 	ansibleRunner := ansible.NewAdapter(ansibleBinary, runtimeConfig.AnsibleDir, []string{
 		playbooks.configure,
-		playbooks.basePath + "/", // allow all provider-scoped playbooks under the base path
+		playbooks.basePath + "/",
 	})
 
 	hub := ws.NewHub()
 	agentRunner := dispatch.NewAgentRunner(hub, jobStore, logger)
-
-	// Create worker with executor
 	executor := worker.NewExecutor(
 		jobStore,
 		worker.NewServerStoreAdapter(serverStore),
@@ -175,11 +164,8 @@ func main() {
 	)
 	w := worker.New(jobStore, executor, logger, worker.DefaultConfig())
 
-	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Start worker in background
 	go w.Run(ctx)
 
 	resultWaiter := ws.NewResultWaiter()
@@ -193,7 +179,6 @@ func main() {
 	go monitor.Start(ctx)
 
 	operatorAuthenticator := operatorAuthenticatorForMode(executionMode, authService)
-
 	httpServer := &http.Server{
 		Addr:              resolveAddr(),
 		Handler:           server.WithRequestLogging(server.NewHandlerWithOptions(db.DB, hub, wsHTTPHandler, nodeHandler, server.HandlerOptions{Authenticator: operatorAuthenticator, AuthService: authService, IsDev: executionMode == platform.ExecutionModeDev, ControlPlaneURL: controlPlaneURL}), logger),
@@ -210,14 +195,13 @@ func main() {
 		listenAndServe = configureProductionTLSServer(httpServer, ca, controlPlaneURL, runtimeConfig.TLSCertFile, runtimeConfig.TLSKeyFile)
 	}
 
-	// Handle shutdown signals
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 
 		logger.Info("shutdown signal received")
-		cancel() // Stop worker
+		cancel()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
@@ -228,8 +212,6 @@ func main() {
 	}()
 
 	logger.Info("pressluft listening", "addr", httpServer.Addr, "mode", envconfig.Mode)
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-	logger.Info("pressluft listening", "addr", httpServer.Addr)
 	if err := listenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server failed: %v", err)
 	}
@@ -244,8 +226,6 @@ func defaultPlaybookPaths() playbookPaths {
 	}
 }
 
-type activityLoggerAdapter struct {
-	logger *slog.Logger
 func operatorAuthenticatorForMode(mode platform.ExecutionMode, authService *auth.Service) auth.Authenticator {
 	if mode == platform.ExecutionModeDev {
 		return auth.NewDevAuthenticator()

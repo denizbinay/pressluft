@@ -118,8 +118,8 @@ agent: prepare-env
 agent-dev: prepare-env
 	CGO_ENABLED=0 $(GO_ENV) $(GO) build -tags dev -o "$(AGENT_BINARY)" ./cmd/pressluft-agent
 
-devctl:
-	CGO_ENABLED=0 $(GO) build -tags dev -o "$(DEVCTL_BINARY)" ./cmd/pressluft-devctl
+devctl: prepare-env
+	CGO_ENABLED=0 $(GO_ENV) $(GO) build -tags dev -o "$(DEVCTL_BINARY)" ./cmd/pressluft-devctl
 
 dev-status: devctl
 	./$(DEVCTL_BINARY) status
@@ -141,12 +141,9 @@ dev: agent-dev frontend-install
 dev-lab: agent-dev frontend-install
 	TMPDIR="$(TMPDIR)" GOCACHE="$(GOCACHE)" ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" DEV_WORKFLOW="lab" DEV_API_PORT="$(DEV_API_PORT)" DEV_UI_PORT="$(DEV_UI_PORT)" DEV_UI_HOST="$(DEV_UI_HOST)" WEB_DIR="$(WEB_DIR)" NPM="$(NPM)" GO="$(GO)" ./ops/scripts/dev.sh
 
-dev-status: prepare-env
-	$(GO_ENV) $(GO) run ./cmd/pressluft-devctl status
-
-dev-reset: prepare-env
+dev-reset: devctl
 	@test "$(CONFIRM)" = "1" || { printf '%s\n' 'dev-reset is destructive. Re-run with CONFIRM=1.'; exit 1; }
-	$(GO_ENV) $(GO) run ./cmd/pressluft-devctl reset --force
+	./$(DEVCTL_BINARY) reset --force
 
 run: build
 	./$(APP_BINARY)

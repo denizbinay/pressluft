@@ -52,7 +52,7 @@ case "${1:-}" in
 esac
 
 run_devctl() {
-  PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="${PRESSLUFT_CONTROL_PLANE_URL:-}" "$GO_CMD" run ./cmd/pressluft-devctl "$@"
+  PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="${PRESSLUFT_CONTROL_PLANE_URL:-}" "$GO_CMD" run -tags dev ./cmd/pressluft-devctl "$@"
 }
 
 start_quick_tunnel() {
@@ -165,11 +165,6 @@ fi
 
 echo "Dev state: $ROOT_DIR/.pressluft/"
 
-PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="$PRESSLUFT_CONTROL_PLANE_URL" "$GO_CMD" run -tags dev ./cmd &
-GO_PID=$!
-sleep 1
-if ! kill -0 "$GO_PID" 2>/dev/null; then
-  echo "Go backend failed to start on port $DEV_API_PORT. Stop the process using that port or choose another port (e.g. make dev DEV_API_PORT=8082)."
 if ! start_backend; then
   show_backend_failure
   exit 1

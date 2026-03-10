@@ -1,9 +1,18 @@
 package envconfig
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"pressluft/internal/platform"
+)
+
+var (
+	defaultSessionIdleTimeout     = 12 * time.Hour
+	defaultSessionAbsoluteTimeout = 7 * 24 * time.Hour
 )
 
 type RuntimePaths struct {
@@ -12,47 +21,6 @@ type RuntimePaths struct {
 	AgeKeyPath string
 	CAKeyPath  string
 }
-
-func Resolve() RuntimePaths {
-	dataDir := filepath.Clean(defaultDataDir())
-	dbPath := strings.TrimSpace(os.Getenv("PRESSLUFT_DB"))
-	if dbPath == "" {
-		dbPath = filepath.Join(dataDir, "pressluft.db")
-	}
-
-	ageKeyPath := strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH"))
-	if ageKeyPath == "" {
-		ageKeyPath = DefaultAgeKeyPath()
-	}
-
-	caKeyPath := strings.TrimSpace(os.Getenv("PRESSLUFT_CA_KEY_PATH"))
-	if caKeyPath == "" {
-		caKeyPath = filepath.Join(dataDir, "ca.key")
-	}
-
-	return RuntimePaths{
-		DataDir:    dataDir,
-		DBPath:     filepath.Clean(dbPath),
-		AgeKeyPath: filepath.Clean(ageKeyPath),
-		CAKeyPath:  filepath.Clean(caKeyPath),
-	}
-}
-
-func DefaultDataDir() string {
-	return filepath.Clean(defaultDataDir())
-}
-
-func DefaultAgeKeyPath() string {
-	return filepath.Clean(defaultAgeKeyPath())
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-
-	"pressluft/internal/auth"
-	"pressluft/internal/platform"
-)
 
 type EnvVarSpec struct {
 	Name         string `json:"name"`
@@ -84,13 +52,23 @@ type AgentRuntime struct {
 	ConfigPath    string                 `json:"config_path"`
 }
 
-func DefaultDataDir() string {
-	dataDir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
-	if dataDir == "" {
-		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".local", "share")
+func Resolve() RuntimePaths {
+	dataDir := DefaultDataDir()
+
+	return RuntimePaths{
+		DataDir:    dataDir,
+		DBPath:     resolveDBPath(dataDir),
+		AgeKeyPath: resolveAgeKeyPath(dataDir),
+		CAKeyPath:  resolveCAKeyPath(dataDir),
 	}
-	return dataDir
+}
+
+func DefaultDataDir() string {
+	return filepath.Clean(defaultDataDir())
+}
+
+func DefaultAgeKeyPath() string {
+	return filepath.Clean(defaultAgeKeyPath())
 }
 
 func ResolveControlPlaneRuntime(isDevBuild bool, cwd string) (ControlPlaneRuntime, error) {
@@ -119,7 +97,7 @@ func ResolveControlPlaneRuntime(isDevBuild bool, cwd string) (ControlPlaneRuntim
 		return ControlPlaneRuntime{}, err
 	}
 
-	runtime := ControlPlaneRuntime{
+	return ControlPlaneRuntime{
 		ExecutionMode:          executionMode,
 		ControlPlaneURL:        strings.TrimSpace(os.Getenv("PRESSLUFT_CONTROL_PLANE_URL")),
 		DBPath:                 resolveDBPath(dataDir),
@@ -134,9 +112,7 @@ func ResolveControlPlaneRuntime(isDevBuild bool, cwd string) (ControlPlaneRuntim
 		SessionIdleTimeout:     idleTimeout,
 		SessionAbsoluteTimeout: absoluteTimeout,
 		SessionCookieSecure:    ResolveSecureSessionCookies(executionMode),
-	}
-
-	return runtime, nil
+	}, nil
 }
 
 func ResolveAgentRuntime(isDevBuild bool, configPath string) (AgentRuntime, error) {
@@ -151,8 +127,8 @@ func ResolveAgentRuntime(isDevBuild bool, configPath string) (AgentRuntime, erro
 }
 
 func ResolveSessionTimeouts() (time.Duration, time.Duration, error) {
-	idle := auth.DefaultSessionIdleTimeout
-	absolute := auth.DefaultSessionAbsoluteTimeout
+	idle := defaultSessionIdleTimeout
+	absolute := defaultSessionAbsoluteTimeout
 	if raw := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_IDLE_TIMEOUT")); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
@@ -189,8 +165,8 @@ func ControlPlaneEnvSpec() []EnvVarSpec {
 		{Name: "PRESSLUFT_CA_KEY_PATH", Scope: "control-plane", Description: "Encrypted CA private key path."},
 		{Name: "PRESSLUFT_AGE_KEY_PATH", Scope: "shared", Description: "age identity path used for local secret encryption."},
 		{Name: "PRESSLUFT_SESSION_KEY_PATH", Scope: "control-plane", Description: "Session HMAC secret path."},
-		{Name: "PRESSLUFT_SESSION_IDLE_TIMEOUT", Scope: "control-plane", DefaultValue: auth.DefaultSessionIdleTimeout.String(), Description: "Operator session idle timeout."},
-		{Name: "PRESSLUFT_SESSION_ABSOLUTE_TIMEOUT", Scope: "control-plane", DefaultValue: auth.DefaultSessionAbsoluteTimeout.String(), Description: "Operator session absolute timeout."},
+		{Name: "PRESSLUFT_SESSION_IDLE_TIMEOUT", Scope: "control-plane", DefaultValue: defaultSessionIdleTimeout.String(), Description: "Operator session idle timeout."},
+		{Name: "PRESSLUFT_SESSION_ABSOLUTE_TIMEOUT", Scope: "control-plane", DefaultValue: defaultSessionAbsoluteTimeout.String(), Description: "Operator session absolute timeout."},
 		{Name: "PRESSLUFT_SESSION_COOKIE_SECURE", Scope: "control-plane", Description: "Override secure-cookie behavior."},
 		{Name: "PRESSLUFT_BOOTSTRAP_ADMIN_EMAIL", Scope: "control-plane", Description: "Bootstrap admin email for non-dev mode."},
 		{Name: "PRESSLUFT_BOOTSTRAP_ADMIN_PASSWORD", Scope: "control-plane", Description: "Bootstrap admin password for non-dev mode."},
@@ -208,28 +184,31 @@ func AgentEnvSpec() []EnvVarSpec {
 
 func resolveDBPath(dataDir string) string {
 	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_DB")); p != "" {
-		return p
+		return filepath.Clean(p)
 	}
-	return filepath.Join(dataDir, "pressluft", "pressluft.db")
+	return filepath.Join(dataDir, "pressluft.db")
 }
 
 func resolveAgeKeyPath(dataDir string) string {
 	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH")); p != "" {
-		return p
+		return filepath.Clean(p)
 	}
-	return filepath.Join(dataDir, "pressluft", "age.key")
+	if Mode == "dev" {
+		return filepath.Join(dataDir, "age.key")
+	}
+	return DefaultAgeKeyPath()
 }
 
 func resolveCAKeyPath(dataDir string) string {
 	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_CA_KEY_PATH")); p != "" {
-		return p
+		return filepath.Clean(p)
 	}
-	return filepath.Join(dataDir, "pressluft", "ca.key")
+	return filepath.Join(dataDir, "ca.key")
 }
 
 func resolveSessionSecretPath(dataDir string) string {
 	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_SESSION_KEY_PATH")); p != "" {
-		return p
+		return filepath.Clean(p)
 	}
-	return filepath.Join(dataDir, "pressluft", "session.key")
+	return filepath.Join(dataDir, "session.key")
 }

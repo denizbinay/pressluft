@@ -127,6 +127,8 @@ func LoadOrCreateCA(db *sql.DB, ageKeyPath, caKeyPath string) (*CA, error) {
 func ValidateCAKey(caKeyPath, ageKeyPath string) error {
 	_, err := loadCAKey(caKeyPath, ageKeyPath)
 	return err
+}
+
 // ValidateStoredCA reports whether a CA certificate exists in the database and,
 // if so, whether the corresponding encrypted key can be loaded with the current
 // age identity.

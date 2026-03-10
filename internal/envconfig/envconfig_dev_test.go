@@ -46,3 +46,34 @@ func TestResolveRespectsOverridesInDevMode(t *testing.T) {
 		t.Fatalf("CAKeyPath = %q", paths.CAKeyPath)
 	}
 }
+
+func TestResolveControlPlaneRuntimeUsesRepoLocalStateInDevMode(t *testing.T) {
+	t.Setenv("PRESSLUFT_DB", "")
+	t.Setenv("PRESSLUFT_AGE_KEY_PATH", "")
+	t.Setenv("PRESSLUFT_CA_KEY_PATH", "")
+	t.Setenv("PRESSLUFT_SESSION_KEY_PATH", "")
+	t.Setenv("PRESSLUFT_ANSIBLE_DIR", "")
+	t.Setenv("PRESSLUFT_ANSIBLE_BIN", "")
+
+	runtime, err := ResolveControlPlaneRuntime(true, "/repo/root")
+	if err != nil {
+		t.Fatalf("ResolveControlPlaneRuntime() error = %v", err)
+	}
+
+	expectedDir := filepath.Join(repoRoot(), ".pressluft")
+	if runtime.DataDir != expectedDir {
+		t.Fatalf("DataDir = %q, want %q", runtime.DataDir, expectedDir)
+	}
+	if runtime.DBPath != filepath.Join(expectedDir, "pressluft.db") {
+		t.Fatalf("DBPath = %q", runtime.DBPath)
+	}
+	if runtime.AgeKeyPath != filepath.Join(expectedDir, "age.key") {
+		t.Fatalf("AgeKeyPath = %q", runtime.AgeKeyPath)
+	}
+	if runtime.CAKeyPath != filepath.Join(expectedDir, "ca.key") {
+		t.Fatalf("CAKeyPath = %q", runtime.CAKeyPath)
+	}
+	if runtime.SessionSecretPath != filepath.Join(expectedDir, "session.key") {
+		t.Fatalf("SessionSecretPath = %q", runtime.SessionSecretPath)
+	}
+}

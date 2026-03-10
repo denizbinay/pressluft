@@ -14,6 +14,7 @@ import (
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
 	"pressluft/internal/security"
+	"pressluft/internal/server/profiles"
 
 	_ "modernc.org/sqlite"
 
@@ -154,7 +155,14 @@ func TestServersCreateEndpointRejectsUnavailableProfile(t *testing.T) {
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusBadRequest)
 	}
-	if !bytes.Contains(res.Body.Bytes(), []byte("fully supports nginx-stack first")) {
+	profile, ok := profiles.Get("openlitespeed-stack")
+	if !ok {
+		t.Fatalf("expected openlitespeed-stack profile to exist")
+	}
+	if profile.SupportLevel != platform.SupportLevelUnavailable {
+		t.Fatalf("SupportLevel = %q, want %q", profile.SupportLevel, platform.SupportLevelUnavailable)
+	}
+	if !bytes.Contains(res.Body.Bytes(), []byte("automated setup and verification")) {
 		t.Fatalf("response body = %q, want support-matrix reason", res.Body.String())
 	}
 }

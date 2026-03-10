@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"pressluft/internal/devdiag"
 	"pressluft/internal/envconfig"
 	"pressluft/internal/pki"
 	"pressluft/internal/security"
@@ -16,40 +17,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type pathStatus struct {
-	Path      string `json:"path"`
-	Exists    bool   `json:"exists"`
-	IsDir     bool   `json:"is_dir"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
-}
-
-type statusOutput struct {
-	Mode     string     `json:"mode"`
-	DataDir  pathStatus `json:"data_dir"`
-	DB       pathStatus `json:"db"`
-	DBWAL    pathStatus `json:"db_wal"`
-	DBSHM    pathStatus `json:"db_shm"`
-	AgeKey   pathStatus `json:"age_key"`
-	CAKey    pathStatus `json:"ca_key"`
-	Env      any        `json:"env_overrides"`
-	Commands []string   `json:"commands"`
-}
-
 type tableCount struct {
 	Table string `json:"table"`
 	Count int64  `json:"count"`
-}
-
-type statsOutput struct {
-	Mode        string       `json:"mode"`
-	DBPath      string       `json:"db_path"`
-	TableCounts []tableCount `json:"table_counts"`
 }
 
 type healthCheck struct {
 	Name   string `json:"name"`
 	OK     bool   `json:"ok"`
 	Detail string `json:"detail,omitempty"`
+}
+
+type statsOutput struct {
+	Mode        string       `json:"mode"`
+	DBPath      string       `json:"db_path"`
+	TableCounts []tableCount `json:"table_counts"`
 }
 
 type healthOutput struct {
@@ -105,58 +87,66 @@ func main() {
 		args = args[1:]
 	}
 
-	var err error
+	cwd, _ := os.Getwd()
+	runtime, err := envconfig.ResolveControlPlaneRuntime(true, cwd)
+	if err != nil {
+		exitErr(fmt.Errorf("resolve control-plane runtime: %w", err))
+	}
+
 	switch command {
 	case "status":
-		err = runStatus()
+		printReport(devdiag.Inspect(runtime))
+	case "preflight":
+		workflow, err := parseWorkflow(args)
+		if err != nil {
+			exitErr(err)
+		}
+		report := devdiag.Inspect(runtime)
+		printReport(report)
+		if !report.HealthyFor(workflow) {
+			fmt.Println()
+			fmt.Printf("workflow=%s preflight failed\n", workflow)
+			for _, issue := range report.WorkflowIssues(workflow) {
+				fmt.Printf("- %s\n", issue)
+			}
+			fmt.Println("Suggested next steps: make dev-status ; make dev-reset CONFIRM=1")
+			os.Exit(1)
+		}
 	case "stats":
-		err = runStats()
+		if err := runStats(runtime); err != nil {
+			exitErr(err)
+		}
 	case "events":
-		err = runEvents(args)
+		if err := runEvents(runtime, args); err != nil {
+			exitErr(err)
+		}
 	case "health":
-		err = runHealth()
+		if err := runHealth(runtime); err != nil {
+			exitErr(err)
+		}
+	case "reset":
+		if err := reset(runtime, args); err != nil {
+			exitErr(err)
+		}
 	case "help", "-h", "--help":
-		printUsage()
-		return
+		usage()
 	default:
-		err = fmt.Errorf("unknown command %q", command)
-	}
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "pressluft-devctl: %v\n", err)
-		os.Exit(1)
+		exitErr(fmt.Errorf("unknown command %q", command))
 	}
 }
 
-func runStatus() error {
-	paths := envconfig.Resolve()
-	output := statusOutput{
-		Mode:    envconfig.Mode,
-		DataDir: statPath(paths.DataDir),
-		DB:      statPath(paths.DBPath),
-		DBWAL:   statPath(paths.DBPath + "-wal"),
-		DBSHM:   statPath(paths.DBPath + "-shm"),
-		AgeKey:  statPath(paths.AgeKeyPath),
-		CAKey:   statPath(paths.CAKeyPath),
-		Env: map[string]string{
-			"PRESSLUFT_DB":           strings.TrimSpace(os.Getenv("PRESSLUFT_DB")),
-			"PRESSLUFT_AGE_KEY_PATH": strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH")),
-			"PRESSLUFT_CA_KEY_PATH":  strings.TrimSpace(os.Getenv("PRESSLUFT_CA_KEY_PATH")),
-			"XDG_DATA_HOME":          strings.TrimSpace(os.Getenv("XDG_DATA_HOME")),
-		},
-		Commands: []string{
-			"pressluft-devctl status",
-			"pressluft-devctl stats",
-			"pressluft-devctl events --limit 20",
-			"pressluft-devctl health",
-		},
-	}
-	return writeJSON(output)
+func usage() {
+	fmt.Println("pressluft-devctl")
+	fmt.Println("  status                   Inspect local dev state and callback durability")
+	fmt.Println("  preflight --workflow=X   Validate local state for dev or lab workflow")
+	fmt.Println("  stats                    Show row counts for key runtime tables")
+	fmt.Println("  events [--limit N]       Show recent job_events and activity rows")
+	fmt.Println("  health                   Verify runtime artifacts can be opened")
+	fmt.Println("  reset --force            Remove the local Pressluft state bundle")
 }
 
-func runStats() error {
-	paths := envconfig.Resolve()
-	db, err := openExistingDB(paths.DBPath)
+func runStats(runtime envconfig.ControlPlaneRuntime) error {
+	db, err := openExistingDB(runtime.DBPath)
 	if err != nil {
 		return err
 	}
@@ -187,19 +177,18 @@ func runStats() error {
 
 	return writeJSON(statsOutput{
 		Mode:        envconfig.Mode,
-		DBPath:      paths.DBPath,
+		DBPath:      runtime.DBPath,
 		TableCounts: counts,
 	})
 }
 
-func runEvents(args []string) error {
+func runEvents(runtime envconfig.ControlPlaneRuntime, args []string) error {
 	limit, err := parseEventsLimit(args)
 	if err != nil {
 		return err
 	}
 
-	paths := envconfig.Resolve()
-	db, err := openExistingDB(paths.DBPath)
+	db, err := openExistingDB(runtime.DBPath)
 	if err != nil {
 		return err
 	}
@@ -216,31 +205,31 @@ func runEvents(args []string) error {
 
 	return writeJSON(eventsOutput{
 		Mode:      envconfig.Mode,
-		DBPath:    paths.DBPath,
+		DBPath:    runtime.DBPath,
 		Limit:     limit,
 		JobEvents: jobEvents,
 		Activity:  activityEvents,
 	})
 }
 
-func runHealth() error {
-	paths := envconfig.Resolve()
+func runHealth(runtime envconfig.ControlPlaneRuntime) error {
 	checks := []healthCheck{
-		pathCheck("data_dir_exists", paths.DataDir),
-		fileCheck("db_exists", paths.DBPath),
-		fileCheck("age_key_exists", paths.AgeKeyPath),
-		fileCheck("ca_key_exists", paths.CAKeyPath),
+		pathCheck("data_dir_exists", runtime.DataDir),
+		fileCheck("db_exists", runtime.DBPath),
+		fileCheck("age_key_exists", runtime.AgeKeyPath),
+		fileCheck("ca_key_exists", runtime.CAKeyPath),
+		fileCheck("session_key_exists", runtime.SessionSecretPath),
 	}
 
-	db, dbErr := openExistingDB(paths.DBPath)
+	db, dbErr := openExistingDB(runtime.DBPath)
 	checks = append(checks, resultCheck("db_openable", dbErr))
 	if dbErr == nil {
 		checks = append(checks, resultCheck("db_ping", db.Ping()))
 		_ = db.Close()
 	}
 
-	checks = append(checks, resultCheck("age_key_loadable", security.ValidateAgeKey(paths.AgeKeyPath)))
-	checks = append(checks, resultCheck("ca_key_loadable", pki.ValidateCAKey(paths.CAKeyPath, paths.AgeKeyPath)))
+	checks = append(checks, resultCheck("age_key_loadable", security.ValidateAgeKey(runtime.AgeKeyPath)))
+	checks = append(checks, resultCheck("ca_key_loadable", pki.ValidateCAKey(runtime.CAKeyPath, runtime.AgeKeyPath)))
 
 	if err := writeJSON(healthOutput{Mode: envconfig.Mode, Checks: checks}); err != nil {
 		return err
@@ -254,31 +243,96 @@ func runHealth() error {
 	return nil
 }
 
-func printUsage() {
-	fmt.Println("usage: pressluft-devctl [status|stats|events|health]")
-	fmt.Println("  status           show resolved runtime paths and file presence")
-	fmt.Println("  stats            show row counts for key runtime tables")
-	fmt.Println("  events [--limit N]  show recent job_events and activity rows")
-	fmt.Println("  health           verify runtime artifacts can be opened")
+func parseWorkflow(args []string) (devdiag.Workflow, error) {
+	workflow := devdiag.WorkflowDev
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--workflow=") {
+			value := strings.TrimPrefix(arg, "--workflow=")
+			switch value {
+			case string(devdiag.WorkflowDev):
+				workflow = devdiag.WorkflowDev
+			case string(devdiag.WorkflowLab):
+				workflow = devdiag.WorkflowLab
+			default:
+				return "", fmt.Errorf("unsupported workflow %q", value)
+			}
+		}
+	}
+	return workflow, nil
+}
+
+func parseEventsLimit(args []string) (int, error) {
+	limit := 20
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit":
+			if i+1 >= len(args) {
+				return 0, fmt.Errorf("--limit requires a value")
+			}
+			parsed, err := strconv.Atoi(args[i+1])
+			if err != nil || parsed <= 0 {
+				return 0, fmt.Errorf("invalid --limit value %q", args[i+1])
+			}
+			limit = parsed
+			i++
+		default:
+			return 0, fmt.Errorf("unknown events argument %q", args[i])
+		}
+	}
+	return limit, nil
+}
+
+func printReport(report devdiag.Report) {
+	fmt.Println("Pressluft dev state")
+	fmt.Printf("execution_mode: %s\n", report.Runtime.ExecutionMode)
+	fmt.Printf("data_dir: %s\n", report.Runtime.DataDir)
+	fmt.Printf("db_path: %s\n", report.Runtime.DBPath)
+	fmt.Printf("age_key_path: %s\n", report.Runtime.AgeKeyPath)
+	fmt.Printf("ca_key_path: %s\n", report.Runtime.CAKeyPath)
+	fmt.Printf("session_key_path: %s\n", report.Runtime.SessionSecretPath)
+	if strings.TrimSpace(report.Runtime.ControlPlaneURL) == "" {
+		fmt.Println("callback_url: <unset>")
+	} else {
+		fmt.Printf("callback_url: %s\n", report.Runtime.ControlPlaneURL)
+	}
+	fmt.Printf("callback_url_mode: %s\n", report.CallbackURLMode)
+	if report.DurableReconnectExpected {
+		fmt.Println("durable_reconnect: yes")
+	} else {
+		fmt.Println("durable_reconnect: no")
+	}
+	fmt.Println("checks:")
+	for _, check := range report.Checks {
+		fmt.Printf("- [%s] %s: %s\n", check.Status, check.Name, check.Detail)
+	}
+}
+
+func reset(runtime envconfig.ControlPlaneRuntime, args []string) error {
+	if len(args) != 1 || args[0] != "--force" {
+		return fmt.Errorf("reset requires --force")
+	}
+	paths := []string{
+		runtime.DBPath,
+		runtime.DBPath + "-wal",
+		runtime.DBPath + "-shm",
+		runtime.AgeKeyPath,
+		runtime.CAKeyPath,
+		runtime.SessionSecretPath,
+	}
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	_ = os.Remove(runtime.DataDir)
+	fmt.Printf("Removed Pressluft local state bundle:\n- %s\n- %s\n- %s\n- %s\n", runtime.DBPath, runtime.AgeKeyPath, runtime.CAKeyPath, runtime.SessionSecretPath)
+	return nil
 }
 
 func writeJSON(v any) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(v)
-}
-
-func statPath(path string) pathStatus {
-	info, err := os.Stat(path)
-	if err != nil {
-		return pathStatus{Path: path}
-	}
-	return pathStatus{
-		Path:      path,
-		Exists:    true,
-		IsDir:     info.IsDir(),
-		SizeBytes: info.Size(),
-	}
 }
 
 func openExistingDB(path string) (*sql.DB, error) {
@@ -399,27 +453,6 @@ func recentActivity(db *sql.DB, limit int) ([]activityEvent, error) {
 	return events, nil
 }
 
-func parseEventsLimit(args []string) (int, error) {
-	limit := 20
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--limit":
-			if i+1 >= len(args) {
-				return 0, fmt.Errorf("--limit requires a value")
-			}
-			parsed, err := strconv.Atoi(args[i+1])
-			if err != nil || parsed <= 0 {
-				return 0, fmt.Errorf("invalid --limit value %q", args[i+1])
-			}
-			limit = parsed
-			i++
-		default:
-			return 0, fmt.Errorf("unknown events argument %q", args[i])
-		}
-	}
-	return limit, nil
-}
-
 func fileCheck(name, path string) healthCheck {
 	if info, err := os.Stat(path); err != nil {
 		return healthCheck{Name: name, Detail: err.Error()}
@@ -457,126 +490,9 @@ func nullInt64Ptr(value sql.NullInt64) *int64 {
 	}
 	number := value.Int64
 	return &number
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"pressluft/internal/devdiag"
-	"pressluft/internal/envconfig"
-)
-
-func main() {
-	args := os.Args[1:]
-	if len(args) == 0 {
-		usage()
-		os.Exit(1)
-	}
-
-	cwd, _ := os.Getwd()
-	runtime, err := envconfig.ResolveControlPlaneRuntime(true, cwd)
-	if err != nil {
-		log.Fatalf("resolve control-plane runtime: %v", err)
-	}
-
-	switch args[0] {
-	case "status":
-		printReport(devdiag.Inspect(runtime))
-	case "preflight":
-		workflow, err := parseWorkflow(args[1:])
-		if err != nil {
-			log.Fatalf("parse workflow: %v", err)
-		}
-		report := devdiag.Inspect(runtime)
-		printReport(report)
-		if !report.HealthyFor(workflow) {
-			fmt.Println()
-			fmt.Printf("workflow=%s preflight failed\n", workflow)
-			for _, issue := range report.WorkflowIssues(workflow) {
-				fmt.Printf("- %s\n", issue)
-			}
-			fmt.Println("Suggested next steps: make dev-status ; make dev-reset CONFIRM=1")
-			os.Exit(1)
-		}
-	case "reset":
-		force := len(args) > 1 && args[1] == "--force"
-		if !force {
-			log.Fatal("reset requires --force")
-		}
-		if err := reset(runtime); err != nil {
-			log.Fatalf("reset local state: %v", err)
-		}
-		fmt.Printf("Removed Pressluft local state bundle:\n- %s\n- %s\n- %s\n- %s\n", runtime.DBPath, runtime.AgeKeyPath, runtime.CAKeyPath, runtime.SessionSecretPath)
-	default:
-		usage()
-		os.Exit(1)
-	}
 }
 
-func usage() {
-	fmt.Println("pressluft-devctl")
-	fmt.Println("  status                   Inspect local dev state and callback durability")
-	fmt.Println("  preflight --workflow=X   Validate local state for dev or lab workflow")
-	fmt.Println("  reset --force            Remove the local Pressluft state bundle")
-}
-
-func parseWorkflow(args []string) (devdiag.Workflow, error) {
-	workflow := devdiag.WorkflowDev
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "--workflow=") {
-			value := strings.TrimPrefix(arg, "--workflow=")
-			switch value {
-			case string(devdiag.WorkflowDev):
-				workflow = devdiag.WorkflowDev
-			case string(devdiag.WorkflowLab):
-				workflow = devdiag.WorkflowLab
-			default:
-				return "", fmt.Errorf("unsupported workflow %q", value)
-			}
-		}
-	}
-	return workflow, nil
-}
-
-func printReport(report devdiag.Report) {
-	fmt.Println("Pressluft dev state")
-	fmt.Printf("execution_mode: %s\n", report.Runtime.ExecutionMode)
-	fmt.Printf("data_dir: %s\n", report.Runtime.DataDir)
-	fmt.Printf("db_path: %s\n", report.Runtime.DBPath)
-	fmt.Printf("age_key_path: %s\n", report.Runtime.AgeKeyPath)
-	fmt.Printf("ca_key_path: %s\n", report.Runtime.CAKeyPath)
-	fmt.Printf("session_key_path: %s\n", report.Runtime.SessionSecretPath)
-	if strings.TrimSpace(report.Runtime.ControlPlaneURL) == "" {
-		fmt.Println("callback_url: <unset>")
-	} else {
-		fmt.Printf("callback_url: %s\n", report.Runtime.ControlPlaneURL)
-	}
-	fmt.Printf("callback_url_mode: %s\n", report.CallbackURLMode)
-	if report.DurableReconnectExpected {
-		fmt.Println("durable_reconnect: yes")
-	} else {
-		fmt.Println("durable_reconnect: no")
-	}
-	fmt.Println("checks:")
-	for _, check := range report.Checks {
-		fmt.Printf("- [%s] %s: %s\n", check.Status, check.Name, check.Detail)
-	}
-}
-
-func reset(runtime envconfig.ControlPlaneRuntime) error {
-	paths := []string{
-		runtime.DBPath,
-		runtime.AgeKeyPath,
-		runtime.CAKeyPath,
-		runtime.SessionSecretPath,
-	}
-	for _, path := range paths {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove %s: %w", path, err)
-		}
-		dir := filepath.Dir(path)
-		_ = os.Remove(dir)
-	}
-	return nil
+func exitErr(err error) {
+	fmt.Fprintf(os.Stderr, "pressluft-devctl: %v\n", err)
+	os.Exit(1)
 }

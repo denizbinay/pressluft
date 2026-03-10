@@ -11,14 +11,12 @@ import (
 	"sort"
 	"strings"
 
-	"pressluft/internal/envconfig"
-
 	"filippo.io/age"
 	"filippo.io/age/armor"
 )
 
 func DefaultAgeKeyPath() string {
-	return envconfig.DefaultAgeKeyPath()
+	return defaultAgeKeyPath()
 }
 
 func Encrypt(plaintext []byte) (string, string, error) {

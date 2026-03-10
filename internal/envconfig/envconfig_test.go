@@ -1,10 +1,12 @@
+//go:build !dev
+
 package envconfig
 
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
-	"pressluft/internal/auth"
 	"pressluft/internal/platform"
 )
 
@@ -39,11 +41,11 @@ func TestResolveControlPlaneRuntimeDefaults(t *testing.T) {
 	if runtime.AnsibleBinary != filepath.Join("/repo/root", ".venv", "bin", "ansible-playbook") {
 		t.Fatalf("ansible binary = %q", runtime.AnsibleBinary)
 	}
-	if runtime.SessionIdleTimeout != auth.DefaultSessionIdleTimeout {
-		t.Fatalf("idle timeout = %v, want %v", runtime.SessionIdleTimeout, auth.DefaultSessionIdleTimeout)
+	if runtime.SessionIdleTimeout != 12*time.Hour {
+		t.Fatalf("idle timeout = %v, want %v", runtime.SessionIdleTimeout, 12*time.Hour)
 	}
-	if runtime.SessionAbsoluteTimeout != auth.DefaultSessionAbsoluteTimeout {
-		t.Fatalf("absolute timeout = %v, want %v", runtime.SessionAbsoluteTimeout, auth.DefaultSessionAbsoluteTimeout)
+	if runtime.SessionAbsoluteTimeout != 7*24*time.Hour {
+		t.Fatalf("absolute timeout = %v, want %v", runtime.SessionAbsoluteTimeout, 7*24*time.Hour)
 	}
 	if runtime.SessionCookieSecure {
 		t.Fatal("expected secure cookies to default to false outside production bootstrap")
