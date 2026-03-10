@@ -19,6 +19,7 @@ import (
 	"pressluft/internal/agentauth"
 	"pressluft/internal/database"
 	"pressluft/internal/dispatch"
+	"pressluft/internal/envconfig"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/pki"
 	"pressluft/internal/provider"
@@ -37,11 +38,19 @@ const defaultAddr = ":8080"
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	paths := envconfig.Resolve()
+	logger.Info(
+		"runtime paths resolved",
+		"mode", envconfig.Mode,
+		"data_dir", paths.DataDir,
+		"db_path", paths.DBPath,
+		"age_key_path", paths.AgeKeyPath,
+		"ca_key_path", paths.CAKeyPath,
+	)
 
-	ageKeyPath := strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH"))
+	ageKeyPath := paths.AgeKeyPath
 	allowGenerate := false
-	if ageKeyPath == "" {
-		ageKeyPath = security.DefaultAgeKeyPath()
+	if strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH")) == "" {
 		allowGenerate = true
 	}
 	generated, err := security.EnsureAgeKey(ageKeyPath, allowGenerate)
@@ -52,7 +61,7 @@ func main() {
 		logger.Info("age key generated", "path", ageKeyPath)
 	}
 
-	db, err := database.Open(resolveDBPath(), logger)
+	db, err := database.Open(paths.DBPath, logger)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
@@ -66,7 +75,7 @@ func main() {
 	agentTokenStore := agentauth.NewStore(db.DB)
 	pkiStore := pki.NewStore(db.DB)
 	registrationStore := registration.NewStore(db.DB)
-	ca, err := pki.LoadOrCreateCA(db.DB, ageKeyPath, resolveCAKeyPath())
+	ca, err := pki.LoadOrCreateCA(db.DB, ageKeyPath, paths.CAKeyPath)
 	if err != nil {
 		log.Fatalf("load or create CA: %v", err)
 	}
@@ -172,7 +181,7 @@ func main() {
 		}
 	}()
 
-	logger.Info("pressluft listening", "addr", httpServer.Addr)
+	logger.Info("pressluft listening", "addr", httpServer.Addr, "mode", envconfig.Mode)
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server failed: %v", err)
 	}
@@ -189,31 +198,6 @@ func resolveAddr() string {
 		return port
 	}
 	return ":" + port
-}
-
-func resolveDBPath() string {
-	if p := os.Getenv("PRESSLUFT_DB"); p != "" {
-		return p
-	}
-
-	dataDir := resolveDataDir()
-	return filepath.Join(dataDir, "pressluft", "pressluft.db")
-}
-
-func resolveDataDir() string {
-	dataDir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
-	if dataDir == "" {
-		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".local", "share")
-	}
-	return dataDir
-}
-
-func resolveCAKeyPath() string {
-	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_CA_KEY_PATH")); p != "" {
-		return p
-	}
-	return filepath.Join(resolveDataDir(), "pressluft", "ca.key")
 }
 
 type activityLoggerAdapter struct {

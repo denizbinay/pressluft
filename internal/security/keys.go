@@ -11,16 +11,14 @@ import (
 	"sort"
 	"strings"
 
+	"pressluft/internal/envconfig"
+
 	"filippo.io/age"
 	"filippo.io/age/armor"
 )
 
 func DefaultAgeKeyPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return "/etc/pressluft/age.key"
-	}
-	return filepath.Join(home, ".pressluft", "age.key")
+	return envconfig.DefaultAgeKeyPath()
 }
 
 func Encrypt(plaintext []byte) (string, string, error) {
@@ -68,6 +66,11 @@ func Decrypt(ciphertext string) ([]byte, error) {
 		return nil, fmt.Errorf("decrypt read: %w", err)
 	}
 	return data, nil
+}
+
+func ValidateAgeKey(path string) error {
+	_, err := loadIdentities(path)
+	return err
 }
 
 func loadIdentities(path string) ([]age.Identity, error) {

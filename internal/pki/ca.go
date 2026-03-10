@@ -123,6 +123,11 @@ func LoadOrCreateCA(db *sql.DB, ageKeyPath, caKeyPath string) (*CA, error) {
 	return &CA{cert: cert, key: key, ageIdentity: ageId, db: db}, nil
 }
 
+func ValidateCAKey(caKeyPath, ageKeyPath string) error {
+	_, err := loadCAKey(caKeyPath, ageKeyPath)
+	return err
+}
+
 func (ca *CA) CertPool() *x509.CertPool {
 	pool := x509.NewCertPool()
 	pool.AddCert(ca.cert)

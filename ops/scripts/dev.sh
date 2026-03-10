@@ -51,6 +51,8 @@ if [ -z "${PRESSLUFT_CONTROL_PLANE_URL:-}" ]; then
   echo "Cloudflare tunnel: $PRESSLUFT_CONTROL_PLANE_URL"
 fi
 
+echo "Dev state: $ROOT_DIR/.pressluft/"
+
 PORT="$DEV_API_PORT" PRESSLUFT_CONTROL_PLANE_URL="$PRESSLUFT_CONTROL_PLANE_URL" "$GO_CMD" run -tags dev ./cmd &
 GO_PID=$!
 sleep 1
