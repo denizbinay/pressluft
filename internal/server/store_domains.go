@@ -168,7 +168,7 @@ func (s *DomainStore) createTx(ctx context.Context, tx *sql.Tx, in CreateDomainI
 	if err != nil {
 		return "", err
 	}
-	if err := s.ensureRelationsTx(ctx, tx, prepared.Hostname, prepared.Kind, prepared.SiteID, prepared.ParentDomainID); err != nil {
+	if err := s.ensureRelationsTx(ctx, tx, prepared.Hostname, prepared.Kind, prepared.Ownership, prepared.SiteID, prepared.ParentDomainID); err != nil {
 		return "", err
 	}
 	publicID, err := idutil.New()
@@ -276,7 +276,7 @@ func (s *DomainStore) updateTx(ctx context.Context, tx *sql.Tx, id string, in Up
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureRelationsTx(ctx, tx, prepared.Hostname, prepared.Kind, prepared.SiteID, prepared.ParentDomainID); err != nil {
+	if err := s.ensureRelationsTx(ctx, tx, prepared.Hostname, prepared.Kind, prepared.Ownership, prepared.SiteID, prepared.ParentDomainID); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -581,11 +581,11 @@ func prepareUpdateDomainInput(current StoredDomain, in UpdateDomainInput) (Creat
 	return prepareCreateDomainInput(prepared)
 }
 
-func (s *DomainStore) ensureRelations(ctx context.Context, hostname, kind, siteID, parentDomainID string) error {
-	return s.ensureRelationsTx(ctx, nil, hostname, kind, siteID, parentDomainID)
+func (s *DomainStore) ensureRelations(ctx context.Context, hostname, kind, ownership, siteID, parentDomainID string) error {
+	return s.ensureRelationsTx(ctx, nil, hostname, kind, ownership, siteID, parentDomainID)
 }
 
-func (s *DomainStore) ensureRelationsTx(ctx context.Context, tx *sql.Tx, hostname, kind, siteID, parentDomainID string) error {
+func (s *DomainStore) ensureRelationsTx(ctx context.Context, tx *sql.Tx, hostname, kind, ownership, siteID, parentDomainID string) error {
 	if siteID != "" {
 		if err := ensureSiteExists(ctx, s.db, tx, siteID); err != nil {
 			return err
@@ -599,8 +599,14 @@ func (s *DomainStore) ensureRelationsTx(ctx context.Context, tx *sql.Tx, hostnam
 		if parent.Kind != DomainKindWildcard {
 			return fmt.Errorf("parent_domain_id must reference a wildcard domain")
 		}
+		if parent.Status != DomainStatusActive {
+			return fmt.Errorf("parent_domain_id must reference an active wildcard domain")
+		}
 		if kind != DomainKindDirect {
 			return fmt.Errorf("only direct domains can reference a parent_domain_id")
+		}
+		if ownership != "" && ownership != parent.Ownership {
+			return fmt.Errorf("child domain ownership must match the parent wildcard domain")
 		}
 		if !strings.HasSuffix(hostname, "."+parent.Hostname) {
 			return fmt.Errorf("hostname must be within the parent wildcard domain")

@@ -174,7 +174,7 @@ func TestSitesEndpointsValidationAndNotFound(t *testing.T) {
 	}
 }
 
-func TestSitesCreateWithSandboxPrimaryDomainConfig(t *testing.T) {
+func TestSitesCreateWithWildcardPrimaryDomainConfig(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
@@ -186,7 +186,7 @@ func TestSitesCreateWithSandboxPrimaryDomainConfig(t *testing.T) {
 		Status:    DomainStatusActive,
 	})
 	if err != nil {
-		t.Fatalf("create sandbox domain: %v", err)
+		t.Fatalf("create wildcard domain: %v", err)
 	}
 	handler := NewHandler(db)
 
@@ -195,7 +195,7 @@ func TestSitesCreateWithSandboxPrimaryDomainConfig(t *testing.T) {
 		"name":      "Sandbox Site",
 		"status":    "draft",
 		"primary_domain_config": map[string]any{
-			"mode":             "sandbox",
+			"mode":             "wildcard",
 			"label":            "client preview",
 			"parent_domain_id": baseID,
 		},
@@ -214,6 +214,50 @@ func TestSitesCreateWithSandboxPrimaryDomainConfig(t *testing.T) {
 	}
 	if created["primary_domain"] != "client-preview.pressluft.dev" {
 		t.Fatalf("primary_domain = %v, want %q", created["primary_domain"], "client-preview.pressluft.dev")
+	}
+}
+
+func TestSitesCreateWithCustomerWildcardPrimaryDomainConfig(t *testing.T) {
+	db := mustOpenServerHandlerDB(t)
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
+	domainStore := NewDomainStore(db)
+	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:  "agency.dev",
+		Kind:      DomainKindWildcard,
+		Ownership: DomainOwnershipCustomer,
+		Status:    DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create wildcard domain: %v", err)
+	}
+	handler := NewHandler(db)
+
+	body := map[string]any{
+		"server_id": serverID,
+		"name":      "Customer Wildcard Site",
+		"status":    "draft",
+		"primary_domain_config": map[string]any{
+			"mode":             "wildcard",
+			"label":            "staging",
+			"parent_domain_id": parentID,
+		},
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/sites", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d; body = %s", res.Code, http.StatusCreated, res.Body.String())
+	}
+
+	var created map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created["primary_domain"] != "staging.agency.dev" {
+		t.Fatalf("primary_domain = %v, want %q", created["primary_domain"], "staging.agency.dev")
 	}
 }
 

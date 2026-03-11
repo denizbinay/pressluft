@@ -102,7 +102,12 @@ func (dh *domainsHandler) handleCreateForSite(w http.ResponseWriter, r *http.Req
 	}
 	if strings.TrimSpace(req.Ownership) == "" {
 		if strings.TrimSpace(req.ParentDomainID) != "" {
-			req.Ownership = DomainOwnershipPlatform
+			parent, err := dh.store.GetByID(r.Context(), req.ParentDomainID)
+			if err != nil {
+				respondDomainError(w, fmt.Errorf("parent_domain_id: %w", err), "failed to create domain")
+				return
+			}
+			req.Ownership = parent.Ownership
 		} else {
 			req.Ownership = DomainOwnershipCustomer
 		}

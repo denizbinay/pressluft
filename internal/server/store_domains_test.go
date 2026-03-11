@@ -317,3 +317,55 @@ func TestDomainStoreRejectsDeletingPlatformWildcardDomain(t *testing.T) {
 		t.Fatalf("delete error = %v, want platform wildcard delete failure", err)
 	}
 }
+
+func TestDomainStoreRejectsChildDomainForInactiveWildcardParent(t *testing.T) {
+	db := mustOpenTestDB(t)
+	domainStore := NewDomainStore(db)
+
+	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:  "agency.dev",
+		Kind:      DomainKindWildcard,
+		Ownership: DomainOwnershipCustomer,
+		Status:    DomainStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("create wildcard domain: %v", err)
+	}
+
+	_, err = domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:       "preview.agency.dev",
+		Kind:           DomainKindDirect,
+		Ownership:      DomainOwnershipCustomer,
+		Status:         DomainStatusActive,
+		ParentDomainID: parentID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "active wildcard domain") {
+		t.Fatalf("create error = %v, want active wildcard parent failure", err)
+	}
+}
+
+func TestDomainStoreRejectsChildOwnershipMismatchForWildcardParent(t *testing.T) {
+	db := mustOpenTestDB(t)
+	domainStore := NewDomainStore(db)
+
+	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:  "agency.dev",
+		Kind:      DomainKindWildcard,
+		Ownership: DomainOwnershipCustomer,
+		Status:    DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create wildcard domain: %v", err)
+	}
+
+	_, err = domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:       "preview.agency.dev",
+		Kind:           DomainKindDirect,
+		Ownership:      DomainOwnershipPlatform,
+		Status:         DomainStatusActive,
+		ParentDomainID: parentID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "ownership must match") {
+		t.Fatalf("create error = %v, want ownership mismatch failure", err)
+	}
+}

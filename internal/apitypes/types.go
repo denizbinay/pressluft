@@ -107,19 +107,19 @@ func (c *SitePrimaryDomainConfig) Validate() error {
 	c.Label = strings.TrimSpace(c.Label)
 	c.ParentDomainID = strings.TrimSpace(c.ParentDomainID)
 	switch c.Mode {
-	case "sandbox":
+	case "wildcard":
 		if c.Label == "" {
-			return fmt.Errorf("primary_domain_config.label is required for sandbox domains")
+			return fmt.Errorf("primary_domain_config.label is required for wildcard domains")
 		}
 		if c.ParentDomainID == "" {
-			return fmt.Errorf("primary_domain_config.parent_domain_id is required for sandbox domains")
+			return fmt.Errorf("primary_domain_config.parent_domain_id is required for wildcard domains")
 		}
-	case "customer":
+	case "direct":
 		if c.Hostname == "" {
-			return fmt.Errorf("primary_domain_config.hostname is required for customer domains")
+			return fmt.Errorf("primary_domain_config.hostname is required for direct domains")
 		}
 	default:
-		return fmt.Errorf("primary_domain_config.mode must be sandbox or customer")
+		return fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
 	}
 	return nil
 }

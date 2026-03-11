@@ -361,23 +361,23 @@ func validateCreateSiteInput(in CreateSiteInput) error {
 func validateCreateSitePrimaryDomainInput(in CreateSitePrimaryDomainInput) error {
 	mode := strings.TrimSpace(in.Mode)
 	switch mode {
-	case "sandbox":
+	case "wildcard":
 		if strings.TrimSpace(in.Label) == "" {
-			return fmt.Errorf("primary_domain_config.label is required for sandbox domains")
+			return fmt.Errorf("primary_domain_config.label is required for wildcard domains")
 		}
 		if strings.TrimSpace(in.ParentDomainID) == "" {
-			return fmt.Errorf("primary_domain_config.parent_domain_id is required for sandbox domains")
+			return fmt.Errorf("primary_domain_config.parent_domain_id is required for wildcard domains")
 		}
-		if _, err := normalizeSandboxLabel(strings.TrimSpace(in.Label)); err != nil {
+		if _, err := normalizeDomainLabel(strings.TrimSpace(in.Label)); err != nil {
 			return err
 		}
 		return nil
-	case "customer":
+	case "direct":
 		if _, err := normalizeHostname(strings.TrimSpace(in.Hostname)); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("primary_domain_config.mode must be sandbox or customer")
+		return fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
 	}
 	return nil
 }
@@ -390,7 +390,7 @@ func resolveCreateSitePrimaryDomainInput(in CreateSiteInput) (CreateSitePrimaryD
 		return CreateSitePrimaryDomainInput{}, false
 	}
 	return CreateSitePrimaryDomainInput{
-		Mode:     "customer",
+		Mode:     "direct",
 		Hostname: strings.TrimSpace(in.PrimaryDomain),
 	}, true
 }
@@ -398,21 +398,25 @@ func resolveCreateSitePrimaryDomainInput(in CreateSiteInput) (CreateSitePrimaryD
 func (s *DomainStore) createWithTx(ctx context.Context, tx *sql.Tx, siteID string, input CreateSitePrimaryDomainInput) (string, error) {
 	mode := strings.TrimSpace(input.Mode)
 	switch mode {
-	case "sandbox":
-		hostname, err := buildSandboxHostname(ctx, tx, strings.TrimSpace(input.Label), strings.TrimSpace(input.ParentDomainID), s)
+	case "wildcard":
+		parent, err := s.getByIDTx(ctx, tx, strings.TrimSpace(input.ParentDomainID))
+		if err != nil {
+			return "", fmt.Errorf("primary_domain_config.parent_domain_id: %w", err)
+		}
+		hostname, err := buildWildcardChildHostname(strings.TrimSpace(input.Label), *parent)
 		if err != nil {
 			return "", err
 		}
 		return s.createTx(ctx, tx, CreateDomainInput{
 			Hostname:       hostname,
 			Kind:           DomainKindDirect,
-			Ownership:      DomainOwnershipPlatform,
+			Ownership:      parent.Ownership,
 			Status:         DomainStatusActive,
 			SiteID:         siteID,
 			ParentDomainID: strings.TrimSpace(input.ParentDomainID),
 			IsPrimary:      true,
 		})
-	case "customer":
+	case "direct":
 		return s.createTx(ctx, tx, CreateDomainInput{
 			Hostname:  strings.TrimSpace(input.Hostname),
 			Kind:      DomainKindDirect,
@@ -422,41 +426,31 @@ func (s *DomainStore) createWithTx(ctx context.Context, tx *sql.Tx, siteID strin
 			IsPrimary: true,
 		})
 	default:
-		return "", fmt.Errorf("primary_domain_config.mode must be sandbox or customer")
+		return "", fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
 	}
 }
 
-func buildSandboxHostname(ctx context.Context, tx *sql.Tx, label, parentDomainID string, domainStore *DomainStore) (string, error) {
-	normalizedLabel, err := normalizeSandboxLabel(label)
+func buildWildcardChildHostname(label string, parent StoredDomain) (string, error) {
+	normalizedLabel, err := normalizeDomainLabel(label)
 	if err != nil {
 		return "", err
 	}
-	if parentDomainID == "" {
-		return "", fmt.Errorf("primary_domain_config.parent_domain_id is required for sandbox domains")
-	}
-	if domainStore == nil {
-		return "", nil
-	}
-	parent, err := domainStore.getByIDTx(ctx, tx, parentDomainID)
-	if err != nil {
-		return "", fmt.Errorf("primary_domain_config.parent_domain_id: %w", err)
-	}
 	if parent.Kind != DomainKindWildcard {
-		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference a sandbox domain")
+		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference a wildcard domain")
 	}
 	if parent.Status != DomainStatusActive {
-		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference an active sandbox domain")
+		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference an active wildcard domain")
 	}
 	return normalizeHostname(normalizedLabel + "." + parent.Hostname)
 }
 
-func normalizeSandboxLabel(label string) (string, error) {
+func normalizeDomainLabel(label string) (string, error) {
 	label = strings.ToLower(strings.TrimSpace(label))
 	label = strings.ReplaceAll(label, "_", "-")
 	label = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(label, "-")
 	label = strings.Trim(label, "-")
 	if label == "" {
-		return "", fmt.Errorf("primary_domain_config.label is required for sandbox domains")
+		return "", fmt.Errorf("primary_domain_config.label is required for wildcard domains")
 	}
 	if strings.Contains(label, ".") {
 		return "", fmt.Errorf("primary_domain_config.label must be a single subdomain label")

@@ -35,12 +35,12 @@ const domainStats = computed(() => ({
 
 const domainKindLabel = (domain: (typeof allDomains.value)[number]) => {
   if (domain.kind === "wildcard") {
-    return domain.ownership === "platform" ? "Temporary URL root" : "Wildcard domain";
+    return "Wildcard domain";
   }
   if (domain.parent_domain_id) {
-    return domain.ownership === "platform" ? "Temporary URL" : "Subdomain";
+    return "Wildcard child";
   }
-  return "Domain";
+  return "Direct domain";
 };
 
 const domainRoleLabel = (domain: (typeof allDomains.value)[number]) => {
@@ -120,7 +120,7 @@ onMounted(loadPage);
               Keep every domain and temporary URL in one place.
             </h1>
             <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Add real customer domains, attach them to sites when needed, and review which address each site currently uses without exposing Pressluft platform setup.
+              Store standalone hostnames and reusable wildcard roots in one inventory. Concrete child hostnames get minted from site actions when Pressluft needs them.
             </p>
           </div>
         </div>
@@ -162,12 +162,12 @@ onMounted(loadPage);
               <Input v-model="form.hostname" placeholder="www.client-example.com" />
             </div>
             <div class="rounded-2xl border border-border/60 bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
-              New domains land here as inventory first. Site assignment happens from the site record, and Pressluft-provided temporary URL roots appear in the same list automatically.
+              Add a direct hostname if you only need one exact address. Add a wildcard root if you want Pressluft to generate child hostnames later for previews, rollbacks, staging, and similar workflows.
             </div>
             <label class="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
               <input v-model="form.isWildcard" type="checkbox" class="mt-1 h-4 w-4 rounded border-border text-accent focus:ring-accent" />
               <span>
-                Store this as a wildcard domain base. Pressluft will treat it as a parent domain for future subdomains, without enabling any DNS or TLS workflow yet.
+                Store this as a wildcard domain root. Enter `agency.dev`, not `*.agency.dev`. Pressluft will treat it as the reusable parent for future child hostnames, without enabling any DNS or TLS workflow yet.
               </span>
             </label>
             <Button type="submit" class="w-full bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !form.hostname.trim()">
@@ -196,12 +196,12 @@ onMounted(loadPage);
                        <p class="text-sm font-semibold text-foreground">{{ domain.hostname }}</p>
                        <Badge variant="outline" class="border-primary/30 bg-primary/10 text-primary">{{ domainRoleLabel(domain) }}</Badge>
                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domainKindLabel(domain) }}</Badge>
-                       <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domainOwnershipLabel(domain) }}</Badge>
-                     </div>
-                     <p class="mt-1 text-xs text-muted-foreground">
-                        {{ domain.kind === "wildcard" ? (domain.ownership === "platform" ? "Available for temporary Pressluft URLs" : "Reserved as a wildcard parent domain") : domain.site_name ? `Attached to ${domain.site_name}` : "Unassigned" }}
-                        <span v-if="domain.parent_hostname"> · via {{ domain.parent_hostname }}</span>
-                      </p>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domainOwnershipLabel(domain) }}</Badge>
+                      </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                         {{ domain.kind === "wildcard" ? "Reusable root for future generated child hostnames" : domain.site_name ? `Attached to ${domain.site_name}` : "Unassigned" }}
+                         <span v-if="domain.parent_hostname"> · via {{ domain.parent_hostname }}</span>
+                       </p>
                    </div>
                     <div class="flex items-center gap-3 text-xs text-muted-foreground">
                        <NuxtLink v-if="domain.site_id" :to="`/sites/${domain.site_id}`" class="font-medium text-accent transition hover:text-accent/80">

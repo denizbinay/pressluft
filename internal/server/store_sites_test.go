@@ -47,7 +47,7 @@ func TestSiteStoreCreateListAndGet(t *testing.T) {
 	}
 }
 
-func TestSiteStoreCreateWithSandboxPrimaryDomain(t *testing.T) {
+func TestSiteStoreCreateWithWildcardPrimaryDomain(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewSiteStore(db)
 	domainStore := NewDomainStore(db)
@@ -59,14 +59,14 @@ func TestSiteStoreCreateWithSandboxPrimaryDomain(t *testing.T) {
 		Status:    DomainStatusActive,
 	})
 	if err != nil {
-		t.Fatalf("create sandbox domain: %v", err)
+		t.Fatalf("create wildcard domain: %v", err)
 	}
 
 	siteID, err := store.Create(context.Background(), CreateSiteInput{
 		ServerID: serverID,
 		Name:     "Agency Brochure",
 		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
-			Mode:           "sandbox",
+			Mode:           "wildcard",
 			Label:          "Northwind Live",
 			ParentDomainID: baseID,
 		},
@@ -101,7 +101,7 @@ func TestSiteStoreCreateWithSandboxPrimaryDomain(t *testing.T) {
 	}
 }
 
-func TestSiteStoreCreateWithPendingSandboxBaseDomainFails(t *testing.T) {
+func TestSiteStoreCreateWithPendingWildcardDomainFails(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewSiteStore(db)
 	domainStore := NewDomainStore(db)
@@ -113,21 +113,65 @@ func TestSiteStoreCreateWithPendingSandboxBaseDomainFails(t *testing.T) {
 		Status:    DomainStatusPending,
 	})
 	if err != nil {
-		t.Fatalf("create sandbox domain: %v", err)
+		t.Fatalf("create wildcard domain: %v", err)
 	}
 
 	_, err = store.Create(context.Background(), CreateSiteInput{
 		ServerID: serverID,
 		Name:     "Agency Brochure",
 		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
-			Mode:           "sandbox",
+			Mode:           "wildcard",
 			Label:          "Northwind Live",
 			ParentDomainID: baseID,
 		},
 		Status: SiteStatusDraft,
 	})
-	if err == nil || !strings.Contains(err.Error(), "active sandbox domain") {
-		t.Fatalf("create site error = %v, want active sandbox domain failure", err)
+	if err == nil || !strings.Contains(err.Error(), "active wildcard domain") {
+		t.Fatalf("create site error = %v, want active wildcard domain failure", err)
+	}
+}
+
+func TestSiteStoreCreateWithCustomerWildcardPrimaryDomain(t *testing.T) {
+	db := mustOpenTestDB(t)
+	store := NewSiteStore(db)
+	domainStore := NewDomainStore(db)
+	serverID := mustInsertServerWithStatus(t, db, "ready")
+	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
+		Hostname:  "agency.dev",
+		Kind:      DomainKindWildcard,
+		Ownership: DomainOwnershipCustomer,
+		Status:    DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create wildcard domain: %v", err)
+	}
+
+	siteID, err := store.Create(context.Background(), CreateSiteInput{
+		ServerID: serverID,
+		Name:     "Agency Brochure",
+		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
+			Mode:           "wildcard",
+			Label:          "preview-42",
+			ParentDomainID: parentID,
+		},
+		Status: SiteStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("create site: %v", err)
+	}
+
+	domains, err := domainStore.ListBySite(context.Background(), siteID)
+	if err != nil {
+		t.Fatalf("list site domains: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("site domains = %d, want 1", len(domains))
+	}
+	if domains[0].Hostname != "preview-42.agency.dev" {
+		t.Fatalf("hostname = %q, want %q", domains[0].Hostname, "preview-42.agency.dev")
+	}
+	if domains[0].Ownership != DomainOwnershipCustomer {
+		t.Fatalf("ownership = %q, want %q", domains[0].Ownership, DomainOwnershipCustomer)
 	}
 }
 

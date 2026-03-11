@@ -45,10 +45,10 @@ const form = reactive({
 });
 
 const hostnameForm = reactive({
-  mode: "sandbox",
+  mode: "wildcard",
   label: "",
   hostname: "",
-  baseDomainId: "",
+  parentDomainId: "",
 });
 
 const siteStatusMeta = (status: StoredSite["status"]) => {
@@ -112,9 +112,9 @@ const loadActivity = async () => {
   }
 };
 
-const allBaseDomains = ref<StoredDomain[]>([]);
-const availableBaseDomains = ref<StoredDomain[]>([]);
-const hasMultipleBaseDomains = computed(() => availableBaseDomains.value.length > 1);
+const allWildcardDomains = ref<StoredDomain[]>([]);
+const availableWildcardDomains = ref<StoredDomain[]>([]);
+const hasMultipleWildcardDomains = computed(() => availableWildcardDomains.value.length > 1);
 
 const refreshDomains = async () => {
   if (!siteId.value) return;
@@ -122,22 +122,34 @@ const refreshDomains = async () => {
     fetchDomains(),
     fetchSiteDomains(siteId.value),
   ]);
-  allBaseDomains.value = allDomains.filter(
-    (domain) => domain.kind === "wildcard" && domain.ownership === "platform",
+  allWildcardDomains.value = allDomains.filter(
+    (domain) => domain.kind === "wildcard",
   );
-  availableBaseDomains.value = allBaseDomains.value.filter((domain) => domain.status === "active");
+  availableWildcardDomains.value = allWildcardDomains.value.filter((domain) => domain.status === "active");
   siteDomains.value = assignedDomains;
-  if (!hostnameForm.baseDomainId && availableBaseDomains.value[0]) {
-    hostnameForm.baseDomainId = availableBaseDomains.value[0].id;
+  if (!hostnameForm.parentDomainId && availableWildcardDomains.value[0]) {
+    hostnameForm.parentDomainId = availableWildcardDomains.value[0].id;
+  }
+  if (!availableWildcardDomains.value.length) {
+    hostnameForm.mode = "direct";
   }
 };
 
-const futureBaseDomains = computed(() =>
-  allBaseDomains.value.filter((domain) => domain.status !== "active"),
+const futureWildcardDomains = computed(() =>
+  allWildcardDomains.value.filter((domain) => domain.status !== "active"),
 );
 
-const buildSandboxHostname = () => {
-  const base = availableBaseDomains.value.find((domain) => domain.id === hostnameForm.baseDomainId);
+const selectedWildcardDomain = computed(() =>
+  availableWildcardDomains.value.find((domain) => domain.id === hostnameForm.parentDomainId) || null,
+);
+
+const wildcardDomainLabel = (domain: StoredDomain | null) => {
+  if (!domain) return "";
+  return domain.ownership === "platform" ? "Pressluft" : "Your domain";
+};
+
+const buildWildcardHostname = () => {
+  const base = selectedWildcardDomain.value;
   if (!base) return "";
   const label = hostnameForm.label.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
   if (!label) return "";
@@ -191,10 +203,10 @@ const handleAssignHostname = async () => {
   pageError.value = "";
   successMessage.value = "";
   try {
-    const hostname = hostnameForm.mode === "sandbox" ? buildSandboxHostname() : hostnameForm.hostname.trim();
+    const hostname = hostnameForm.mode === "wildcard" ? buildWildcardHostname() : hostnameForm.hostname.trim();
     const created = await createSiteDomain(siteId.value, {
       hostname,
-      parent_domain_id: hostnameForm.mode === "sandbox" ? hostnameForm.baseDomainId : undefined,
+      parent_domain_id: hostnameForm.mode === "wildcard" ? hostnameForm.parentDomainId : undefined,
       is_primary: siteDomains.value.length === 0,
     });
     successMessage.value = `Assigned ${created.hostname}.`;
@@ -274,10 +286,10 @@ watch(siteId, async (value, previous) => {
                 {{ siteStatusMeta(site.status).label }}
               </Badge>
             </div>
-            <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
-              {{ site.primary_domain || "No primary domain assigned yet." }}
-              This site lives on {{ site.server_name }} and keeps every domain or temporary Pressluft URL visible as its own record.
-            </p>
+             <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
+               {{ site.primary_domain || "No primary domain assigned yet." }}
+               This site lives on {{ site.server_name }} and keeps every direct domain or wildcard-derived hostname visible as its own record.
+             </p>
           </div>
 
           <div class="grid grid-cols-2 gap-3 sm:min-w-[360px]">
@@ -373,7 +385,8 @@ watch(siteId, async (value, previous) => {
                       <div class="flex flex-wrap items-center gap-2">
                         <p class="text-sm font-semibold text-foreground">{{ domain.hostname }}</p>
                         <Badge v-if="domain.is_primary" variant="outline" class="border-primary/30 bg-primary/10 text-primary">Primary</Badge>
-                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.parent_domain_id && domain.ownership === 'platform' ? 'Temporary URL' : 'Domain' }}</Badge>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.parent_domain_id ? 'Wildcard child' : 'Direct domain' }}</Badge>
+                        <Badge v-if="domain.parent_domain_id" variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }}</Badge>
                       </div>
                       <p class="mt-1 text-xs text-muted-foreground">
                         {{ domain.parent_hostname || (domain.ownership === "platform" ? "Provided by Pressluft" : "Managed by the agency") }}
@@ -392,53 +405,59 @@ watch(siteId, async (value, previous) => {
               </div>
 
                 <div class="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                  <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Attach Domain
-                  </p>
-                  <div class="flex gap-2">
-                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'sandbox' ? 'default' : 'outline'" @click="hostnameForm.mode = 'sandbox'" :disabled="availableBaseDomains.length === 0">
-                      Temporary Pressluft URL
+                   <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                     Attach Domain
+                   </p>
+                   <div class="flex gap-2">
+                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'wildcard' ? 'default' : 'outline'" @click="hostnameForm.mode = 'wildcard'" :disabled="availableWildcardDomains.length === 0">
+                      Wildcard domain
                     </Button>
-                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'custom' ? 'default' : 'outline'" @click="hostnameForm.mode = 'custom'">
-                      Domain
+                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'direct' ? 'default' : 'outline'" @click="hostnameForm.mode = 'direct'">
+                      Direct domain
                     </Button>
                   </div>
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                  <template v-if="hostnameForm.mode === 'sandbox'">
+                  <template v-if="hostnameForm.mode === 'wildcard'">
                     <div class="space-y-1.5">
-                      <Label class="text-sm font-medium text-muted-foreground">Pressluft URL label</Label>
+                      <Label class="text-sm font-medium text-muted-foreground">Child label</Label>
                       <Input v-model="hostnameForm.label" placeholder="northwind-live" />
                     </div>
-                    <div v-if="hasMultipleBaseDomains" class="space-y-1.5">
-                      <Label class="text-sm font-medium text-muted-foreground">Available on</Label>
-                      <select v-model="hostnameForm.baseDomainId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
-                        <option v-for="domain in availableBaseDomains" :key="domain.id" :value="domain.id">
-                          {{ domain.hostname }}
+                    <div v-if="hasMultipleWildcardDomains" class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">Wildcard root</Label>
+                      <select v-model="hostnameForm.parentDomainId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
+                        <option v-for="domain in availableWildcardDomains" :key="domain.id" :value="domain.id">
+                          {{ domain.hostname }} ({{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }})
                         </option>
                       </select>
                     </div>
                     <div class="space-y-1.5 sm:col-span-2">
                       <Label class="text-sm font-medium text-muted-foreground">Result</Label>
-                      <Input :model-value="buildSandboxHostname()" readonly placeholder="Enter a label to preview the temporary URL" />
+                      <Input :model-value="buildWildcardHostname()" readonly placeholder="Enter a label to preview the allocated hostname" />
+                    </div>
+                    <div v-if="selectedWildcardDomain" class="sm:col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">
+                        {{ wildcardDomainLabel(selectedWildcardDomain) }}
+                      </Badge>
+                      <span>{{ selectedWildcardDomain.hostname }} stays reusable while this site gets a concrete child hostname row.</span>
                     </div>
                     <p class="sm:col-span-2 text-sm text-muted-foreground">
-                      Pressluft URL domains are provided by the platform. You only choose the label for this site.
+                      Wildcard roots are better when you want previews, staging, rollbacks, or future generated hostnames without pre-registering each child.
                     </p>
-                    <p v-if="availableBaseDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                      No Pressluft URL domains are available right now, so attach a domain instead.
+                    <p v-if="availableWildcardDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                      No wildcard domains are available right now, so attach a direct domain instead.
                     </p>
-                    <p v-if="futureBaseDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                      Coming soon: {{ futureBaseDomains.map((domain) => domain.hostname).join(", ") }}.
+                    <p v-if="futureWildcardDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                      Not active yet: {{ futureWildcardDomains.map((domain) => domain.hostname).join(", ") }}.
                     </p>
                   </template>
                   <template v-else>
                     <div class="space-y-1.5 sm:col-span-2">
-                      <Label class="text-sm font-medium text-muted-foreground">Domain</Label>
+                      <Label class="text-sm font-medium text-muted-foreground">Hostname</Label>
                       <Input v-model="hostnameForm.hostname" placeholder="www.client-example.com" />
                     </div>
                   </template>
                 </div>
-                <Button type="button" class="mt-4 bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || (hostnameForm.mode === 'sandbox' ? !buildSandboxHostname() : !hostnameForm.hostname.trim())" @click="handleAssignHostname">
+                <Button type="button" class="mt-4 bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || (hostnameForm.mode === 'wildcard' ? !buildWildcardHostname() : !hostnameForm.hostname.trim())" @click="handleAssignHostname">
                   Add domain
                 </Button>
               </div>

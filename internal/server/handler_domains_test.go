@@ -98,3 +98,41 @@ func TestDomainsCreateDefaultsToCustomerDirectInventory(t *testing.T) {
 		t.Fatalf("ownership = %q, want %q", created.Ownership, DomainOwnershipCustomer)
 	}
 }
+
+func TestDomainsCreateForSiteDerivesOwnershipFromWildcardParent(t *testing.T) {
+	db := mustOpenServerHandlerDB(t)
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
+	handler := NewHandler(db)
+
+	siteID, err := NewSiteStore(db).Create(context.Background(), CreateSiteInput{ServerID: serverID, Name: "Agency Site", Status: SiteStatusDraft})
+	if err != nil {
+		t.Fatalf("create site: %v", err)
+	}
+	parentID, err := NewDomainStore(db).Create(context.Background(), CreateDomainInput{
+		Hostname:  "agency.dev",
+		Kind:      DomainKindWildcard,
+		Ownership: DomainOwnershipCustomer,
+		Status:    DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create wildcard domain: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]any{"hostname": "preview.agency.dev", "parent_domain_id": parentID, "is_primary": true})
+	req := httptest.NewRequest(http.MethodPost, "/api/sites/"+siteID+"/domains", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("assign domain status = %d, want %d; body = %s", res.Code, http.StatusCreated, res.Body.String())
+	}
+
+	var created StoredDomain
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode assigned domain response: %v", err)
+	}
+	if created.Ownership != DomainOwnershipCustomer {
+		t.Fatalf("ownership = %q, want %q", created.Ownership, DomainOwnershipCustomer)
+	}
+}
