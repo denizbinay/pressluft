@@ -151,7 +151,14 @@
 - name: Install acme.sh for Pressluft
   become_user: pressluft
   ansible.builtin.shell:
-    cmd: "curl -fsSL https://get.acme.sh | sh -s -- --home /var/lib/pressluft/.acme.sh --config-home /etc/pressluft/acme.sh --nocron"
+    cmd: >-
+      set -eu;
+      workdir="$(mktemp -d)";
+      trap 'rm -rf "$workdir"' EXIT;
+      curl -fsSL https://github.com/acmesh-official/acme.sh/archive/master.tar.gz -o "$workdir/acme.tar.gz";
+      tar -xzf "$workdir/acme.tar.gz" -C "$workdir";
+      cd "$workdir/acme.sh-master";
+      ./acme.sh --install --home /var/lib/pressluft/.acme.sh --config-home /etc/pressluft/acme.sh --nocron
     creates: /var/lib/pressluft/.acme.sh/acme.sh
   environment:
     HOME: /var/lib/pressluft
