@@ -27,6 +27,7 @@ func TestOpenCreatesParentDirAndRunsLatestMigrations(t *testing.T) {
 	requireTable(t, db.DB, "agent_ws_tokens")
 	requireTable(t, db.DB, "ca_certificates")
 	requireTable(t, db.DB, "node_certificates")
+	requireTable(t, db.DB, "sites")
 
 	requireColumn(t, db.DB, "jobs", "payload")
 	requireColumn(t, db.DB, "jobs", "started_at")

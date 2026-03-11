@@ -75,6 +75,7 @@ const activityMeta = (activity: Activity) => {
     if (activity.resource_type === "job") return `Job #${activity.resource_id}`;
     if (activity.resource_type === "server")
       return `Server #${activity.resource_id}`;
+    if (activity.resource_type === "site") return `Site #${activity.resource_id}`;
     return `${activity.resource_type} #${activity.resource_id}`;
   }
   if (activity.parent_resource_type && activity.parent_resource_id) {
@@ -84,11 +85,17 @@ const activityMeta = (activity: Activity) => {
 };
 
 const activityLink = (activity: Activity) => {
+  if (activity.event_type === "site.deleted") {
+    return "/sites";
+  }
   if (activity.resource_type === "job" && activity.resource_id) {
     return `/jobs/${activity.resource_id}`;
   }
   if (activity.resource_type === "server" && activity.resource_id) {
     return `/servers/${activity.resource_id}`;
+  }
+  if (activity.resource_type === "site" && activity.resource_id) {
+    return `/sites/${activity.resource_id}`;
   }
   return "";
 };

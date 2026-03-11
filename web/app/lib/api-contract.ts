@@ -9,7 +9,7 @@ import type {
   SupportLevel,
 } from '~/lib/platform-contract.generated'
 
-export type Capability = "manage_providers" | "manage_servers" | "queue_jobs" | "read_activity"
+export type Capability = "manage_providers" | "manage_servers" | "manage_sites" | "queue_jobs" | "read_activity"
 export type Role = 'admin'
 
 export interface Activity {
@@ -89,12 +89,28 @@ export interface CreateServerResponse {
   status: ServerStatus
 }
 
+export interface CreateSiteRequest {
+  server_id: string
+  name: string
+  primary_domain?: string
+  status?: string
+  wordpress_path?: string
+  php_version?: string
+  wordpress_version?: string
+}
+
 export interface DeleteServerResponse {
   server_id: string
   job_id: string
   status: ServerStatus
   job_status: JobStatus
   async: boolean
+  description: string
+}
+
+export interface DeleteSiteResponse {
+  site_id: string
+  deleted: boolean
   description: string
 }
 
@@ -265,8 +281,32 @@ export interface StoredServer {
   updated_at: string
 }
 
+export interface StoredSite {
+  id: string
+  server_id: string
+  server_name: string
+  name: string
+  primary_domain?: string
+  status: string
+  wordpress_path?: string
+  php_version?: string
+  wordpress_version?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface UnreadCountResponse {
   count: number
+}
+
+export interface UpdateSiteRequest {
+  server_id?: string
+  name?: string
+  primary_domain?: string
+  status?: string
+  wordpress_path?: string
+  php_version?: string
+  wordpress_version?: string
 }
 
 export interface ValidateProviderRequest {

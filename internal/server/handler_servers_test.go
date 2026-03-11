@@ -355,6 +355,24 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
+		CREATE TABLE sites (
+			id                TEXT PRIMARY KEY,
+			server_id         TEXT    NOT NULL,
+			name              TEXT    NOT NULL,
+			primary_domain    TEXT,
+			status            TEXT    NOT NULL DEFAULT 'draft',
+			wordpress_path    TEXT,
+			php_version       TEXT,
+			wordpress_version TEXT,
+			created_at        TEXT    NOT NULL,
+			updated_at        TEXT    NOT NULL,
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		);
+	`); err != nil {
+		t.Fatalf("create sites table: %v", err)
+	}
+
+	if _, err := db.Exec(`
 		CREATE TABLE server_keys (
 			server_id             TEXT PRIMARY KEY,
 			public_key            TEXT    NOT NULL,

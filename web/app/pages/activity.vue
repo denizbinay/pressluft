@@ -98,11 +98,17 @@ const resourceMeta = (activity: Activity) => {
 }
 
 const resourceLink = (activity: Activity) => {
+  if (activity.event_type === "site.deleted") {
+    return "/sites"
+  }
   if (activity.resource_type === "job" && activity.resource_id) {
     return `/jobs/${activity.resource_id}`
   }
   if (activity.resource_type === "server" && activity.resource_id) {
     return `/servers/${activity.resource_id}`
+  }
+  if (activity.resource_type === "site" && activity.resource_id) {
+    return `/sites/${activity.resource_id}`
   }
   return ""
 }

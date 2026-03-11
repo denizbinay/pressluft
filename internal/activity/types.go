@@ -64,6 +64,7 @@ const (
 // Site events
 const (
 	EventSiteCreated  EventType = "site.created"
+	EventSiteUpdated  EventType = "site.updated"
 	EventSiteDeployed EventType = "site.deployed"
 	EventSiteDeleted  EventType = "site.deleted"
 )
@@ -103,6 +104,7 @@ var validEventTypes = map[EventType]bool{
 	EventProviderRemoved: true,
 	// Site events
 	EventSiteCreated:  true,
+	EventSiteUpdated:  true,
 	EventSiteDeployed: true,
 	EventSiteDeleted:  true,
 	// Account events

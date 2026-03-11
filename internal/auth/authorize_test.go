@@ -26,3 +26,12 @@ func TestRequireCapabilityRejectsAnonymousActor(t *testing.T) {
 		t.Fatal("expected anonymous actor to be rejected")
 	}
 }
+
+func TestAllCapabilitiesIncludesManageSites(t *testing.T) {
+	for _, capability := range AllCapabilities() {
+		if capability == CapabilityManageSites {
+			return
+		}
+	}
+	t.Fatal("expected manage_sites capability to be published")
+}
