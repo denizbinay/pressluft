@@ -5,6 +5,7 @@ import type {
   ActivityListResponse,
   AgentInfo,
   AgentStatusMapResponse,
+  DeleteDomainResponse,
   DeleteSiteResponse,
   CreateServerResponse,
   DeleteServerResponse,
@@ -12,6 +13,7 @@ import type {
   JobEvent,
   ServerCatalogResponse,
   ServicesResponse,
+  StoredDomain,
   StoredServer,
   StoredSite,
   UnreadCountResponse,
@@ -155,8 +157,29 @@ const storedSiteSchema = z.object({
   updated_at: z.string(),
 });
 
+const storedDomainSchema = z.object({
+  id: z.string(),
+  hostname: z.string(),
+  kind: z.string(),
+  ownership: z.string(),
+  status: z.string(),
+  site_id: z.string().optional(),
+  site_name: z.string().optional(),
+  parent_domain_id: z.string().optional(),
+  parent_hostname: z.string().optional(),
+  is_primary: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 const deleteSiteResponseSchema = z.object({
   site_id: z.string(),
+  deleted: z.boolean(),
+  description: z.string(),
+});
+
+const deleteDomainResponseSchema = z.object({
+  domain_id: z.string(),
   deleted: z.boolean(),
   description: z.string(),
 });
@@ -273,8 +296,14 @@ export const parseStoredSite = (payload: unknown): StoredSite =>
   decode(storedSiteSchema, payload, "site");
 export const parseStoredSites = (payload: unknown): StoredSite[] =>
   decode(z.array(storedSiteSchema), payload, "site list");
+export const parseStoredDomain = (payload: unknown): StoredDomain =>
+  decode(storedDomainSchema, payload, "domain");
+export const parseStoredDomains = (payload: unknown): StoredDomain[] =>
+  decode(z.array(storedDomainSchema), payload, "domain list");
 export const parseDeleteSiteResponse = (payload: unknown): DeleteSiteResponse =>
   decode(deleteSiteResponseSchema, payload, "delete site");
+export const parseDeleteDomainResponse = (payload: unknown): DeleteDomainResponse =>
+  decode(deleteDomainResponseSchema, payload, "delete domain");
 export const parseAgentInfo = (payload: unknown): AgentInfo =>
   decode(agentInfoSchema, payload, "agent info");
 export const parseAgentStatusMapResponse = (

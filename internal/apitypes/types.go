@@ -81,13 +81,100 @@ type CreateServerRequest struct {
 }
 
 type CreateSiteRequest struct {
-	ServerID         string `json:"server_id"`
-	Name             string `json:"name"`
-	PrimaryDomain    string `json:"primary_domain,omitempty"`
-	Status           string `json:"status,omitempty"`
-	WordPressPath    string `json:"wordpress_path,omitempty"`
-	PHPVersion       string `json:"php_version,omitempty"`
-	WordPressVersion string `json:"wordpress_version,omitempty"`
+	ServerID            string                   `json:"server_id"`
+	Name                string                   `json:"name"`
+	PrimaryDomain       string                   `json:"primary_domain,omitempty"`
+	PrimaryDomainConfig *SitePrimaryDomainConfig `json:"primary_domain_config,omitempty"`
+	Status              string                   `json:"status,omitempty"`
+	WordPressPath       string                   `json:"wordpress_path,omitempty"`
+	PHPVersion          string                   `json:"php_version,omitempty"`
+	WordPressVersion    string                   `json:"wordpress_version,omitempty"`
+}
+
+type SitePrimaryDomainConfig struct {
+	Mode           string `json:"mode"`
+	Hostname       string `json:"hostname,omitempty"`
+	Label          string `json:"label,omitempty"`
+	ParentDomainID string `json:"parent_domain_id,omitempty"`
+}
+
+func (c *SitePrimaryDomainConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	c.Mode = strings.TrimSpace(c.Mode)
+	c.Hostname = strings.TrimSpace(c.Hostname)
+	c.Label = strings.TrimSpace(c.Label)
+	c.ParentDomainID = strings.TrimSpace(c.ParentDomainID)
+	switch c.Mode {
+	case "wildcard":
+		if c.Label == "" {
+			return fmt.Errorf("primary_domain_config.label is required for wildcard domains")
+		}
+		if c.ParentDomainID == "" {
+			return fmt.Errorf("primary_domain_config.parent_domain_id is required for wildcard domains")
+		}
+	case "direct":
+		if c.Hostname == "" {
+			return fmt.Errorf("primary_domain_config.hostname is required for direct domains")
+		}
+	default:
+		return fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
+	}
+	return nil
+}
+
+type CreateDomainRequest struct {
+	Hostname       string `json:"hostname"`
+	Kind           string `json:"kind,omitempty"`
+	Ownership      string `json:"ownership,omitempty"`
+	Status         string `json:"status,omitempty"`
+	SiteID         string `json:"site_id,omitempty"`
+	ParentDomainID string `json:"parent_domain_id,omitempty"`
+	IsPrimary      bool   `json:"is_primary,omitempty"`
+}
+
+func (r *CreateDomainRequest) Validate() error {
+	r.Hostname = strings.TrimSpace(r.Hostname)
+	r.Kind = strings.TrimSpace(r.Kind)
+	r.Ownership = strings.TrimSpace(r.Ownership)
+	r.Status = strings.TrimSpace(r.Status)
+	r.SiteID = strings.TrimSpace(r.SiteID)
+	r.ParentDomainID = strings.TrimSpace(r.ParentDomainID)
+	if r.Hostname == "" {
+		return fmt.Errorf("hostname is required")
+	}
+	return nil
+}
+
+type UpdateDomainRequest struct {
+	Hostname       *string `json:"hostname,omitempty"`
+	Kind           *string `json:"kind,omitempty"`
+	Ownership      *string `json:"ownership,omitempty"`
+	Status         *string `json:"status,omitempty"`
+	SiteID         *string `json:"site_id,omitempty"`
+	ParentDomainID *string `json:"parent_domain_id,omitempty"`
+	IsPrimary      *bool   `json:"is_primary,omitempty"`
+}
+
+func (r *UpdateDomainRequest) Validate() error {
+	trim := func(value **string) {
+		if *value == nil {
+			return
+		}
+		trimmed := strings.TrimSpace(**value)
+		*value = &trimmed
+	}
+	trim(&r.Hostname)
+	trim(&r.Kind)
+	trim(&r.Ownership)
+	trim(&r.Status)
+	trim(&r.SiteID)
+	trim(&r.ParentDomainID)
+	if r.Hostname != nil && *r.Hostname == "" {
+		return fmt.Errorf("hostname is required")
+	}
+	return nil
 }
 
 func (r *CreateSiteRequest) Validate() error {
@@ -103,6 +190,12 @@ func (r *CreateSiteRequest) Validate() error {
 	}
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
+	}
+	if r.PrimaryDomain != "" && r.PrimaryDomainConfig != nil {
+		return fmt.Errorf("use either primary_domain or primary_domain_config, not both")
+	}
+	if err := r.PrimaryDomainConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -164,6 +257,27 @@ type StoredSite struct {
 	WordPressVersion string `json:"wordpress_version,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
+}
+
+type StoredDomain struct {
+	ID             string `json:"id"`
+	Hostname       string `json:"hostname"`
+	Kind           string `json:"kind"`
+	Ownership      string `json:"ownership"`
+	Status         string `json:"status"`
+	SiteID         string `json:"site_id,omitempty"`
+	SiteName       string `json:"site_name,omitempty"`
+	ParentDomainID string `json:"parent_domain_id,omitempty"`
+	ParentHostname string `json:"parent_hostname,omitempty"`
+	IsPrimary      bool   `json:"is_primary"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+type DeleteDomainResponse struct {
+	DomainID    string `json:"domain_id"`
+	Deleted     bool   `json:"deleted"`
+	Description string `json:"description"`
 }
 
 type DeleteSiteResponse struct {
@@ -386,12 +500,16 @@ var PublishedTypes = map[string]any{
 	"ValidationResult":        provider.ValidationResult{},
 	"CreateServerRequest":     CreateServerRequest{},
 	"CreateSiteRequest":       CreateSiteRequest{},
+	"CreateDomainRequest":     CreateDomainRequest{},
 	"ServerCatalogResponse":   ServerCatalogResponse{},
 	"CreateServerResponse":    CreateServerResponse{},
 	"StoredSite":              StoredSite{},
+	"StoredDomain":            StoredDomain{},
 	"DeleteSiteResponse":      DeleteSiteResponse{},
+	"DeleteDomainResponse":    DeleteDomainResponse{},
 	"DeleteServerResponse":    DeleteServerResponse{},
 	"UpdateSiteRequest":       UpdateSiteRequest{},
+	"UpdateDomainRequest":     UpdateDomainRequest{},
 	"RebuildOptionsResponse":  RebuildOptionsResponse{},
 	"ResizeOptionsResponse":   ResizeOptionsResponse{},
 	"FirewallsResponse":       FirewallsResponse{},

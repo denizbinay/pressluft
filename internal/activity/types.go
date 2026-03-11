@@ -20,6 +20,7 @@ const (
 	CategoryServer   Category = "server"
 	CategoryProvider Category = "provider"
 	CategorySite     Category = "site"
+	CategoryDomain   Category = "domain"
 	CategoryAccount  Category = "account"
 	CategorySecurity Category = "security"
 )
@@ -69,6 +70,14 @@ const (
 	EventSiteDeleted  EventType = "site.deleted"
 )
 
+// Domain events
+const (
+	EventDomainCreated  EventType = "domain.created"
+	EventDomainUpdated  EventType = "domain.updated"
+	EventDomainDeleted  EventType = "domain.deleted"
+	EventDomainAssigned EventType = "domain.assigned"
+)
+
 // Account events
 const (
 	EventAccountSettingsChanged EventType = "account.settings_changed"
@@ -107,6 +116,11 @@ var validEventTypes = map[EventType]bool{
 	EventSiteUpdated:  true,
 	EventSiteDeployed: true,
 	EventSiteDeleted:  true,
+	// Domain events
+	EventDomainCreated:  true,
+	EventDomainUpdated:  true,
+	EventDomainDeleted:  true,
+	EventDomainAssigned: true,
 	// Account events
 	EventAccountSettingsChanged: true,
 	// Security events
@@ -135,6 +149,7 @@ const (
 	ResourceServer   ResourceType = "server"
 	ResourceProvider ResourceType = "provider"
 	ResourceSite     ResourceType = "site"
+	ResourceDomain   ResourceType = "domain"
 	ResourceAccount  ResourceType = "account"
 	ResourceAPIKey   ResourceType = "api_key"
 )

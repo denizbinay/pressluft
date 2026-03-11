@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -95,6 +96,9 @@ func NewHandlerWithOptions(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHa
 		jobStore := orchestrator.NewStore(db)
 		serverStore := NewServerStore(db)
 		siteStore := NewSiteStore(db)
+		domainStore := NewDomainStore(db)
+		_ = domainStore.EnsurePlatformBaseDomains(context.Background())
+		_ = domainStore.BackfillLegacyPrimaryDomains(context.Background())
 
 		sh := &serversHandler{
 			providerStore: provider.NewStore(db),
@@ -109,10 +113,15 @@ func NewHandlerWithOptions(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHa
 
 		sih := &sitesHandler{
 			store:         siteStore,
+			domainStore:   domainStore,
 			activityStore: activityStore,
 		}
 		operatorMux.Handle("/api/sites", authorize(withRateLimit(http.HandlerFunc(sih.route), newRateLimiter(30, time.Minute), "sites"), auth.RequireCapability(auth.CapabilityManageSites)))
 		operatorMux.Handle("/api/sites/", authorize(withRateLimit(http.HandlerFunc(sih.routeWithID), newRateLimiter(60, time.Minute), "sites-path"), auth.RequireCapability(auth.CapabilityManageSites)))
+
+		dh := &domainsHandler{store: domainStore, activityStore: activityStore}
+		operatorMux.Handle("/api/domains", authorize(withRateLimit(http.HandlerFunc(dh.route), newRateLimiter(30, time.Minute), "domains"), auth.RequireCapability(auth.CapabilityManageSites)))
+		operatorMux.Handle("/api/domains/", authorize(withRateLimit(http.HandlerFunc(dh.routeWithID), newRateLimiter(60, time.Minute), "domains-path"), auth.RequireCapability(auth.CapabilityManageSites)))
 
 		jh := &jobsHandler{
 			store:         jobStore,

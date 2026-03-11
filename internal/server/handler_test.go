@@ -42,7 +42,7 @@ func TestOperatorRoutesRequireCapabilitiesWhenAuthenticatorConfigured(t *testing
 		}},
 	})
 
-	for _, path := range []string{"/api/activity", "/api/sites"} {
+	for _, path := range []string{"/api/activity", "/api/sites", "/api/domains"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		res := httptest.NewRecorder()
 

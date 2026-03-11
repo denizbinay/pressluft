@@ -142,6 +142,35 @@ export function useActivity() {
     }
   };
 
+  const listSiteActivity = async (
+    siteId: string,
+    options: ListActivityOptions = {},
+  ) => {
+    loading.value = true;
+    error.value = "";
+    try {
+      const params = buildActivityParams({}, options);
+      const query = params.toString();
+      const payload = parseActivityListResponse(
+        await apiFetch(`/sites/${siteId}/activity${query ? `?${query}` : ""}`),
+      );
+      const next = payload.next_cursor || "";
+
+      if (options.append) {
+        activities.value = [...activities.value, ...payload.data];
+      } else {
+        activities.value = payload.data;
+      }
+      nextCursor.value = next;
+      return payload;
+    } catch (e: any) {
+      error.value = e.message;
+      throw e;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const streamActivity = (options: ActivityStreamOptions = {}) => {
     const initialSinceId = options.sinceId ?? "";
     let lastSeenId = initialSinceId;
@@ -298,6 +327,7 @@ export function useActivity() {
     unreadCount,
     listActivity,
     listServerActivity,
+    listSiteActivity,
     streamActivity,
     fetchUnreadCount,
     markRead,

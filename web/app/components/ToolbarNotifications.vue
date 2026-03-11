@@ -41,6 +41,12 @@ const resolveActivityLink = (activity: ActivityEvent) => {
   if (activity.resource_type === "site" && activity.resource_id) {
     return `/sites/${activity.resource_id}`
   }
+  if (activity.resource_type === "domain") {
+    return "/domains"
+  }
+  if (activity.parent_resource_type === "site" && activity.parent_resource_id) {
+    return `/sites/${activity.parent_resource_id}`
+  }
   if (activity.parent_resource_type === "server" && activity.parent_resource_id) {
     return `/servers/${activity.parent_resource_id}`
   }

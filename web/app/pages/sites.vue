@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDomains } from "~/composables/useDomains";
 import { useServers } from "~/composables/useServers";
 import { useSites, type StoredSite } from "~/composables/useSites";
 
 const route = useRoute();
 
 const { servers, fetchServers } = useServers();
+const { domains, fetchDomains } = useDomains();
 const { sites, loading, saving, error, fetchSites, createSite } = useSites();
 
 const pageError = ref("");
@@ -19,11 +21,14 @@ const successMessage = ref("");
 const form = reactive({
   serverId: "",
   name: "",
-  primaryDomain: "",
   status: "draft",
   wordpressPath: "/srv/www/",
   phpVersion: "8.3",
   wordpressVersion: "6.8",
+  domainMode: "wildcard",
+  directHostname: "",
+  wildcardLabel: "",
+  wildcardParentDomainId: "",
 });
 
 const siteStatusMeta = (status: StoredSite["status"]) => {
@@ -65,6 +70,49 @@ const serverOptions = computed(() =>
   [...servers.value].sort((a, b) => a.name.localeCompare(b.name)),
 );
 
+const wildcardDomains = computed(() =>
+  domains.value.filter((domain) => domain.kind === "wildcard" && domain.status === "active"),
+);
+
+const futureWildcardDomains = computed(() =>
+  domains.value.filter((domain) => domain.kind === "wildcard" && domain.status !== "active"),
+);
+
+const hasMultipleWildcardDomains = computed(() => wildcardDomains.value.length > 1);
+
+const selectedWildcardDomain = computed(() =>
+  wildcardDomains.value.find((domain) => domain.id === form.wildcardParentDomainId) || null,
+);
+
+const wildcardDomainLabel = (domainId: string) => {
+  const domain = domains.value.find((item) => item.id === domainId);
+  if (!domain) return "";
+  return domain.ownership === "platform" ? "Pressluft" : "Your domain";
+};
+
+const buildWildcardPrimaryDomain = () => {
+  const label = form.wildcardLabel
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!label || !selectedWildcardDomain.value) {
+    return "";
+  }
+  return `${label}.${selectedWildcardDomain.value.hostname}`;
+};
+
+const canCreateSite = computed(() => {
+  if (!form.serverId || !form.name.trim()) {
+    return false;
+  }
+  if (form.domainMode === "wildcard") {
+    return Boolean(buildWildcardPrimaryDomain() && form.wildcardParentDomainId);
+  }
+  return Boolean(form.directHostname.trim());
+});
+
 const selectedServerName = computed(
   () =>
     serverOptions.value.find((server) => server.id === form.serverId)?.name ||
@@ -74,13 +122,19 @@ const selectedServerName = computed(
 const loadPage = async () => {
   pageError.value = "";
   try {
-    await Promise.all([fetchServers(), fetchSites()]);
+    await Promise.all([fetchServers(), fetchSites(), fetchDomains()]);
     const requestedServer = route.query.serverId;
     if (typeof requestedServer === "string" && requestedServer.trim()) {
       form.serverId = requestedServer.trim();
     }
     if (!form.serverId && serverOptions.value[0]) {
       form.serverId = serverOptions.value[0].id;
+    }
+    if (!form.wildcardParentDomainId && wildcardDomains.value[0]) {
+      form.wildcardParentDomainId = wildcardDomains.value[0].id;
+    }
+    if (!wildcardDomains.value.length) {
+      form.domainMode = "direct";
     }
   } catch (e: any) {
     pageError.value = e.message || "Failed to load sites";
@@ -89,11 +143,14 @@ const loadPage = async () => {
 
 const resetForm = () => {
   form.name = "";
-  form.primaryDomain = "";
   form.status = "draft";
   form.wordpressPath = "/srv/www/";
   form.phpVersion = "8.3";
   form.wordpressVersion = "6.8";
+  form.directHostname = "";
+  form.wildcardLabel = "";
+  form.domainMode = wildcardDomains.value.length ? "wildcard" : "direct";
+  form.wildcardParentDomainId = wildcardDomains.value[0]?.id || "";
 };
 
 const handleCreateSite = async () => {
@@ -103,13 +160,23 @@ const handleCreateSite = async () => {
     const created = await createSite({
       server_id: form.serverId,
       name: form.name,
-      primary_domain: form.primaryDomain || undefined,
       status: form.status,
       wordpress_path: form.wordpressPath || undefined,
       php_version: form.phpVersion || undefined,
       wordpress_version: form.wordpressVersion || undefined,
+      primary_domain_config:
+        form.domainMode === "wildcard"
+          ? {
+              mode: "wildcard",
+              label: form.wildcardLabel,
+              parent_domain_id: form.wildcardParentDomainId,
+            }
+          : {
+              mode: "direct",
+              hostname: form.directHostname,
+            },
     });
-    successMessage.value = `Created ${created.name} on ${created.server_name}.`;
+    successMessage.value = `Created ${created.name} on ${created.server_name} with ${created.primary_domain}.`;
     resetForm();
     await fetchSites();
   } catch (e: any) {
@@ -139,6 +206,19 @@ watch(
     }
   },
 );
+
+watch(wildcardDomains, (value) => {
+  if (!value.length) {
+    form.wildcardParentDomainId = "";
+    if (form.domainMode === "wildcard") {
+      form.domainMode = "direct";
+    }
+    return;
+  }
+  if (!value.some((domain) => domain.id === form.wildcardParentDomainId)) {
+    form.wildcardParentDomainId = value[0].id;
+  }
+});
 </script>
 
 <template>
@@ -156,11 +236,11 @@ watch(
             <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               WordPress estates finally have a home in Pressluft.
             </h1>
-            <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Track every client site as a first-class resource, attach it to its
-              current server, and build a believable hosting panel surface before
-              deployment automation lands.
-            </p>
+             <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+               Track every client site as a first-class resource, attach it to its
+               current server, and decide from day one whether it starts on a
+               reusable wildcard root or a direct standalone domain.
+             </p>
           </div>
         </div>
 
@@ -251,7 +331,7 @@ watch(
                     </Badge>
                   </div>
                   <p class="mt-1 text-sm text-muted-foreground">
-                    {{ site.primary_domain || "Domain not assigned yet" }}
+                    {{ site.primary_domain || "No primary hostname yet" }}
                   </p>
                   <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
@@ -284,11 +364,11 @@ watch(
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             New Site
           </p>
-          <h2 class="mt-1 text-xl font-semibold text-foreground">Create a believable site record</h2>
-          <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Capture where the site currently lives, what stack it expects, and
-            enough metadata to make the panel feel operational.
-          </p>
+          <h2 class="mt-1 text-xl font-semibold text-foreground">Create a site with its primary domain</h2>
+             <p class="mt-2 text-sm leading-6 text-muted-foreground">
+               Capture the hosting record and decide what address the site should
+               open on first.
+             </p>
         </CardHeader>
         <CardContent class="px-6 py-5">
           <form class="space-y-4" @submit.prevent="handleCreateSite">
@@ -311,12 +391,8 @@ watch(
                 <Label for="site-name" class="text-sm font-medium text-muted-foreground">Site name</Label>
                 <Input id="site-name" v-model="form.name" placeholder="e.g. Northwind Marketing" />
               </div>
-              <div class="space-y-1.5">
-                <Label for="site-domain" class="text-sm font-medium text-muted-foreground">Primary domain</Label>
-                <Input id="site-domain" v-model="form.primaryDomain" placeholder="northwind.example" />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="site-status" class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
+               <div class="space-y-1.5">
+                 <Label for="site-status" class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
                 <select
                   id="site-status"
                   v-model="form.status"
@@ -342,18 +418,68 @@ watch(
               </div>
             </div>
 
-            <div class="rounded-2xl border border-border/60 bg-muted/25 p-4">
+            <div class="space-y-4 rounded-2xl border border-border/60 bg-muted/25 p-4">
               <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Why this matters
+                Primary Domain
               </p>
-              <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                PR2 is about making sites feel real even before installation
-                flows exist. This metadata gives agencies a control-plane view of
-                their estate right now.
+              <div class="flex flex-wrap gap-2">
+                <Button type="button" size="sm" :variant="form.domainMode === 'wildcard' ? 'default' : 'outline'" @click="form.domainMode = 'wildcard'" :disabled="wildcardDomains.length === 0">
+                  Wildcard domain
+                </Button>
+                <Button type="button" size="sm" :variant="form.domainMode === 'direct' ? 'default' : 'outline'" @click="form.domainMode = 'direct'">
+                  Direct domain
+                </Button>
+              </div>
+
+              <div v-if="form.domainMode === 'wildcard'" class="grid gap-4 sm:grid-cols-2">
+                <div class="space-y-1.5">
+                  <Label for="site-wildcard-label" class="text-sm font-medium text-muted-foreground">Child label</Label>
+                  <Input id="site-wildcard-label" v-model="form.wildcardLabel" placeholder="northwind-live" />
+                </div>
+                <div v-if="hasMultipleWildcardDomains" class="space-y-1.5">
+                  <Label for="site-wildcard-domain" class="text-sm font-medium text-muted-foreground">Wildcard root</Label>
+                  <select
+                    id="site-wildcard-domain"
+                    v-model="form.wildcardParentDomainId"
+                    class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+                  >
+                    <option v-for="domain in wildcardDomains" :key="domain.id" :value="domain.id">
+                      {{ domain.hostname }} ({{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }})
+                    </option>
+                  </select>
+                </div>
+                <div class="space-y-1.5 sm:col-span-2">
+                  <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                  <Input :model-value="buildWildcardPrimaryDomain()" readonly placeholder="Enter a label to preview the allocated hostname" />
+                </div>
+                <div v-if="selectedWildcardDomain" class="sm:col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">
+                    {{ wildcardDomainLabel(form.wildcardParentDomainId) }}
+                  </Badge>
+                  <span>{{ selectedWildcardDomain.hostname }} will act as the reusable parent for this and future generated hostnames.</span>
+                </div>
+                <p v-if="wildcardDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                  No wildcard domains are available right now, so start with a direct domain instead.
+                </p>
+                <p v-else class="sm:col-span-2 text-sm text-muted-foreground">
+                  Wildcard domains are better for previews, rollbacks, staging, and future generated hostnames because Pressluft can mint concrete child hostnames on demand.
+                </p>
+                <p v-if="futureWildcardDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                  Not active yet: {{ futureWildcardDomains.map((domain) => domain.hostname).join(", ") }}.
+                </p>
+              </div>
+
+              <div v-else class="space-y-1.5">
+                <Label for="site-direct-domain" class="text-sm font-medium text-muted-foreground">Hostname</Label>
+                <Input id="site-direct-domain" v-model="form.directHostname" placeholder="www.client-example.com" />
+              </div>
+
+              <p class="text-sm leading-6 text-muted-foreground">
+                `/domains` stores reusable wildcard roots and standalone direct domains. Site creation mints the concrete hostname row when needed.
               </p>
             </div>
 
-            <Button type="submit" class="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !form.serverId || !form.name.trim()">
+            <Button type="submit" class="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !canCreateSite">
               {{ saving ? "Creating site..." : "Create site record" }}
             </Button>
           </form>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,13 +33,21 @@ type StoredSite struct {
 }
 
 type CreateSiteInput struct {
-	ServerID         string
-	Name             string
-	PrimaryDomain    string
-	Status           string
-	WordPressPath    string
-	PHPVersion       string
-	WordPressVersion string
+	ServerID            string
+	Name                string
+	PrimaryDomain       string
+	PrimaryDomainConfig *CreateSitePrimaryDomainInput
+	Status              string
+	WordPressPath       string
+	PHPVersion          string
+	WordPressVersion    string
+}
+
+type CreateSitePrimaryDomainInput struct {
+	Mode           string
+	Hostname       string
+	Label          string
+	ParentDomainID string
 }
 
 type UpdateSiteInput struct {
@@ -89,13 +98,18 @@ func (s *SiteStore) Create(ctx context.Context, in CreateSiteInput) (string, err
 	if err != nil {
 		return "", err
 	}
-	_, err = s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("begin create site tx: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO sites (id, server_id, name, primary_domain, status, wordpress_path, php_version, wordpress_version, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		publicID,
 		serverID,
 		strings.TrimSpace(in.Name),
-		nullableSiteString(in.PrimaryDomain),
+		nil,
 		strings.TrimSpace(in.Status),
 		nullableSiteString(in.WordPressPath),
 		nullableSiteString(in.PHPVersion),
@@ -106,14 +120,23 @@ func (s *SiteStore) Create(ctx context.Context, in CreateSiteInput) (string, err
 	if err != nil {
 		return "", fmt.Errorf("insert site: %w", err)
 	}
+	if input, ok := resolveCreateSitePrimaryDomainInput(in); ok {
+		if _, err := NewDomainStore(s.db).createWithTx(ctx, tx, publicID, input); err != nil {
+			return "", err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit create site tx: %w", err)
+	}
 	return publicID, nil
 }
 
 func (s *SiteStore) List(ctx context.Context) ([]StoredSite, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, si.primary_domain, si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(dom.hostname, si.primary_domain), si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
+		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
 		 ORDER BY si.created_at DESC`,
 	)
 	if err != nil {
@@ -129,9 +152,10 @@ func (s *SiteStore) ListByServer(ctx context.Context, serverID string) ([]Stored
 		return nil, fmt.Errorf("server_id: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, si.primary_domain, si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(dom.hostname, si.primary_domain), si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
+		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
 		 WHERE si.server_id = ?
 		 ORDER BY si.created_at DESC`,
 		normalized,
@@ -156,9 +180,10 @@ func (s *SiteStore) GetByID(ctx context.Context, id string) (*StoredSite, error)
 		wordpressVersion sql.NullString
 	)
 	err = s.db.QueryRowContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, si.primary_domain, si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(dom.hostname, si.primary_domain), si.status, si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
+		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
 		 WHERE si.id = ?`,
 		publicID,
 	).Scan(
@@ -218,7 +243,7 @@ func (s *SiteStore) Update(ctx context.Context, id string, in UpdateSiteInput) (
 	}
 	primaryDomain := current.PrimaryDomain
 	if in.PrimaryDomain != nil {
-		primaryDomain = strings.TrimSpace(*in.PrimaryDomain)
+		primaryDomain = current.PrimaryDomain
 	}
 	status := current.Status
 	if in.Status != nil {
@@ -237,7 +262,12 @@ func (s *SiteStore) Update(ctx context.Context, id string, in UpdateSiteInput) (
 		wordpressVersion = strings.TrimSpace(*in.WordPressVersion)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin update site tx: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE sites
 		 SET server_id = ?, name = ?, primary_domain = ?, status = ?, wordpress_path = ?, php_version = ?, wordpress_version = ?, updated_at = ?
 		 WHERE id = ?`,
@@ -257,6 +287,22 @@ func (s *SiteStore) Update(ctx context.Context, id string, in UpdateSiteInput) (
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return nil, fmt.Errorf("site %s not found", publicID)
 	}
+	if in.PrimaryDomain != nil {
+		domainStore := NewDomainStore(s.db)
+		primaryDomain = strings.TrimSpace(*in.PrimaryDomain)
+		if primaryDomain == "" {
+			if err := domainStore.clearPrimaryHostnameForSiteTx(ctx, tx, publicID); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := domainStore.setPrimaryHostnameForSiteTx(ctx, tx, publicID, primaryDomain, DomainOwnershipCustomer); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit update site tx: %w", err)
+	}
 	return s.GetByID(ctx, publicID)
 }
 
@@ -265,12 +311,23 @@ func (s *SiteStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ?`, publicID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete site tx: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM domains WHERE site_id = ?`, publicID); err != nil {
+		return fmt.Errorf("delete site domains: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM sites WHERE id = ?`, publicID)
 	if err != nil {
 		return fmt.Errorf("delete site: %w", err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return fmt.Errorf("site %s not found", publicID)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete site tx: %w", err)
 	}
 	return nil
 }
@@ -282,10 +339,126 @@ func validateCreateSiteInput(in CreateSiteInput) error {
 	if strings.TrimSpace(in.Name) == "" {
 		return fmt.Errorf("name is required")
 	}
+	if strings.TrimSpace(in.PrimaryDomain) != "" && in.PrimaryDomainConfig != nil {
+		return fmt.Errorf("use either primary_domain or primary_domain_config, not both")
+	}
+	if strings.TrimSpace(in.PrimaryDomain) != "" {
+		if _, err := normalizeHostname(in.PrimaryDomain); err != nil {
+			return err
+		}
+	}
+	if in.PrimaryDomainConfig != nil {
+		if err := validateCreateSitePrimaryDomainInput(*in.PrimaryDomainConfig); err != nil {
+			return err
+		}
+	}
 	if _, err := NormalizeSiteStatus(in.Status); err != nil {
 		return err
 	}
 	return nil
+}
+
+func validateCreateSitePrimaryDomainInput(in CreateSitePrimaryDomainInput) error {
+	mode := strings.TrimSpace(in.Mode)
+	switch mode {
+	case "wildcard":
+		if strings.TrimSpace(in.Label) == "" {
+			return fmt.Errorf("primary_domain_config.label is required for wildcard domains")
+		}
+		if strings.TrimSpace(in.ParentDomainID) == "" {
+			return fmt.Errorf("primary_domain_config.parent_domain_id is required for wildcard domains")
+		}
+		if _, err := normalizeDomainLabel(strings.TrimSpace(in.Label)); err != nil {
+			return err
+		}
+		return nil
+	case "direct":
+		if _, err := normalizeHostname(strings.TrimSpace(in.Hostname)); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
+	}
+	return nil
+}
+
+func resolveCreateSitePrimaryDomainInput(in CreateSiteInput) (CreateSitePrimaryDomainInput, bool) {
+	if in.PrimaryDomainConfig != nil {
+		return *in.PrimaryDomainConfig, true
+	}
+	if strings.TrimSpace(in.PrimaryDomain) == "" {
+		return CreateSitePrimaryDomainInput{}, false
+	}
+	return CreateSitePrimaryDomainInput{
+		Mode:     "direct",
+		Hostname: strings.TrimSpace(in.PrimaryDomain),
+	}, true
+}
+
+func (s *DomainStore) createWithTx(ctx context.Context, tx *sql.Tx, siteID string, input CreateSitePrimaryDomainInput) (string, error) {
+	mode := strings.TrimSpace(input.Mode)
+	switch mode {
+	case "wildcard":
+		parent, err := s.getByIDTx(ctx, tx, strings.TrimSpace(input.ParentDomainID))
+		if err != nil {
+			return "", fmt.Errorf("primary_domain_config.parent_domain_id: %w", err)
+		}
+		hostname, err := buildWildcardChildHostname(strings.TrimSpace(input.Label), *parent)
+		if err != nil {
+			return "", err
+		}
+		return s.createTx(ctx, tx, CreateDomainInput{
+			Hostname:       hostname,
+			Kind:           DomainKindDirect,
+			Ownership:      parent.Ownership,
+			Status:         DomainStatusActive,
+			SiteID:         siteID,
+			ParentDomainID: strings.TrimSpace(input.ParentDomainID),
+			IsPrimary:      true,
+		})
+	case "direct":
+		return s.createTx(ctx, tx, CreateDomainInput{
+			Hostname:  strings.TrimSpace(input.Hostname),
+			Kind:      DomainKindDirect,
+			Ownership: DomainOwnershipCustomer,
+			Status:    DomainStatusActive,
+			SiteID:    siteID,
+			IsPrimary: true,
+		})
+	default:
+		return "", fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
+	}
+}
+
+func buildWildcardChildHostname(label string, parent StoredDomain) (string, error) {
+	normalizedLabel, err := normalizeDomainLabel(label)
+	if err != nil {
+		return "", err
+	}
+	if parent.Kind != DomainKindWildcard {
+		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference a wildcard domain")
+	}
+	if parent.Status != DomainStatusActive {
+		return "", fmt.Errorf("primary_domain_config.parent_domain_id must reference an active wildcard domain")
+	}
+	return normalizeHostname(normalizedLabel + "." + parent.Hostname)
+}
+
+func normalizeDomainLabel(label string) (string, error) {
+	label = strings.ToLower(strings.TrimSpace(label))
+	label = strings.ReplaceAll(label, "_", "-")
+	label = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(label, "-")
+	label = strings.Trim(label, "-")
+	if label == "" {
+		return "", fmt.Errorf("primary_domain_config.label is required for wildcard domains")
+	}
+	if strings.Contains(label, ".") {
+		return "", fmt.Errorf("primary_domain_config.label must be a single subdomain label")
+	}
+	if len(label) > 63 {
+		return "", fmt.Errorf("primary_domain_config.label must be 63 characters or fewer")
+	}
+	return label, nil
 }
 
 func validateUpdateSiteInput(in UpdateSiteInput) error {
@@ -294,6 +467,11 @@ func validateUpdateSiteInput(in UpdateSiteInput) error {
 	}
 	if in.Status != nil {
 		if _, err := NormalizeSiteStatus(*in.Status); err != nil {
+			return err
+		}
+	}
+	if in.PrimaryDomain != nil && strings.TrimSpace(*in.PrimaryDomain) != "" {
+		if _, err := normalizeHostname(*in.PrimaryDomain); err != nil {
 			return err
 		}
 	}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActivity } from "~/composables/useActivity";
+import { useDomains, type StoredDomain } from "~/composables/useDomains";
 import { useServers } from "~/composables/useServers";
 import { useSites, type StoredSite } from "~/composables/useSites";
 
@@ -19,9 +20,17 @@ const siteId = computed(() => {
 
 const { servers, fetchServers } = useServers();
 const { fetchSite, updateSite, deleteSite, saving } = useSites();
-const { activities, listActivity } = useActivity();
+const { activities, listSiteActivity } = useActivity();
+const {
+  fetchDomains,
+  fetchSiteDomains,
+  createSiteDomain,
+  updateDomain,
+  deleteDomain,
+} = useDomains();
 
 const site = ref<StoredSite | null>(null);
+const siteDomains = ref<StoredDomain[]>([]);
 const loading = ref(true);
 const pageError = ref("");
 const successMessage = ref("");
@@ -29,11 +38,17 @@ const successMessage = ref("");
 const form = reactive({
   serverId: "",
   name: "",
-  primaryDomain: "",
   status: "draft",
   wordpressPath: "",
   phpVersion: "",
   wordpressVersion: "",
+});
+
+const hostnameForm = reactive({
+  mode: "wildcard",
+  label: "",
+  hostname: "",
+  parentDomainId: "",
 });
 
 const siteStatusMeta = (status: StoredSite["status"]) => {
@@ -68,7 +83,6 @@ const currentServer = computed(() =>
 const hydrateForm = (value: StoredSite) => {
   form.serverId = value.server_id;
   form.name = value.name;
-  form.primaryDomain = value.primary_domain || "";
   form.status = value.status;
   form.wordpressPath = value.wordpress_path || "";
   form.phpVersion = value.php_version || "";
@@ -92,10 +106,54 @@ const formatDate = (iso: string) => {
 const loadActivity = async () => {
   if (!siteId.value) return;
   try {
-    await listActivity({ resourceType: "site", resourceId: siteId.value }, { limit: 8 });
+    await listSiteActivity(siteId.value, { limit: 8 });
   } catch {
     // Timeline degrades quietly on detail page.
   }
+};
+
+const allWildcardDomains = ref<StoredDomain[]>([]);
+const availableWildcardDomains = ref<StoredDomain[]>([]);
+const hasMultipleWildcardDomains = computed(() => availableWildcardDomains.value.length > 1);
+
+const refreshDomains = async () => {
+  if (!siteId.value) return;
+  const [allDomains, assignedDomains] = await Promise.all([
+    fetchDomains(),
+    fetchSiteDomains(siteId.value),
+  ]);
+  allWildcardDomains.value = allDomains.filter(
+    (domain) => domain.kind === "wildcard",
+  );
+  availableWildcardDomains.value = allWildcardDomains.value.filter((domain) => domain.status === "active");
+  siteDomains.value = assignedDomains;
+  if (!hostnameForm.parentDomainId && availableWildcardDomains.value[0]) {
+    hostnameForm.parentDomainId = availableWildcardDomains.value[0].id;
+  }
+  if (!availableWildcardDomains.value.length) {
+    hostnameForm.mode = "direct";
+  }
+};
+
+const futureWildcardDomains = computed(() =>
+  allWildcardDomains.value.filter((domain) => domain.status !== "active"),
+);
+
+const selectedWildcardDomain = computed(() =>
+  availableWildcardDomains.value.find((domain) => domain.id === hostnameForm.parentDomainId) || null,
+);
+
+const wildcardDomainLabel = (domain: StoredDomain | null) => {
+  if (!domain) return "";
+  return domain.ownership === "platform" ? "Pressluft" : "Your domain";
+};
+
+const buildWildcardHostname = () => {
+  const base = selectedWildcardDomain.value;
+  if (!base) return "";
+  const label = hostnameForm.label.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!label) return "";
+  return `${label}.${base.hostname}`;
 };
 
 const loadPage = async () => {
@@ -110,7 +168,7 @@ const loadPage = async () => {
     const [loadedSite] = await Promise.all([fetchSite(siteId.value), fetchServers()]);
     site.value = loadedSite;
     hydrateForm(loadedSite);
-    await loadActivity();
+    await Promise.all([loadActivity(), refreshDomains()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to load site";
   } finally {
@@ -126,7 +184,6 @@ const handleSave = async () => {
     const updated = await updateSite(siteId.value, {
       server_id: form.serverId,
       name: form.name,
-      primary_domain: form.primaryDomain,
       status: form.status,
       wordpress_path: form.wordpressPath,
       php_version: form.phpVersion,
@@ -134,9 +191,57 @@ const handleSave = async () => {
     });
     site.value = updated;
     hydrateForm(updated);
+    await refreshDomains();
     successMessage.value = "Site details updated.";
   } catch (e: any) {
     pageError.value = e.message || "Failed to update site";
+  }
+};
+
+const handleAssignHostname = async () => {
+  if (!siteId.value) return;
+  pageError.value = "";
+  successMessage.value = "";
+  try {
+    const hostname = hostnameForm.mode === "wildcard" ? buildWildcardHostname() : hostnameForm.hostname.trim();
+    const created = await createSiteDomain(siteId.value, {
+      hostname,
+      parent_domain_id: hostnameForm.mode === "wildcard" ? hostnameForm.parentDomainId : undefined,
+      is_primary: siteDomains.value.length === 0,
+    });
+    successMessage.value = `Assigned ${created.hostname}.`;
+    hostnameForm.label = "";
+    hostnameForm.hostname = "";
+    await Promise.all([refreshDomains(), loadPage()]);
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to assign hostname";
+  }
+};
+
+const handleSetPrimary = async (domainId: string) => {
+  pageError.value = "";
+  successMessage.value = "";
+  try {
+    await updateDomain(domainId, { is_primary: true });
+    successMessage.value = "Primary hostname updated.";
+    await Promise.all([refreshDomains(), loadPage()]);
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to update primary hostname";
+  }
+};
+
+const handleRemoveHostname = async (domain: StoredDomain) => {
+  if (!window.confirm(`Remove ${domain.hostname} from this site?`)) {
+    return;
+  }
+  pageError.value = "";
+  successMessage.value = "";
+  try {
+    await deleteDomain(domain.id);
+    successMessage.value = `Removed ${domain.hostname}.`;
+    await Promise.all([refreshDomains(), loadPage()]);
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to remove hostname";
   }
 };
 
@@ -181,11 +286,10 @@ watch(siteId, async (value, previous) => {
                 {{ siteStatusMeta(site.status).label }}
               </Badge>
             </div>
-            <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
-              {{ site.primary_domain || "No public domain captured yet." }}
-              This record lives on {{ site.server_name }} and keeps the hosting
-              panel grounded in real site inventory.
-            </p>
+             <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
+               {{ site.primary_domain || "No primary domain assigned yet." }}
+               This site lives on {{ site.server_name }} and keeps every direct domain or wildcard-derived hostname visible as its own record.
+             </p>
           </div>
 
           <div class="grid grid-cols-2 gap-3 sm:min-w-[360px]">
@@ -220,10 +324,6 @@ watch(siteId, async (value, previous) => {
                 <div class="space-y-1.5 sm:col-span-2">
                   <Label class="text-sm font-medium text-muted-foreground">Site name</Label>
                   <Input v-model="form.name" />
-                </div>
-                <div class="space-y-1.5">
-                  <Label class="text-sm font-medium text-muted-foreground">Primary domain</Label>
-                  <Input v-model="form.primaryDomain" placeholder="client.example" />
                 </div>
                 <div class="space-y-1.5">
                   <Label class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
@@ -269,6 +369,101 @@ watch(siteId, async (value, previous) => {
         </Card>
 
         <div class="space-y-6">
+          <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
+            <CardHeader class="border-b border-border/50 px-6 py-5">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Domains</p>
+              <h2 class="mt-1 text-xl font-semibold text-foreground">Primary and additional domains</h2>
+            </CardHeader>
+            <CardContent class="space-y-4 px-6 py-5">
+              <div v-if="siteDomains.length === 0" class="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+                No domains assigned yet.
+              </div>
+              <div v-else class="space-y-3">
+                <div v-for="domain in siteDomains" :key="domain.id" class="rounded-2xl border border-border/60 bg-background/70 p-4">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-sm font-semibold text-foreground">{{ domain.hostname }}</p>
+                        <Badge v-if="domain.is_primary" variant="outline" class="border-primary/30 bg-primary/10 text-primary">Primary</Badge>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.parent_domain_id ? 'Wildcard child' : 'Direct domain' }}</Badge>
+                        <Badge v-if="domain.parent_domain_id" variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }}</Badge>
+                      </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        {{ domain.parent_hostname || (domain.ownership === "platform" ? "Provided by Pressluft" : "Managed by the agency") }}
+                      </p>
+                    </div>
+                    <div class="flex gap-2">
+                      <Button v-if="!domain.is_primary" type="button" variant="outline" size="sm" @click="handleSetPrimary(domain.id)">
+                        Make primary
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleRemoveHostname(domain)">
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+                <div class="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                   <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                     Attach Domain
+                   </p>
+                   <div class="flex gap-2">
+                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'wildcard' ? 'default' : 'outline'" @click="hostnameForm.mode = 'wildcard'" :disabled="availableWildcardDomains.length === 0">
+                      Wildcard domain
+                    </Button>
+                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'direct' ? 'default' : 'outline'" @click="hostnameForm.mode = 'direct'">
+                      Direct domain
+                    </Button>
+                  </div>
+                <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                  <template v-if="hostnameForm.mode === 'wildcard'">
+                    <div class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">Child label</Label>
+                      <Input v-model="hostnameForm.label" placeholder="northwind-live" />
+                    </div>
+                    <div v-if="hasMultipleWildcardDomains" class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">Wildcard root</Label>
+                      <select v-model="hostnameForm.parentDomainId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
+                        <option v-for="domain in availableWildcardDomains" :key="domain.id" :value="domain.id">
+                          {{ domain.hostname }} ({{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }})
+                        </option>
+                      </select>
+                    </div>
+                    <div class="space-y-1.5 sm:col-span-2">
+                      <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                      <Input :model-value="buildWildcardHostname()" readonly placeholder="Enter a label to preview the allocated hostname" />
+                    </div>
+                    <div v-if="selectedWildcardDomain" class="sm:col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">
+                        {{ wildcardDomainLabel(selectedWildcardDomain) }}
+                      </Badge>
+                      <span>{{ selectedWildcardDomain.hostname }} stays reusable while this site gets a concrete child hostname row.</span>
+                    </div>
+                    <p class="sm:col-span-2 text-sm text-muted-foreground">
+                      Wildcard roots are better when you want previews, staging, rollbacks, or future generated hostnames without pre-registering each child.
+                    </p>
+                    <p v-if="availableWildcardDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                      No wildcard domains are available right now, so attach a direct domain instead.
+                    </p>
+                    <p v-if="futureWildcardDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
+                      Not active yet: {{ futureWildcardDomains.map((domain) => domain.hostname).join(", ") }}.
+                    </p>
+                  </template>
+                  <template v-else>
+                    <div class="space-y-1.5 sm:col-span-2">
+                      <Label class="text-sm font-medium text-muted-foreground">Hostname</Label>
+                      <Input v-model="hostnameForm.hostname" placeholder="www.client-example.com" />
+                    </div>
+                  </template>
+                </div>
+                <Button type="button" class="mt-4 bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || (hostnameForm.mode === 'wildcard' ? !buildWildcardHostname() : !hostnameForm.hostname.trim())" @click="handleAssignHostname">
+                  Add domain
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
             <CardHeader class="border-b border-border/50 px-6 py-5">
               <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Placement</p>

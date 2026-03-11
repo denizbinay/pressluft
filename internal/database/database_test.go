@@ -28,6 +28,7 @@ func TestOpenCreatesParentDirAndRunsLatestMigrations(t *testing.T) {
 	requireTable(t, db.DB, "ca_certificates")
 	requireTable(t, db.DB, "node_certificates")
 	requireTable(t, db.DB, "sites")
+	requireTable(t, db.DB, "domains")
 
 	requireColumn(t, db.DB, "jobs", "payload")
 	requireColumn(t, db.DB, "jobs", "started_at")

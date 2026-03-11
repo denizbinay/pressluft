@@ -1,10 +1,12 @@
 import type {
   Activity as GeneratedActivity,
   AgentInfo,
+  CreateDomainRequest,
   CreateSiteRequest,
   CreateJobRequest as GeneratedCreateJobRequest,
   CreateServerRequest,
   CreateServerResponse as GeneratedCreateServerResponse,
+  DeleteDomainResponse as GeneratedDeleteDomainResponse,
   DeleteServerResponse as GeneratedDeleteServerResponse,
   DeleteSiteResponse as GeneratedDeleteSiteResponse,
   Job as GeneratedJob,
@@ -14,24 +16,33 @@ import type {
   Service,
   ServerTypePrice,
   ServicesResponse as GeneratedServicesResponse,
+  StoredDomain as GeneratedStoredDomain,
   StoredServer as GeneratedStoredServer,
   StoredSite as GeneratedStoredSite,
   UnreadCountResponse,
+  UpdateDomainRequest,
   UpdateSiteRequest,
 } from "~/lib/api-contract";
 
 export type {
   AgentInfo,
+  CreateDomainRequest,
   CreateSiteRequest,
   CreateServerRequest,
   JobEvent,
   Service,
   ServerTypePrice,
   UnreadCountResponse,
+  UpdateDomainRequest,
   UpdateSiteRequest,
 };
 
 export type StoredServer = Omit<GeneratedStoredServer, "id"> & { id: string };
+export type StoredDomain = Omit<GeneratedStoredDomain, "id" | "site_id" | "parent_domain_id"> & {
+  id: string;
+  site_id?: string;
+  parent_domain_id?: string;
+};
 export type StoredSite = Omit<GeneratedStoredSite, "id" | "server_id"> & {
   id: string;
   server_id: string;
@@ -46,6 +57,9 @@ export type DeleteServerResponse = Omit<
 > & { server_id: string };
 export type DeleteSiteResponse = Omit<GeneratedDeleteSiteResponse, "site_id"> & {
   site_id: string;
+};
+export type DeleteDomainResponse = Omit<GeneratedDeleteDomainResponse, "domain_id"> & {
+  domain_id: string;
 };
 export type ServicesResponse = Omit<GeneratedServicesResponse, "server_id"> & {
   server_id: string;

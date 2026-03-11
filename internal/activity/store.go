@@ -448,6 +448,111 @@ func (s *Store) ListForServer(ctx context.Context, serverID string, filter ListF
 	return out, nextCursor, nil
 }
 
+// ListForSite retrieves activity entries for a site, including site events
+// and related child events such as domain assignment changes.
+func (s *Store) ListForSite(ctx context.Context, siteID string, filter ListFilter) ([]Activity, string, error) {
+	if strings.TrimSpace(siteID) == "" {
+		return nil, "", fmt.Errorf("site id is required")
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	query := strings.Builder{}
+	query.WriteString(`SELECT id, event_type, category, level,
+		resource_type, resource_id,
+		parent_resource_type, parent_resource_id,
+		actor_type, actor_id,
+		title, message, payload,
+		requires_attention, read_at, created_at
+	FROM activity
+	WHERE ((resource_type = ? AND resource_id = ?) OR (parent_resource_type = ? AND parent_resource_id = ?))`)
+
+	args := []any{ResourceSite, siteID, ResourceSite, siteID}
+
+	if cursor := parseCursor(filter.Cursor); cursor != "" {
+		query.WriteString(" AND id < ?")
+		args = append(args, cursor)
+	}
+	if filter.Category != "" {
+		query.WriteString(" AND category = ?")
+		args = append(args, filter.Category)
+	}
+	if filter.RequiresAttention != nil {
+		if *filter.RequiresAttention {
+			query.WriteString(" AND requires_attention = 1")
+		} else {
+			query.WriteString(" AND requires_attention = 0")
+		}
+	}
+	if filter.UnreadOnly {
+		query.WriteString(" AND read_at IS NULL")
+	}
+	query.WriteString(" ORDER BY id DESC LIMIT ?")
+	args = append(args, limit+1)
+
+	rows, err := s.db.QueryContext(ctx, query.String(), args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("list activity for site: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Activity, 0, limit)
+	for rows.Next() {
+		var (
+			a                  Activity
+			resourceType       sql.NullString
+			resourceID         sql.NullString
+			parentResourceType sql.NullString
+			parentResourceID   sql.NullString
+			actorID            sql.NullString
+			message            sql.NullString
+			payload            sql.NullString
+			readAt             sql.NullString
+			requiresAttention  int
+		)
+		if err := rows.Scan(&a.ID, &a.EventType, &a.Category, &a.Level, &resourceType, &resourceID, &parentResourceType, &parentResourceID, &a.ActorType, &actorID, &a.Title, &message, &payload, &requiresAttention, &readAt, &a.CreatedAt); err != nil {
+			return nil, "", fmt.Errorf("scan activity: %w", err)
+		}
+		if resourceType.Valid {
+			a.ResourceType = ResourceType(resourceType.String)
+		}
+		a.ResourceID = nullString(resourceID)
+		if parentResourceType.Valid {
+			a.ParentResourceType = ResourceType(parentResourceType.String)
+		}
+		a.ParentResourceID = nullString(parentResourceID)
+		if actorID.Valid {
+			a.ActorID = actorID.String
+		}
+		if message.Valid {
+			a.Message = message.String
+		}
+		if payload.Valid {
+			a.Payload = payload.String
+		}
+		if readAt.Valid {
+			a.ReadAt = readAt.String
+		}
+		a.RequiresAttention = requiresAttention == 1
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", fmt.Errorf("iterate activity: %w", err)
+	}
+	nextCursor := ""
+	if len(out) > limit {
+		out = out[:limit]
+		nextCursor = out[len(out)-1].ID
+	}
+	return out, nextCursor, nil
+}
+
 // MarkRead marks a single activity entry as read.
 func (s *Store) MarkRead(ctx context.Context, id string) error {
 	publicID, err := idutil.Normalize(id)

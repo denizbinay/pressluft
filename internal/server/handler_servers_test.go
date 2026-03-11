@@ -303,6 +303,7 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 
 	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
@@ -370,6 +371,35 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 		);
 	`); err != nil {
 		t.Fatalf("create sites table: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE domains (
+			id               TEXT PRIMARY KEY,
+			hostname         TEXT    NOT NULL,
+			kind             TEXT    NOT NULL,
+			ownership        TEXT    NOT NULL,
+			status           TEXT    NOT NULL DEFAULT 'active',
+			site_id          TEXT,
+			parent_domain_id TEXT,
+			is_primary       INTEGER NOT NULL DEFAULT 0,
+			created_at       TEXT    NOT NULL,
+			updated_at       TEXT    NOT NULL,
+			FOREIGN KEY (site_id) REFERENCES sites(id),
+			FOREIGN KEY (parent_domain_id) REFERENCES domains(id)
+		);
+	`); err != nil {
+		t.Fatalf("create domains table: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE UNIQUE INDEX idx_domains_hostname_unique ON domains(hostname);
+		CREATE INDEX idx_domains_site_id ON domains(site_id);
+		CREATE INDEX idx_domains_parent_domain_id ON domains(parent_domain_id);
+		CREATE INDEX idx_domains_status ON domains(status);
+		CREATE INDEX idx_domains_kind ON domains(kind);
+		CREATE UNIQUE INDEX idx_domains_primary_site_unique ON domains(site_id) WHERE site_id IS NOT NULL AND is_primary = 1;
+	`); err != nil {
+		t.Fatalf("create domain indexes: %v", err)
 	}
 
 	if _, err := db.Exec(`

@@ -1488,7 +1488,7 @@ onUnmounted(() => {
                             </Badge>
                           </div>
                           <p class="mt-1 text-sm text-muted-foreground">
-                            {{ site.primary_domain || "No public domain recorded" }}
+                            {{ site.primary_domain || "No primary hostname recorded" }}
                           </p>
                         </div>
                         <svg

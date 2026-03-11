@@ -12,6 +12,7 @@ import {
   Activity,
   Globe,
   LayoutDashboard,
+  Link2,
   Server,
   Settings,
 } from 'lucide-vue-next'
@@ -43,6 +44,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Servers', icon: Server, to: '/servers' },
       { label: 'Sites', icon: Globe, to: '/sites' },
+      { label: 'Domains', icon: Link2, to: '/domains' },
     ],
   },
   {

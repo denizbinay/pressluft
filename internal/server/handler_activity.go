@@ -250,9 +250,7 @@ func (ah *activityHandler) handleSiteActivity(w http.ResponseWriter, r *http.Req
 		return
 	}
 	filter := parseActivityFilter(r)
-	filter.ResourceType = activity.ResourceSite
-	filter.ResourceID = siteID
-	activities, nextCursor, err := ah.store.List(r.Context(), filter)
+	activities, nextCursor, err := ah.store.ListForSite(r.Context(), siteID, filter)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

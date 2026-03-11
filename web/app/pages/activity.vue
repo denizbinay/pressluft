@@ -51,6 +51,7 @@ const categoryOptions = [
   { label: "Servers", value: "server" },
   { label: "Providers", value: "provider" },
   { label: "Sites", value: "site" },
+  { label: "Domains", value: "domain" },
   { label: "Account", value: "account" },
   { label: "Security", value: "security" },
 ]
@@ -81,6 +82,7 @@ const categoryIcon = (category: Activity["category"]) => {
     server: "M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2",
     provider: "M12 4v16m8-8H4",
     site: "M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3",
+    domain: "M4 7h5l3 5-3 5H4l3-5-3-5zm11 0h5l-3 5 3 5h-5l-3-5 3-5z",
     account: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066",
     security: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z",
   }
@@ -109,6 +111,9 @@ const resourceLink = (activity: Activity) => {
   }
   if (activity.resource_type === "site" && activity.resource_id) {
     return `/sites/${activity.resource_id}`
+  }
+  if (activity.resource_type === "domain") {
+    return "/domains"
   }
   return ""
 }
