@@ -426,6 +426,29 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 		t.Fatalf("create job_events table: %v", err)
 	}
 
+	if _, err := db.Exec(`
+		CREATE TABLE activity (
+			id                   TEXT PRIMARY KEY,
+			event_type           TEXT    NOT NULL,
+			category             TEXT    NOT NULL,
+			level                TEXT    NOT NULL,
+			resource_type        TEXT,
+			resource_id          TEXT,
+			parent_resource_type TEXT,
+			parent_resource_id   TEXT,
+			actor_type           TEXT    NOT NULL,
+			actor_id             TEXT,
+			title                TEXT    NOT NULL,
+			message              TEXT,
+			payload              TEXT,
+			requires_attention   INTEGER NOT NULL DEFAULT 0,
+			read_at              TEXT,
+			created_at           TEXT    NOT NULL
+		);
+	`); err != nil {
+		t.Fatalf("create activity table: %v", err)
+	}
+
 	return db
 }
 

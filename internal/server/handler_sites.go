@@ -150,22 +150,6 @@ func (sh *sitesHandler) handleGet(w http.ResponseWriter, r *http.Request, siteID
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	if sh.activityStore != nil {
-		actorType, actorID := activityActorFromRequest(r)
-		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
-			EventType:          activity.EventSiteUpdated,
-			Category:           activity.CategorySite,
-			Level:              activity.LevelInfo,
-			ResourceType:       activity.ResourceSite,
-			ResourceID:         site.ID,
-			ParentResourceType: activity.ResourceServer,
-			ParentResourceID:   site.ServerID,
-			ActorType:          actorType,
-			ActorID:            actorID,
-			Title:              fmt.Sprintf("Site '%s' updated", site.Name),
-			Message:            "Site metadata was updated in the control plane.",
-		})
-	}
 	respondJSON(w, http.StatusOK, apiStoredSite(*site))
 }
 
@@ -197,6 +181,22 @@ func (sh *sitesHandler) handleUpdate(w http.ResponseWriter, r *http.Request, sit
 			respondError(w, http.StatusInternalServerError, "failed to update site: "+err.Error())
 		}
 		return
+	}
+	if sh.activityStore != nil {
+		actorType, actorID := activityActorFromRequest(r)
+		_, _ = sh.activityStore.Emit(r.Context(), activity.EmitInput{
+			EventType:          activity.EventSiteUpdated,
+			Category:           activity.CategorySite,
+			Level:              activity.LevelInfo,
+			ResourceType:       activity.ResourceSite,
+			ResourceID:         site.ID,
+			ParentResourceType: activity.ResourceServer,
+			ParentResourceID:   site.ServerID,
+			ActorType:          actorType,
+			ActorID:            actorID,
+			Title:              fmt.Sprintf("Site '%s' updated", site.Name),
+			Message:            "Site metadata was updated in the control plane.",
+		})
 	}
 	respondJSON(w, http.StatusOK, apiStoredSite(*site))
 }

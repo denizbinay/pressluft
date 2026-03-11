@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"pressluft/internal/activity"
 )
 
 func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
@@ -14,6 +16,7 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
 	handler := NewHandler(db)
+	activityStore := activity.NewStore(db)
 
 	body := map[string]any{
 		"server_id":      serverID,
@@ -40,6 +43,17 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 		t.Fatal("expected created site id")
 	}
 
+	activities, _, err := activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
+	if err != nil {
+		t.Fatalf("list activity after create: %v", err)
+	}
+	if len(activities) != 1 {
+		t.Fatalf("site activity count after create = %d, want 1", len(activities))
+	}
+	if activities[0].EventType != activity.EventSiteCreated {
+		t.Fatalf("create event type = %q, want %q", activities[0].EventType, activity.EventSiteCreated)
+	}
+
 	listReq := httptest.NewRequest(http.MethodGet, "/api/sites", nil)
 	listRes := httptest.NewRecorder()
 	handler.ServeHTTP(listRes, listReq)
@@ -61,6 +75,14 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 		t.Fatalf("get status = %d, want %d", getRes.Code, http.StatusOK)
 	}
 
+	activities, _, err = activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
+	if err != nil {
+		t.Fatalf("list activity after get: %v", err)
+	}
+	if len(activities) != 1 {
+		t.Fatalf("site activity count after get = %d, want 1", len(activities))
+	}
+
 	updatedName := map[string]any{"name": "Agency Site Live", "status": "active"}
 	updateBytes, _ := json.Marshal(updatedName)
 	updateReq := httptest.NewRequest(http.MethodPatch, "/api/sites/"+siteID, bytes.NewReader(updateBytes))
@@ -69,6 +91,44 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 	handler.ServeHTTP(updateRes, updateReq)
 	if updateRes.Code != http.StatusOK {
 		t.Fatalf("update status = %d, want %d; body = %s", updateRes.Code, http.StatusOK, updateRes.Body.String())
+	}
+
+	activities, _, err = activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
+	if err != nil {
+		t.Fatalf("list activity after update: %v", err)
+	}
+	if len(activities) != 2 {
+		t.Fatalf("site activity count after update = %d, want 2", len(activities))
+	}
+	if activities[0].EventType != activity.EventSiteUpdated {
+		t.Fatalf("latest event type after update = %q, want %q", activities[0].EventType, activity.EventSiteUpdated)
+	}
+	if activities[0].ResourceID != siteID {
+		t.Fatalf("updated event resource_id = %q, want %q", activities[0].ResourceID, siteID)
+	}
+	if activities[0].ParentResourceID != serverID {
+		t.Fatalf("updated event parent_resource_id = %q, want %q", activities[0].ParentResourceID, serverID)
+	}
+	if activities[0].Title != "Site 'Agency Site Live' updated" {
+		t.Fatalf("updated event title = %q", activities[0].Title)
+	}
+	if activities[0].Message != "Site metadata was updated in the control plane." {
+		t.Fatalf("updated event message = %q", activities[0].Message)
+	}
+
+	getAgainReq := httptest.NewRequest(http.MethodGet, "/api/sites/"+siteID, nil)
+	getAgainRes := httptest.NewRecorder()
+	handler.ServeHTTP(getAgainRes, getAgainReq)
+	if getAgainRes.Code != http.StatusOK {
+		t.Fatalf("second get status = %d, want %d", getAgainRes.Code, http.StatusOK)
+	}
+
+	activities, _, err = activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
+	if err != nil {
+		t.Fatalf("list activity after second get: %v", err)
+	}
+	if len(activities) != 2 {
+		t.Fatalf("site activity count after second get = %d, want 2", len(activities))
 	}
 
 	serverSitesReq := httptest.NewRequest(http.MethodGet, "/api/servers/"+serverID+"/sites", nil)
