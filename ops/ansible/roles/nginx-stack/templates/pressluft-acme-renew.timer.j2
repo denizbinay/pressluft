@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily ACME renewal for Pressluft
+
+[Timer]
+OnBootSec=10m
+OnUnitActiveSec=1d
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

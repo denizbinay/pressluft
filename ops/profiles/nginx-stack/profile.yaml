@@ -1,14 +1,16 @@
 key: nginx-stack
 name: NGINX Stack
-version: 1.0.0
+version: 1.2.0
 description: >
-  Default managed Ubuntu 24.04 web stack with NGINX, PHP-FPM, Redis, and the
-  Pressluft agent for standard site hosting.
+  Managed Ubuntu 24.04 WordPress hosting baseline with NGINX, PHP-FPM,
+  MariaDB, Redis, WP-CLI, ACME automation, and the Pressluft agent.
 
 configure_guarantee: >
   A successful configure run applies the base system, deploys the Pressluft
-  agent, configures the NGINX stack, and verifies required services, files,
-  listeners, and health checks before the server is marked ready.
+  agent, configures a WordPress-ready NGINX stack with MariaDB, Redis,
+  PHP-FPM, WP-CLI, TLS scaffolding, and ACME helpers, and verifies the managed
+  services, files, listeners, and health checks before the server is marked
+  ready.
 
 support:
   level: supported
@@ -97,27 +99,65 @@ verification:
   services:
     - name: nginx
       state: started
+    - name: mariadb
+      state: started
     - name: php8.3-fpm
+      state: started
+    - name: pressluft-acme-renew.timer
       state: started
     - name: redis-server
       state: started
   files:
+    - path: /etc/nginx/nginx.conf
     - path: /etc/nginx/sites-available/pressluft-default.conf
     - path: /etc/nginx/sites-enabled/pressluft-default.conf
+    - path: /etc/nginx/ssl/pressluft-default.crt
+    - path: /etc/nginx/ssl/pressluft-default.key
+    - path: /etc/mysql/mariadb.conf.d/60-pressluft.cnf
+    - path: /etc/php/8.3/cli/conf.d/90-pressluft.ini
+    - path: /etc/php/8.3/fpm/conf.d/90-pressluft.ini
+    - path: /etc/php/8.3/fpm/pool.d/www.conf
+    - path: /etc/redis/redis.conf
+    - path: /etc/systemd/system/pressluft-acme-renew.service
+    - path: /etc/systemd/system/pressluft-acme-renew.timer
     - path: /srv/www/pressluft/default/public/index.html
+    - path: /usr/local/bin/wp
+    - path: /usr/local/bin/pressluft-acme-issue
+    - path: /usr/local/bin/pressluft-acme-renew
+    - path: /var/lib/pressluft/.acme.sh/acme.sh
+    - path: /var/lib/pressluft/acme-webroot/.well-known/acme-challenge
+    - path: /var/lib/pressluft/certs
   listeners:
+    - name: mariadb-local
+      host: 127.0.0.1
+      port: 3306
+      state: started
     - name: nginx-http
       host: 127.0.0.1
       port: 80
+      state: started
+    - name: nginx-https
+      host: 127.0.0.1
+      port: 443
       state: started
     - name: redis-local
       host: 127.0.0.1
       port: 6379
       state: started
   health_checks:
+    - name: acme-renew-timer
+      command: systemctl is-active --quiet pressluft-acme-renew.timer
+    - name: mariadb-ping
+      command: mysqladmin ping
     - name: nginx-config
       command: nginx -t
     - name: php-fpm-config
       command: php-fpm8.3 -t
     - name: nginx-http-check
       command: curl --fail --silent http://127.0.0.1/
+    - name: nginx-https-check
+      command: curl --fail --silent --insecure https://127.0.0.1/
+    - name: redis-ping
+      command: redis-cli ping
+    - name: wp-cli-info
+      command: wp --allow-root --info

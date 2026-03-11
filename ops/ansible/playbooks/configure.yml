@@ -240,17 +240,22 @@
         name: pressluft-agent
         state: restarted
 
-    - name: restart nginx
-      ansible.builtin.systemd:
-        name: nginx
-        state: restarted
-
     - name: restart php-fpm
       ansible.builtin.systemd:
         name: php8.3-fpm
         state: restarted
 
+    - name: restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
     - name: restart redis-server
       ansible.builtin.systemd:
         name: redis-server
+        state: restarted
+
+    - name: restart mariadb
+      ansible.builtin.systemd:
+        name: mariadb
         state: restarted
