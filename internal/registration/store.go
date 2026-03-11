@@ -15,6 +15,7 @@ var (
 	ErrInvalidToken  = errors.New("invalid token")
 	ErrExpiredToken  = errors.New("expired token")
 	ErrConsumedToken = errors.New("token already consumed")
+	ErrUnknownServer = errors.New("unknown server")
 )
 
 type Store struct {
@@ -162,7 +163,7 @@ func lookupServerID(db queryExecutor, serverID string) (string, error) {
 	var storedID string
 	if err := db.QueryRowContext(context.Background(), `SELECT id FROM servers WHERE id = ?`, serverID).Scan(&storedID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("server %s not found", serverID)
+			return "", ErrUnknownServer
 		}
 		return "", fmt.Errorf("lookup server id: %w", err)
 	}

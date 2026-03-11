@@ -207,7 +207,7 @@ func (h *NodeHandler) handleRegistrationTokenError(w http.ResponseWriter, server
 		respondError(w, http.StatusUnauthorized, "registration token expired")
 	case errors.Is(err, registration.ErrConsumedToken):
 		respondError(w, http.StatusUnauthorized, "registration token already consumed")
-	case errors.Is(err, registration.ErrInvalidToken):
+	case errors.Is(err, registration.ErrInvalidToken), errors.Is(err, registration.ErrUnknownServer):
 		respondError(w, http.StatusUnauthorized, "registration token invalid")
 	default:
 		respondError(w, http.StatusInternalServerError, "registration token lookup failed")

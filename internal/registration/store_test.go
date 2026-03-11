@@ -40,6 +40,19 @@ func TestStoreConsumeReplayAndExpiry(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsUnknownServer(t *testing.T) {
+	db := openRegistrationTestDB(t)
+	store := NewStore(db)
+
+	if _, err := store.Create("00000000-0000-7000-8000-000000000099", time.Hour); !errors.Is(err, ErrUnknownServer) {
+		t.Fatalf("Create() error = %v, want %v", err, ErrUnknownServer)
+	}
+
+	if err := store.Validate("irrelevant", "00000000-0000-7000-8000-000000000099"); !errors.Is(err, ErrUnknownServer) {
+		t.Fatalf("Validate() error = %v, want %v", err, ErrUnknownServer)
+	}
+}
+
 func openRegistrationTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")

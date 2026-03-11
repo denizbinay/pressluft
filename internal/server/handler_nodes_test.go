@@ -143,6 +143,21 @@ func TestNodeRegisterKeepsTokenWhenCAOrPersistenceFails(t *testing.T) {
 	}
 }
 
+func TestNodeRegisterTreatsMissingServerAsUnauthorized(t *testing.T) {
+	h, stores := newNodeHandlerTestHarness(t)
+	token, err := stores.registration.Create("00000000-0000-7000-8000-000000000001", time.Hour)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/nodes/00000000-0000-7000-8000-000000000099/register", bytes.NewReader(registerRequestBody(t, "00000000-0000-7000-8000-000000000099", token)))
+	h.handleNodeRegister(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 type nodeHandlerStores struct {
 	db           *sql.DB
 	pki          *pki.Store
