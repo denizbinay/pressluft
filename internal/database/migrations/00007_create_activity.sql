@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS activity (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                   TEXT PRIMARY KEY,
 
     -- Event classification
     event_type           TEXT NOT NULL,
@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS activity (
 
     -- Polymorphic resource reference
     resource_type        TEXT,
-    resource_id          INTEGER,
+    resource_id          TEXT,
 
     -- Secondary resource (e.g., job belongs to server)
     parent_resource_type TEXT,
-    parent_resource_id   INTEGER,
+    parent_resource_id   TEXT,
 
     -- Actor tracking
     actor_type           TEXT NOT NULL,

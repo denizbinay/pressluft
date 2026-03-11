@@ -42,7 +42,7 @@ func (jh *jobsHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, jobs)
+	respondJSON(w, http.StatusOK, apitypes.APIJobs(jobs))
 }
 
 func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +53,9 @@ func (jh *jobsHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || jobID <= 0 {
-		respondError(w, http.StatusBadRequest, "job id must be a positive integer")
+	jobID := strings.TrimSpace(parts[0])
+	if jobID == "" {
+		respondError(w, http.StatusBadRequest, "job id is required")
 		return
 	}
 
@@ -106,8 +106,18 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	serverID := ""
+	if strings.TrimSpace(req.ServerID) != "" {
+		parsedID, err := apitypes.ParseAppID(req.ServerID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "server_id must be a valid app id")
+			return
+		}
+		serverID = parsedID
+	}
+
 	var job orchestrator.Job
-	if req.ServerID > 0 && jh.serverStore != nil {
+	if serverID != "" && jh.serverStore != nil {
 		dispatchPolicy, ok := orchestrator.DispatchPolicyForKind(req.Kind)
 		if !ok {
 			respondError(w, http.StatusBadRequest, "unsupported job kind: "+req.Kind)
@@ -115,21 +125,21 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		if dispatchPolicy.QueueServer {
 			_, job, err = jh.serverStore.QueueServerJob(r.Context(), QueueServerJobInput{
-				ServerID: req.ServerID,
+				ServerID: serverID,
 				Kind:     req.Kind,
 				Payload:  payload,
 			})
 		} else {
 			job, err = jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
 				Kind:     req.Kind,
-				ServerID: req.ServerID,
+				ServerID: serverID,
 				Payload:  payload,
 			})
 		}
 	} else {
 		job, err = jh.store.CreateJob(r.Context(), orchestrator.CreateJobInput{
 			Kind:     req.Kind,
-			ServerID: req.ServerID,
+			ServerID: serverID,
 			Payload:  payload,
 		})
 	}
@@ -162,14 +172,14 @@ func (jh *jobsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 			ActorID:      actorID,
 			Title:        fmt.Sprintf("%s job queued", orchestrator.JobKindLabel(req.Kind)),
 		}
-		if req.ServerID > 0 {
+		if serverID != "" {
 			input.ParentResourceType = activity.ResourceServer
-			input.ParentResourceID = req.ServerID
+			input.ParentResourceID = serverID
 		}
 		_, _ = jh.activityStore.Emit(r.Context(), input)
 	}
 
-	respondJSON(w, http.StatusAccepted, job)
+	respondJSON(w, http.StatusAccepted, apitypes.APIJob(job))
 	slog.Default().Info("job action queued", "job_id", job.ID, "job_kind", job.Kind, "server_id", job.ServerID, "job_status", job.Status)
 }
 
@@ -179,20 +189,28 @@ func jobKindLabel(kind string) string {
 }
 
 func validateJobPayload(req apitypes.CreateJobRequest) (string, error) {
-	return orchestrator.ValidatePayload(req.Kind, req.Payload, req.ServerID)
+	serverID := ""
+	if strings.TrimSpace(req.ServerID) != "" {
+		parsedID, err := apitypes.ParseAppID(req.ServerID)
+		if err != nil {
+			return "", err
+		}
+		serverID = parsedID
+	}
+	return orchestrator.ValidatePayload(req.Kind, req.Payload, serverID)
 }
 
-func (jh *jobsHandler) handleGet(w http.ResponseWriter, r *http.Request, jobID int64) {
+func (jh *jobsHandler) handleGet(w http.ResponseWriter, r *http.Request, jobID string) {
 	job, err := jh.store.GetJob(r.Context(), jobID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, job)
+	respondJSON(w, http.StatusOK, apitypes.APIJob(job))
 }
 
-func (jh *jobsHandler) handleEventHistory(w http.ResponseWriter, r *http.Request, jobID int64) {
+func (jh *jobsHandler) handleEventHistory(w http.ResponseWriter, r *http.Request, jobID string) {
 	events, err := jh.store.ListAllEvents(r.Context(), jobID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -202,7 +220,7 @@ func (jh *jobsHandler) handleEventHistory(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, events)
 }
 
-func (jh *jobsHandler) handleEventStream(w http.ResponseWriter, r *http.Request, jobID int64) {
+func (jh *jobsHandler) handleEventStream(w http.ResponseWriter, r *http.Request, jobID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		respondError(w, http.StatusInternalServerError, "streaming not supported")

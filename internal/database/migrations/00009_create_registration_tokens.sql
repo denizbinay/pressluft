@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS registration_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    server_id INTEGER NOT NULL REFERENCES servers(id),
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id),
     token_hash TEXT UNIQUE NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     expires_at TEXT NOT NULL,

@@ -63,10 +63,9 @@ func (ah *activityHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse numeric ID
-	activityID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || activityID <= 0 {
-		respondError(w, http.StatusBadRequest, "activity id must be a positive integer")
+	activityID := strings.TrimSpace(parts[0])
+	if activityID == "" {
+		respondError(w, http.StatusBadRequest, "activity id is required")
 		return
 	}
 
@@ -103,13 +102,13 @@ func (ah *activityHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := apitypes.ActivityListResponse{
-		Data:       activities,
+		Data:       apitypes.APIActivities(activities),
 		NextCursor: nextCursor,
 	}
 	respondJSON(w, http.StatusOK, response)
 }
 
-func (ah *activityHandler) handleGet(w http.ResponseWriter, r *http.Request, id int64) {
+func (ah *activityHandler) handleGet(w http.ResponseWriter, r *http.Request, id string) {
 	act, err := ah.store.GetByID(r.Context(), id)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -119,10 +118,10 @@ func (ah *activityHandler) handleGet(w http.ResponseWriter, r *http.Request, id 
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, act)
+	respondJSON(w, http.StatusOK, apitypes.APIActivity(act))
 }
 
-func (ah *activityHandler) handleMarkRead(w http.ResponseWriter, r *http.Request, id int64) {
+func (ah *activityHandler) handleMarkRead(w http.ResponseWriter, r *http.Request, id string) {
 	if err := ah.store.MarkRead(r.Context(), id); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -137,7 +136,7 @@ func (ah *activityHandler) handleMarkRead(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, act)
+	respondJSON(w, http.StatusOK, apitypes.APIActivity(act))
 }
 
 func (ah *activityHandler) handleMarkAllRead(w http.ResponseWriter, r *http.Request) {
@@ -176,12 +175,7 @@ func (ah *activityHandler) handleStream(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get starting point
-	sinceID := int64(0)
-	if raw := strings.TrimSpace(r.URL.Query().Get("since_id")); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed >= 0 {
-			sinceID = parsed
-		}
-	}
+	sinceID := strings.TrimSpace(r.URL.Query().Get("since_id"))
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -214,11 +208,11 @@ func (ah *activityHandler) handleStream(w http.ResponseWriter, r *http.Request) 
 			}
 
 			for _, act := range activities {
-				body, err := json.Marshal(act)
+				body, err := json.Marshal(apitypes.APIActivity(act))
 				if err != nil {
 					continue
 				}
-				fmt.Fprintf(w, "id: %d\n", act.ID)
+				fmt.Fprintf(w, "id: %s\n", act.ID)
 				fmt.Fprint(w, "event: activity\n")
 				fmt.Fprintf(w, "data: %s\n\n", body)
 				currentID = act.ID
@@ -229,7 +223,7 @@ func (ah *activityHandler) handleStream(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleServerActivity lists activity for a specific server (convenience endpoint)
-func (ah *activityHandler) handleServerActivity(w http.ResponseWriter, r *http.Request, serverID int64) {
+func (ah *activityHandler) handleServerActivity(w http.ResponseWriter, r *http.Request, serverID string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -244,7 +238,7 @@ func (ah *activityHandler) handleServerActivity(w http.ResponseWriter, r *http.R
 	}
 
 	response := apitypes.ActivityListResponse{
-		Data:       activities,
+		Data:       apitypes.APIActivities(activities),
 		NextCursor: nextCursor,
 	}
 	respondJSON(w, http.StatusOK, response)
@@ -255,9 +249,7 @@ func parseActivityFilter(r *http.Request) activity.ListFilter {
 
 	// Cursor
 	if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			filter.Cursor = parsed
-		}
+		filter.Cursor = raw
 	}
 
 	// Limit
@@ -277,9 +269,7 @@ func parseActivityFilter(r *http.Request) activity.ListFilter {
 		filter.ResourceType = activity.ResourceType(raw)
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("resource_id")); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			filter.ResourceID = parsed
-		}
+		filter.ResourceID = raw
 	}
 
 	// Parent resource type and ID
@@ -287,9 +277,7 @@ func parseActivityFilter(r *http.Request) activity.ListFilter {
 		filter.ParentResourceType = activity.ResourceType(raw)
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("parent_resource_id")); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			filter.ParentResourceID = parsed
-		}
+		filter.ParentResourceID = raw
 	}
 
 	// Requires attention

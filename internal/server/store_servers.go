@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/idutil"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
 )
@@ -20,8 +21,8 @@ var (
 
 // StoredServer is a persisted server node record.
 type StoredServer struct {
-	ID               int64                 `json:"id"`
-	ProviderID       int64                 `json:"provider_id"`
+	ID               string                `json:"id"`
+	ProviderID       string                `json:"provider_id"`
 	ProviderType     string                `json:"provider_type"`
 	ProviderServerID string                `json:"provider_server_id,omitempty"`
 	IPv4             string                `json:"ipv4,omitempty"`
@@ -46,7 +47,7 @@ type StoredServer struct {
 
 // CreateServerNodeInput is required to create a server record.
 type CreateServerNodeInput struct {
-	ProviderID   int64
+	ProviderID   string
 	ProviderType string
 	Name         string
 	Location     string
@@ -62,7 +63,7 @@ type ServerStore struct {
 }
 
 type QueueServerJobInput struct {
-	ServerID int64
+	ServerID string
 	Kind     string
 	Payload  string
 }
@@ -71,16 +72,21 @@ func NewServerStore(db *sql.DB) *ServerStore {
 	return &ServerStore{db: db}
 }
 
-func (s *ServerStore) Create(ctx context.Context, in CreateServerNodeInput) (int64, error) {
+func (s *ServerStore) Create(ctx context.Context, in CreateServerNodeInput) (string, error) {
 	if err := validateCreateServerNodeInput(in); err != nil {
-		return 0, err
+		return "", err
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx,
+	publicID, err := idutil.New()
+	if err != nil {
+		return "", err
+	}
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO servers (
-			provider_id, provider_type, name, location, server_type, image, profile_key, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, provider_id, provider_type, name, location, server_type, image, profile_key, status, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		publicID,
 		in.ProviderID,
 		in.ProviderType,
 		in.Name,
@@ -93,22 +99,17 @@ func (s *ServerStore) Create(ctx context.Context, in CreateServerNodeInput) (int
 		now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("insert server: %w", err)
+		return "", fmt.Errorf("insert server: %w", err)
 	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("server insert id: %w", err)
-	}
-
-	return id, nil
+	return publicID, nil
 }
 
 func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.setup_state, s.setup_last_error, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
+		`SELECT s.id, p.id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.setup_state, s.setup_last_error, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
 		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
 		 FROM servers s
+		 JOIN providers p ON p.id = s.provider_id
 		 LEFT JOIN server_keys k ON k.server_id = s.id
 		 ORDER BY s.created_at DESC`,
 	)
@@ -193,9 +194,10 @@ func (s *ServerStore) List(ctx context.Context) ([]StoredServer, error) {
 	return out, nil
 }
 
-func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateProvisioning(ctx context.Context, id string, providerServerID, actionID, actionStatus string, status platform.ServerStatus, ipv4, ipv6 string) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if _, err := platform.NormalizeServerStatus(string(status)); err != nil {
 		return err
@@ -213,7 +215,7 @@ func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, provider
 		ipv4,
 		ipv6,
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server provisioning: %w", err)
@@ -221,15 +223,15 @@ func (s *ServerStore) UpdateProvisioning(ctx context.Context, id int64, provider
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", serverID)
 	}
 
 	return nil
 }
 
 func validateCreateServerNodeInput(in CreateServerNodeInput) error {
-	if in.ProviderID <= 0 {
-		return fmt.Errorf("provider_id must be greater than zero")
+	if _, err := idutil.Normalize(in.ProviderID); err != nil {
+		return fmt.Errorf("provider_id: %w", err)
 	}
 	if strings.TrimSpace(in.ProviderType) == "" {
 		return fmt.Errorf("provider_type is required")
@@ -256,9 +258,10 @@ func validateCreateServerNodeInput(in CreateServerNodeInput) error {
 }
 
 // GetByID returns a server by its ID.
-func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, error) {
-	if id <= 0 {
-		return nil, fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) GetByID(ctx context.Context, id string) (*StoredServer, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return nil, err
 	}
 
 	var (
@@ -276,13 +279,14 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 		nodeVersion      sql.NullString
 		hasKey           int
 	)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT s.id, s.provider_id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.setup_state, s.setup_last_error, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
+	err = s.db.QueryRowContext(ctx,
+		`SELECT s.id, p.id, s.provider_type, s.provider_server_id, s.ipv4, s.ipv6, s.name, s.location, s.server_type, s.image, s.profile_key, s.status, s.setup_state, s.setup_last_error, s.action_id, s.action_status, s.node_status, s.node_last_seen, s.node_version, s.created_at, s.updated_at,
 		 CASE WHEN k.server_id IS NULL THEN 0 ELSE 1 END AS has_key
 		 FROM servers s
+		 JOIN providers p ON p.id = s.provider_id
 		 LEFT JOIN server_keys k ON k.server_id = s.id
 		 WHERE s.id = ?`,
-		id,
+		publicID,
 	).Scan(
 		&srv.ID,
 		&srv.ProviderID,
@@ -309,7 +313,7 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("server %d not found", id)
+			return nil, fmt.Errorf("server %s not found", publicID)
 		}
 		return nil, fmt.Errorf("get server: %w", err)
 	}
@@ -340,9 +344,10 @@ func (s *ServerStore) GetByID(ctx context.Context, id int64) (*StoredServer, err
 }
 
 // UpdateStatus updates only the status field of a server.
-func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status platform.ServerStatus) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateStatus(ctx context.Context, id string, status platform.ServerStatus) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if _, err := platform.NormalizeServerStatus(string(status)); err != nil {
 		return err
@@ -353,7 +358,7 @@ func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status platfor
 		`UPDATE servers SET status = ?, updated_at = ? WHERE id = ?`,
 		string(status),
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server status: %w", err)
@@ -361,15 +366,16 @@ func (s *ServerStore) UpdateStatus(ctx context.Context, id int64, status platfor
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", serverID)
 	}
 
 	return nil
 }
 
-func (s *ServerStore) UpdateSetupState(ctx context.Context, id int64, setupState platform.SetupState, setupLastError string) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateSetupState(ctx context.Context, id string, setupState platform.SetupState, setupLastError string) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if _, err := platform.NormalizeSetupState(string(setupState)); err != nil {
 		return err
@@ -381,7 +387,7 @@ func (s *ServerStore) UpdateSetupState(ctx context.Context, id int64, setupState
 		string(setupState),
 		nullableServerString(setupLastError),
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server setup state: %w", err)
@@ -389,16 +395,17 @@ func (s *ServerStore) UpdateSetupState(ctx context.Context, id int64, setupState
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", serverID)
 	}
 
 	return nil
 }
 
 // UpdateServerType updates the server_type field of a server.
-func (s *ServerStore) UpdateServerType(ctx context.Context, id int64, serverType string) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateServerType(ctx context.Context, id string, serverType string) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if strings.TrimSpace(serverType) == "" {
 		return fmt.Errorf("server_type is required")
@@ -409,7 +416,7 @@ func (s *ServerStore) UpdateServerType(ctx context.Context, id int64, serverType
 		`UPDATE servers SET server_type = ?, updated_at = ? WHERE id = ?`,
 		serverType,
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server type: %w", err)
@@ -417,16 +424,17 @@ func (s *ServerStore) UpdateServerType(ctx context.Context, id int64, serverType
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", serverID)
 	}
 
 	return nil
 }
 
 // UpdateImage updates the image field of a server.
-func (s *ServerStore) UpdateImage(ctx context.Context, id int64, image string) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateImage(ctx context.Context, id string, image string) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if strings.TrimSpace(image) == "" {
 		return fmt.Errorf("image is required")
@@ -437,7 +445,7 @@ func (s *ServerStore) UpdateImage(ctx context.Context, id int64, image string) e
 		`UPDATE servers SET image = ?, updated_at = ? WHERE id = ?`,
 		image,
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server image: %w", err)
@@ -445,15 +453,16 @@ func (s *ServerStore) UpdateImage(ctx context.Context, id int64, image string) e
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", serverID)
 	}
 
 	return nil
 }
 
 func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput) (StoredServer, orchestrator.Job, error) {
-	if in.ServerID <= 0 {
-		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server_id must be greater than zero")
+	serverPublicID, err := idutil.Normalize(in.ServerID)
+	if err != nil {
+		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server_id: %w", err)
 	}
 	if !orchestrator.IsKnownJobKind(in.Kind) {
 		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("unsupported job kind: %s", in.Kind)
@@ -466,9 +475,9 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 	defer tx.Rollback()
 
 	var serverStatusRaw string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM servers WHERE id = ?`, in.ServerID).Scan(&serverStatusRaw); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM servers WHERE id = ?`, serverPublicID).Scan(&serverStatusRaw); err != nil {
 		if err == sql.ErrNoRows {
-			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server %d not found", in.ServerID)
+			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server %s not found", serverPublicID)
 		}
 		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("read server status: %w", err)
 	}
@@ -486,7 +495,7 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	if queuedStatus, ok := orchestrator.QueuedServerStatusForKind(in.Kind); ok {
-		var activeJobID int64
+		var activeJobID string
 		var activeJobKind string
 		err := tx.QueryRowContext(ctx,
 			`SELECT id, kind
@@ -496,7 +505,7 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 				   AND status IN (?, ?)
 				 ORDER BY created_at DESC
 				 LIMIT 1`,
-			in.ServerID,
+			serverPublicID,
 			string(orchestrator.JobKindDeleteServer),
 			string(orchestrator.JobKindRebuildServer),
 			string(orchestrator.JobKindResizeServer),
@@ -507,27 +516,32 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("check active destructive jobs: %w", err)
 		}
 		if err == nil {
-			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("%w: job %d (%s)", ErrServerActionConflict, activeJobID, activeJobKind)
+			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("%w: job %s (%s)", ErrServerActionConflict, activeJobID, activeJobKind)
 		}
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE servers SET status = ?, updated_at = ? WHERE id = ?`,
 			string(queuedStatus),
 			now,
-			in.ServerID,
+			serverPublicID,
 		)
 		if err != nil {
 			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("update queued lifecycle status: %w", err)
 		}
 		if rows, _ := res.RowsAffected(); rows == 0 {
-			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server %d not found", in.ServerID)
+			return StoredServer{}, orchestrator.Job{}, fmt.Errorf("server %s not found", serverPublicID)
 		}
 	}
+	jobPublicID, err := idutil.New()
+	if err != nil {
+		return StoredServer{}, orchestrator.Job{}, err
+	}
 
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO jobs (server_id, kind, status, current_step, retry_count, payload, created_at, updated_at)
-		 VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
-		in.ServerID,
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO jobs (id, server_id, kind, status, current_step, retry_count, payload, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, '', 0, ?, ?, ?)`,
+		jobPublicID,
+		serverPublicID,
 		in.Kind,
 		orchestrator.JobStatusQueued,
 		nullableServerString(in.Payload),
@@ -538,20 +552,15 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("insert job: %w", err)
 	}
 
-	jobID, err := res.LastInsertId()
-	if err != nil {
-		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("job insert id: %w", err)
-	}
-
 	if err := tx.Commit(); err != nil {
 		return StoredServer{}, orchestrator.Job{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	server, err := s.GetByID(ctx, in.ServerID)
+	server, err := s.GetByID(ctx, serverPublicID)
 	if err != nil {
 		return StoredServer{}, orchestrator.Job{}, err
 	}
-	job, err := orchestrator.NewStore(s.db).GetJob(ctx, jobID)
+	job, err := orchestrator.NewStore(s.db).GetJob(ctx, jobPublicID)
 	if err != nil {
 		return StoredServer{}, orchestrator.Job{}, err
 	}
@@ -560,9 +569,10 @@ func (s *ServerStore) QueueServerJob(ctx context.Context, in QueueServerJobInput
 }
 
 // UpdateNodeStatus updates the node_status, node_last_seen, and node_version fields.
-func (s *ServerStore) UpdateNodeStatus(ctx context.Context, id int64, status platform.NodeStatus, lastSeen, version string) error {
-	if id <= 0 {
-		return fmt.Errorf("id must be greater than zero")
+func (s *ServerStore) UpdateNodeStatus(ctx context.Context, id string, status platform.NodeStatus, lastSeen, version string) error {
+	serverID, err := s.lookupServerID(ctx, id)
+	if err != nil {
+		return err
 	}
 	if _, err := platform.NormalizeNodeStatus(string(status)); err != nil {
 		return err
@@ -582,7 +592,7 @@ func (s *ServerStore) UpdateNodeStatus(ctx context.Context, id int64, status pla
 		lastSeen,
 		version,
 		now,
-		id,
+		serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("update node status: %w", err)
@@ -590,7 +600,7 @@ func (s *ServerStore) UpdateNodeStatus(ctx context.Context, id int64, status pla
 
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("server %d not found", id)
+		return fmt.Errorf("server %s not found", id)
 	}
 
 	return nil
@@ -627,6 +637,21 @@ func nullStringValue(v sql.NullString) string {
 		return ""
 	}
 	return v.String
+}
+
+func (s *ServerStore) lookupServerID(ctx context.Context, id string) (string, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return "", err
+	}
+	var serverID string
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM servers WHERE id = ?`, publicID).Scan(&serverID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("server %s not found", publicID)
+		}
+		return "", fmt.Errorf("lookup server id: %w", err)
+	}
+	return serverID, nil
 }
 
 func nullableServerString(v string) any {

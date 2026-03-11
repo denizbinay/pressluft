@@ -53,14 +53,14 @@ type jobEvent struct {
 }
 
 type activityEvent struct {
-	ID                 int64   `json:"id"`
+	ID                 string  `json:"id"`
 	EventType          string  `json:"event_type"`
 	Category           string  `json:"category"`
 	Level              string  `json:"level"`
 	ResourceType       *string `json:"resource_type,omitempty"`
-	ResourceID         *int64  `json:"resource_id,omitempty"`
+	ResourceID         *string `json:"resource_id,omitempty"`
 	ParentResourceType *string `json:"parent_resource_type,omitempty"`
-	ParentResourceID   *int64  `json:"parent_resource_id,omitempty"`
+	ParentResourceID   *string `json:"parent_resource_id,omitempty"`
 	ActorType          string  `json:"actor_type"`
 	ActorID            *string `json:"actor_id,omitempty"`
 	Title              string  `json:"title"`
@@ -408,9 +408,9 @@ func recentActivity(db *sql.DB, limit int) ([]activityEvent, error) {
 	for rows.Next() {
 		var item activityEvent
 		var resourceType sql.NullString
-		var resourceID sql.NullInt64
+		var resourceID sql.NullString
 		var parentResourceType sql.NullString
-		var parentResourceID sql.NullInt64
+		var parentResourceID sql.NullString
 		var actorID sql.NullString
 		var message sql.NullString
 		var payload sql.NullString
@@ -437,9 +437,9 @@ func recentActivity(db *sql.DB, limit int) ([]activityEvent, error) {
 			return nil, fmt.Errorf("scan activity: %w", err)
 		}
 		item.ResourceType = nullStringPtr(resourceType)
-		item.ResourceID = nullInt64Ptr(resourceID)
+		item.ResourceID = nullStringPtr(resourceID)
 		item.ParentResourceType = nullStringPtr(parentResourceType)
-		item.ParentResourceID = nullInt64Ptr(parentResourceID)
+		item.ParentResourceID = nullStringPtr(parentResourceID)
 		item.ActorID = nullStringPtr(actorID)
 		item.Message = nullStringPtr(message)
 		item.Payload = nullStringPtr(payload)
@@ -482,14 +482,6 @@ func nullStringPtr(value sql.NullString) *string {
 	}
 	text := value.String
 	return &text
-}
-
-func nullInt64Ptr(value sql.NullInt64) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	number := value.Int64
-	return &number
 }
 
 func exitErr(err error) {

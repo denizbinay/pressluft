@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"pressluft/internal/idutil"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,7 +30,7 @@ var (
 )
 
 type User struct {
-	ID           int64
+	ID           string
 	Email        string
 	PasswordHash string
 	Role         Role
@@ -39,8 +41,8 @@ type User struct {
 }
 
 type Session struct {
-	ID                int64
-	UserID            int64
+	ID                string
+	UserID            string
 	SessionID         string
 	CreatedAt         string
 	ExpiresAt         string
@@ -79,25 +81,30 @@ func (s *Store) CreateUser(ctx context.Context, email, password string, role Rol
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	publicID, err := idutil.New()
+	if err != nil {
+		return nil, err
+	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, role, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'active', ?, ?)
-	`, email, string(hash), string(role), now, now)
+		INSERT INTO users (id, email, password_hash, role, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'active', ?, ?)
+	`, publicID, email, string(hash), string(role), now, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("user insert id: %w", err)
-	}
-	return s.GetUserByID(ctx, id)
+	_ = res
+	return s.GetUserByID(ctx, publicID)
 }
 
-func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
+func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
+	publicID, err := idutil.Normalize(id)
+	if err != nil {
+		return nil, err
+	}
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, email, password_hash, role, status, created_at, updated_at, COALESCE(last_login_at, '')
 		FROM users WHERE id = ?
-	`, id)
+	`, publicID)
 	var user User
 	var role string
 	if err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &role, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt); err != nil {
@@ -127,8 +134,12 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error)
 	return &user, nil
 }
 
-func (s *Store) UpdateLastLogin(ctx context.Context, userID int64) error {
-	_, err := s.db.ExecContext(ctx, `
+func (s *Store) UpdateLastLogin(ctx context.Context, userID string) error {
+	userID, err := s.lookupUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE users
 		SET last_login_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
 		    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -140,11 +151,19 @@ func (s *Store) UpdateLastLogin(ctx context.Context, userID int64) error {
 	return nil
 }
 
-func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt, absoluteExpiresAt time.Time, userAgent, ip string) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sessions (user_id, session_hash, created_at, expires_at, absolute_expires_at, last_used_at, user_agent, ip)
-		VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?, ?)
-	`, userID, tokenHash, expiresAt.UTC().Format(time.RFC3339), absoluteExpiresAt.UTC().Format(time.RFC3339), nullableString(userAgent), nullableString(ip))
+func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash string, expiresAt, absoluteExpiresAt time.Time, userAgent, ip string) error {
+	userID, err := s.lookupUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	sessionID, err := idutil.New()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO sessions (id, user_id, session_hash, created_at, expires_at, absolute_expires_at, last_used_at, user_agent, ip)
+		VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?, ?)
+	`, sessionID, userID, tokenHash, expiresAt.UTC().Format(time.RFC3339), absoluteExpiresAt.UTC().Format(time.RFC3339), nullableString(userAgent), nullableString(ip))
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
@@ -245,4 +264,19 @@ func extractRequestIP(r *http.Request) string {
 		return host
 	}
 	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func (s *Store) lookupUserID(ctx context.Context, userID string) (string, error) {
+	publicID, err := idutil.Normalize(userID)
+	if err != nil {
+		return "", err
+	}
+	var storedID string
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ?`, publicID).Scan(&storedID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInvalidCredentials
+		}
+		return "", fmt.Errorf("lookup user id: %w", err)
+	}
+	return storedID, nil
 }

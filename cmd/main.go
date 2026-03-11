@@ -116,7 +116,7 @@ func main() {
 			Level:        activity.LevelInfo,
 			ResourceType: activity.ResourceAccount,
 			ActorType:    activity.ActorSystem,
-			ActorID:      fmt.Sprintf("%d", bootstrapUser.ID),
+			ActorID:      bootstrapUser.ID,
 			Title:        fmt.Sprintf("Bootstrap admin %s created", bootstrapUser.Email),
 		})
 	}

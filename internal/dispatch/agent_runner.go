@@ -14,11 +14,11 @@ import (
 )
 
 type JobStore interface {
-	SetCommandID(ctx context.Context, jobID int64, commandID string) error
-	TransitionJob(ctx context.Context, id int64, in orchestrator.TransitionInput) (orchestrator.Job, error)
-	GetJob(ctx context.Context, id int64) (orchestrator.Job, error)
+	SetCommandID(ctx context.Context, jobID string, commandID string) error
+	TransitionJob(ctx context.Context, id string, in orchestrator.TransitionInput) (orchestrator.Job, error)
+	GetJob(ctx context.Context, id string) (orchestrator.Job, error)
 	GetJobByCommandID(ctx context.Context, commandID string) (*orchestrator.Job, error)
-	AppendEvent(ctx context.Context, jobID int64, in orchestrator.CreateEventInput) (orchestrator.JobEvent, error)
+	AppendEvent(ctx context.Context, jobID string, in orchestrator.CreateEventInput) (orchestrator.JobEvent, error)
 }
 
 type AgentRunner struct {
@@ -36,7 +36,7 @@ func NewAgentRunner(hub *ws.Hub, store JobStore, logger *slog.Logger) *AgentRunn
 
 func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 	commandID := uuid.New().String()
-	corr := observability.Correlation{JobID: job.ID, ServerID: job.ServerID, CommandID: commandID}
+	corr := observability.Correlation{CommandID: commandID}
 	r.logger.Info("command dispatch started", corr.LogArgs("command_type", job.Kind)...)
 
 	if err := r.store.SetCommandID(ctx, job.ID, commandID); err != nil {
@@ -65,7 +65,7 @@ func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 	cmd := ws.Command{
 		ID:       commandID,
 		JobID:    job.ID,
-		ServerID: job.ServerID,
+		ServerID: ws.FormatAppID(job.ServerID),
 		Type:     job.Kind,
 		Payload:  []byte(job.Payload),
 	}
@@ -168,7 +168,7 @@ func (r *AgentRunner) Run(ctx context.Context, job orchestrator.Job) error {
 	return nil
 }
 
-func (r *AgentRunner) appendEvent(ctx context.Context, jobID int64, input orchestrator.CreateEventInput) {
+func (r *AgentRunner) appendEvent(ctx context.Context, jobID string, input orchestrator.CreateEventInput) {
 	if r.store == nil {
 		return
 	}

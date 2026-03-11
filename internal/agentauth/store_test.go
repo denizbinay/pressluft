@@ -13,7 +13,7 @@ func TestStoreValidateAndLookupServerIDUpdatesLastUsed(t *testing.T) {
 	db := openAgentAuthTestDB(t)
 	store := NewStore(db)
 
-	token, err := store.Create(7, time.Hour)
+	token, err := store.Create("00000000-0000-7000-8000-000000000007", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -22,8 +22,8 @@ func TestStoreValidateAndLookupServerIDUpdatesLastUsed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateAndLookupServerID() error = %v", err)
 	}
-	if serverID != 7 {
-		t.Fatalf("serverID = %d, want 7", serverID)
+	if serverID != "00000000-0000-7000-8000-000000000007" {
+		t.Fatalf("serverID = %q, want %q", serverID, "00000000-0000-7000-8000-000000000007")
 	}
 
 	var lastUsed sql.NullString
@@ -39,7 +39,7 @@ func TestStoreValidateAndLookupServerIDRejectsRevokedAndExpiredTokens(t *testing
 	db := openAgentAuthTestDB(t)
 	store := NewStore(db)
 
-	revokedToken, err := store.Create(7, time.Hour)
+	revokedToken, err := store.Create("00000000-0000-7000-8000-000000000007", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() revoked token error = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestStoreValidateAndLookupServerIDRejectsRevokedAndExpiredTokens(t *testing
 		t.Fatal("expected revoked token lookup to fail")
 	}
 
-	expiredToken, err := store.Create(7, time.Hour)
+	expiredToken, err := store.Create("00000000-0000-7000-8000-000000000007", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() expired token error = %v", err)
 	}
@@ -72,16 +72,16 @@ func openAgentAuthTestDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
 		t.Fatalf("enable foreign keys: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE servers (id INTEGER PRIMARY KEY);`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE servers (id TEXT PRIMARY KEY);`); err != nil {
 		t.Fatalf("create servers table: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO servers (id) VALUES (7)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO servers (id) VALUES ('00000000-0000-7000-8000-000000000007')`); err != nil {
 		t.Fatalf("insert server: %v", err)
 	}
 	if _, err := db.Exec(`
 		CREATE TABLE agent_ws_tokens (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id INTEGER NOT NULL REFERENCES servers(id),
+			id TEXT PRIMARY KEY,
+			server_id TEXT NOT NULL REFERENCES servers(id),
 			token_hash TEXT UNIQUE NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			expires_at TEXT NOT NULL,

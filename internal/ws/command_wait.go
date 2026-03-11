@@ -7,7 +7,7 @@ import (
 	"pressluft/internal/agentcommand"
 )
 
-func (h *Hub) SendCommandAndWait(ctx context.Context, serverID int64, cmd Command) (CommandResult, error) {
+func (h *Hub) SendCommandAndWait(ctx context.Context, serverID string, cmd Command) (CommandResult, error) {
 	if cmd.ID == "" {
 		return CommandResult{}, errors.New("command id is required")
 	}

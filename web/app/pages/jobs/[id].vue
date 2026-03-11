@@ -1,45 +1,47 @@
 <script setup lang="ts">
-import { Card, CardContent } from "@/components/ui/card"
-import type { Job } from '~/composables/useJobs'
-import { useJobs } from "~/composables/useJobs"
-import { jobKindLabels } from "~/lib/platform-contract.generated"
+import { Card, CardContent } from "@/components/ui/card";
+import type { Job } from "~/composables/useJobs";
+import { useJobs } from "~/composables/useJobs";
+import { jobKindLabels } from "~/lib/platform-contract.generated";
 
-const route = useRoute()
-const router = useRouter()
-const { fetchJob } = useJobs()
+const route = useRoute();
+const router = useRouter();
+const { fetchJob } = useJobs();
 
 const jobId = computed(() => {
-  const id = Number(route.params.id)
-  return Number.isNaN(id) ? null : id
-})
+  const raw = route.params.id;
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  return id.length > 0 ? id : null;
+});
 
-const isInvalidId = computed(() => jobId.value === null)
+const isInvalidId = computed(() => jobId.value === null);
 
-const job = ref<Job | null>(null)
-const jobError = ref("")
+const job = ref<Job | null>(null);
+const jobError = ref("");
 
 const jobKindLabel = (kind: string): string => {
-  return jobKindLabels[kind as keyof typeof jobKindLabels] || kind
-}
+  return jobKindLabels[kind as keyof typeof jobKindLabels] || kind;
+};
 
 const jobSubtitle = computed(() => {
-  if (!job.value?.kind) return "Job progress"
-  return `${jobKindLabel(job.value.kind)} progress`
-})
+  if (!job.value?.kind) return "Job progress";
+  return `${jobKindLabel(job.value.kind)} progress`;
+});
 
-const handleCompleted = (_job: Job) => {}
+const handleCompleted = (_job: Job) => {};
 
-const handleFailed = (_job: Job, _error: string) => {}
+const handleFailed = (_job: Job, _error: string) => {};
 
 onMounted(async () => {
-  if (!jobId.value) return
-  jobError.value = ""
+  if (!jobId.value) return;
+  jobError.value = "";
   try {
-    job.value = await fetchJob(jobId.value)
+    job.value = await fetchJob(jobId.value);
   } catch (e: any) {
-    jobError.value = e.message || "Failed to load job"
+    jobError.value = e.message || "Failed to load job";
   }
-})
+});
 </script>
 
 <template>
@@ -48,11 +50,24 @@ onMounted(async () => {
     <template v-if="isInvalidId">
       <div class="space-y-2">
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
-          <NuxtLink to="/activity" class="transition-colors hover:text-foreground">
+          <NuxtLink
+            to="/activity"
+            class="transition-colors hover:text-foreground"
+          >
             Activity
           </NuxtLink>
-          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          <svg
+            class="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
           <span class="text-foreground">Job</span>
         </div>
@@ -68,7 +83,9 @@ onMounted(async () => {
         class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
       >
         <CardContent class="px-6 py-5">
-          <div class="flex flex-col items-center justify-center py-8 text-center">
+          <div
+            class="flex flex-col items-center justify-center py-8 text-center"
+          >
             <div class="mb-4 rounded-full bg-destructive/10 p-3">
               <svg
                 class="h-6 w-6 text-destructive"
@@ -84,7 +101,7 @@ onMounted(async () => {
                 />
               </svg>
             </div>
-            <p class="text-muted-foreground">Please provide a valid numeric job ID.</p>
+            <p class="text-muted-foreground">Please provide a valid job ID.</p>
           </div>
         </CardContent>
       </Card>
@@ -94,11 +111,24 @@ onMounted(async () => {
     <template v-else>
       <div class="space-y-2">
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
-          <NuxtLink to="/activity" class="transition-colors hover:text-foreground">
+          <NuxtLink
+            to="/activity"
+            class="transition-colors hover:text-foreground"
+          >
             Activity
           </NuxtLink>
-          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          <svg
+            class="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5l7 7-7 7"
+            />
           </svg>
           <template v-if="job?.server_id">
             <NuxtLink
@@ -107,14 +137,26 @@ onMounted(async () => {
             >
               Server #{{ job.server_id }}
             </NuxtLink>
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            <svg
+              class="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           </template>
-          <span class="text-foreground">Job #{{ jobId }}</span>
+          <span class="text-foreground">Job {{ jobId }}</span>
         </div>
         <div>
-          <h1 class="text-2xl font-semibold text-foreground">Job #{{ jobId }}</h1>
+          <h1 class="text-2xl font-semibold text-foreground">
+            Job {{ jobId }}
+          </h1>
           <p class="mt-1 text-sm text-muted-foreground">
             {{ jobSubtitle }}
           </p>

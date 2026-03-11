@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS servers (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    provider_id        INTEGER NOT NULL,
+    id                 TEXT PRIMARY KEY,
+    provider_id        TEXT    NOT NULL,
     provider_type      TEXT    NOT NULL,
     provider_server_id TEXT,
     name               TEXT    NOT NULL,

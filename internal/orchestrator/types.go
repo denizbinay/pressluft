@@ -71,7 +71,7 @@ type WorkflowStep struct {
 	Label string
 }
 
-type JobPayloadValidator func(json.RawMessage, int64) (string, error)
+type JobPayloadValidator func(json.RawMessage, string) (string, error)
 
 var supportedJobKinds = []JobKindSpec{
 	{Kind: JobKindProvisionServer, Label: "Server infrastructure provisioning", AllowedStatuses: []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed}, ExecutionPath: "worker", DispatchPolicy: DispatchPolicy{QueueServer: false}, Timeout: 30 * time.Minute, RetryLimit: 0, Recovery: "mark failed on worker interruption; inspect provider state before retrying manually", Steps: []WorkflowStep{{Key: "validate", Label: "Validating request"}, {Key: "provision", Label: "Provisioning infrastructure"}}, ValidatePayload: validateProvisionServerPayload},
@@ -152,7 +152,7 @@ func QueuedServerStatusForKind(kind string) (platform.ServerStatus, bool) {
 	return spec.QueuedStatus, true
 }
 
-func ValidatePayload(kind string, payload json.RawMessage, serverID int64) (string, error) {
+func ValidatePayload(kind string, payload json.RawMessage, serverID string) (string, error) {
 	spec, ok := JobKindPolicy(kind)
 	if !ok {
 		return "", fmt.Errorf("unsupported job kind: %s", kind)
@@ -319,18 +319,18 @@ func normalizeArbitraryPayload(payload json.RawMessage) string {
 	return trimmed
 }
 
-func requireServerID(serverID int64, kind JobKind) error {
-	if serverID <= 0 {
+func requireServerID(serverID string, kind JobKind) error {
+	if strings.TrimSpace(serverID) == "" {
 		return fmt.Errorf("server_id is required for %s job", kind)
 	}
 	return nil
 }
 
-func validateProvisionServerPayload(payload json.RawMessage, _ int64) (string, error) {
+func validateProvisionServerPayload(payload json.RawMessage, _ string) (string, error) {
 	return normalizeArbitraryPayload(payload), nil
 }
 
-func validateConfigureServerPayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateConfigureServerPayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindConfigureServer); err != nil {
 		return "", err
 	}
@@ -346,7 +346,7 @@ func validateConfigureServerPayload(payload json.RawMessage, serverID int64) (st
 	return MarshalConfigureServerPayload(ConfigureServerPayload{IPv4: parsed.IPv4})
 }
 
-func validateDeleteServerPayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateDeleteServerPayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindDeleteServer); err != nil {
 		return "", err
 	}
@@ -360,7 +360,7 @@ func validateDeleteServerPayload(payload json.RawMessage, serverID int64) (strin
 	return MarshalDeleteServerPayload()
 }
 
-func validateRebuildServerPayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateRebuildServerPayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindRebuildServer); err != nil {
 		return "", err
 	}
@@ -374,7 +374,7 @@ func validateRebuildServerPayload(payload json.RawMessage, serverID int64) (stri
 	return MarshalRebuildServerPayload(parsed)
 }
 
-func validateResizeServerPayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateResizeServerPayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindResizeServer); err != nil {
 		return "", err
 	}
@@ -397,7 +397,7 @@ func validateResizeServerPayload(payload json.RawMessage, serverID int64) (strin
 	})
 }
 
-func validateUpdateFirewallsPayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateUpdateFirewallsPayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindUpdateFirewalls); err != nil {
 		return "", err
 	}
@@ -418,7 +418,7 @@ func validateUpdateFirewallsPayload(payload json.RawMessage, serverID int64) (st
 	return MarshalUpdateFirewallsPayload(UpdateFirewallsPayload{Firewalls: firewalls})
 }
 
-func validateManageVolumePayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateManageVolumePayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindManageVolume); err != nil {
 		return "", err
 	}
@@ -445,7 +445,7 @@ func validateManageVolumePayload(payload json.RawMessage, serverID int64) (strin
 	return MarshalManageVolumePayload(parsed)
 }
 
-func validateRestartServicePayload(payload json.RawMessage, serverID int64) (string, error) {
+func validateRestartServicePayload(payload json.RawMessage, serverID string) (string, error) {
 	if err := requireServerID(serverID, JobKindRestartService); err != nil {
 		return "", err
 	}
@@ -465,8 +465,8 @@ func defaultPayloadObject(payload json.RawMessage) []byte {
 
 // Job is the persisted orchestration unit.
 type Job struct {
-	ID          int64     `json:"id"`
-	ServerID    int64     `json:"server_id,omitempty"`
+	ID          string    `json:"id"`
+	ServerID    string    `json:"server_id,omitempty"`
 	Kind        string    `json:"kind"`
 	Status      JobStatus `json:"status"`
 	CurrentStep string    `json:"current_step"`
@@ -483,7 +483,8 @@ type Job struct {
 
 // JobEvent is an ordered event entry consumed by the dashboard.
 type JobEvent struct {
-	JobID      int64  `json:"job_id"`
+	ID         string `json:"id"`
+	JobID      string `json:"job_id"`
 	Seq        int64  `json:"seq"`
 	EventType  string `json:"event_type"`
 	Level      string `json:"level"`
@@ -497,7 +498,7 @@ type JobEvent struct {
 // CreateJobInput is the job creation payload.
 type CreateJobInput struct {
 	Kind     string
-	ServerID int64
+	ServerID string
 	Payload  string
 }
 

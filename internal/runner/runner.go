@@ -4,7 +4,7 @@ import "context"
 
 // Request defines the normalized runner execution input.
 type Request struct {
-	JobID         int64
+	JobID         string
 	InventoryPath string
 	PlaybookPath  string
 	ExtraVars     map[string]string

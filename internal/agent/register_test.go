@@ -55,7 +55,7 @@ func TestRegisterPersistsLoadableKeypairAndClearsToken(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "agent.yaml")
 	cfg := &Config{
-		ServerID:          42,
+		ServerID:          "42",
 		ControlPlane:      "https://control.example.test",
 		CertFile:          filepath.Join(dir, "agent.crt"),
 		KeyFile:           filepath.Join(dir, "agent.key"),

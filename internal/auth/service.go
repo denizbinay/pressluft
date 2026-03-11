@@ -117,7 +117,7 @@ func sessionTokenFromRequest(r *http.Request) string {
 
 func userToActor(user User, source string) Actor {
 	return Actor{
-		ID:            fmt.Sprintf("%d", user.ID),
+		ID:            user.ID,
 		Type:          ActorTypeOperator,
 		Email:         user.Email,
 		Role:          user.Role,

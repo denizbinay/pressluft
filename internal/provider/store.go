@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"pressluft/internal/idutil"
 	"pressluft/internal/security"
 )
 
 // StoredProvider represents a provider row persisted in the database.
 type StoredProvider struct {
-	ID                int64  `json:"id"`
+	ID                string `json:"id"`
 	Type              string `json:"type"`
 	Name              string `json:"name"`
 	APIToken          string `json:"-"` // never serialised to JSON
@@ -33,22 +34,26 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-// Create inserts a new provider and returns its ID.
-func (s *Store) Create(ctx context.Context, providerType, name, apiToken string) (int64, error) {
+// Create inserts a new provider and returns its app ID.
+func (s *Store) Create(ctx context.Context, providerType, name, apiToken string) (string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	providerID, err := idutil.New()
+	if err != nil {
+		return "", err
+	}
 	encrypted, keyID, version, err := security.EncryptProviderToken(apiToken)
 	if err != nil {
-		return 0, fmt.Errorf("encrypt provider token: %w", err)
+		return "", fmt.Errorf("encrypt provider token: %w", err)
 	}
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO providers (type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`,
-		providerType, name, encrypted, keyID, version, now, now,
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO providers (id, type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+		providerID, providerType, name, encrypted, keyID, version, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("insert provider: %w", err)
+		return "", fmt.Errorf("insert provider: %w", err)
 	}
-	return res.LastInsertId()
+	return providerID, nil
 }
 
 // List returns all providers. API tokens are NOT included in the result.
@@ -73,32 +78,40 @@ func (s *Store) List(ctx context.Context) ([]StoredProvider, error) {
 	return out, rows.Err()
 }
 
-// Delete removes a provider by ID.
-func (s *Store) Delete(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM providers WHERE id = ?`, id)
+// Delete removes a provider by app ID.
+func (s *Store) Delete(ctx context.Context, id string) error {
+	providerID, err := idutil.Normalize(id)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM providers WHERE id = ?`, providerID)
 	if err != nil {
 		return fmt.Errorf("delete provider: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("provider %d not found", id)
+		return fmt.Errorf("provider %s not found", providerID)
 	}
 	return nil
 }
 
-// GetByID returns a provider row by ID including the API token.
-func (s *Store) GetByID(ctx context.Context, id int64) (*StoredProvider, error) {
+// GetByID returns a provider row by app ID including the API token.
+func (s *Store) GetByID(ctx context.Context, id string) (*StoredProvider, error) {
+	providerID, err := idutil.Normalize(id)
+	if err != nil {
+		return nil, err
+	}
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at
 		 FROM providers
 		 WHERE id = ?`,
-		id,
+		providerID,
 	)
 
 	var p StoredProvider
 	if err := row.Scan(&p.ID, &p.Type, &p.Name, &p.APITokenEncrypted, &p.APITokenKeyID, &p.APITokenVersion, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("provider %d not found", id)
+			return nil, fmt.Errorf("provider %s not found", providerID)
 		}
 		return nil, fmt.Errorf("get provider: %w", err)
 	}

@@ -9,14 +9,14 @@ import (
 )
 
 type Hub struct {
-	conns  map[int64]*Conn
+	conns  map[string]*Conn
 	mu     sync.RWMutex
 	waiter *ResultWaiter
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		conns: make(map[int64]*Conn),
+		conns: make(map[string]*Conn),
 	}
 }
 
@@ -38,20 +38,20 @@ func (h *Hub) Register(conn *Conn) {
 	h.conns[conn.ServerID()] = conn
 }
 
-func (h *Hub) Unregister(serverID int64) {
+func (h *Hub) Unregister(serverID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.conns, serverID)
 }
 
-func (h *Hub) Get(serverID int64) (*Conn, bool) {
+func (h *Hub) Get(serverID string) (*Conn, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	conn, ok := h.conns[serverID]
 	return conn, ok
 }
 
-func (h *Hub) Send(serverID int64, env Envelope) error {
+func (h *Hub) Send(serverID string, env Envelope) error {
 	h.mu.RLock()
 	conn, ok := h.conns[serverID]
 	h.mu.RUnlock()
@@ -72,20 +72,20 @@ func (h *Hub) Broadcast(env Envelope) {
 	}
 }
 
-func (h *Hub) ConnectedServerIDs() []int64 {
+func (h *Hub) ConnectedServerIDs() []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	ids := make([]int64, 0, len(h.conns))
+	ids := make([]string, 0, len(h.conns))
 	for id := range h.conns {
 		ids = append(ids, id)
 	}
 	return ids
 }
 
-func (h *Hub) Range(fn func(serverID int64, conn *Conn) bool) {
+func (h *Hub) Range(fn func(serverID string, conn *Conn) bool) {
 	h.mu.RLock()
-	snapshot := make(map[int64]*Conn, len(h.conns))
+	snapshot := make(map[string]*Conn, len(h.conns))
 	for id, conn := range h.conns {
 		snapshot[id] = conn
 	}
@@ -100,7 +100,7 @@ func (h *Hub) Range(fn func(serverID int64, conn *Conn) bool) {
 
 // GetAgentInfo returns the real-time status and metrics for a server's agent.
 // If the agent is not connected, it returns a disconnected status.
-func (h *Hub) GetAgentInfo(serverID int64) AgentInfo {
+func (h *Hub) GetAgentInfo(serverID string) AgentInfo {
 	h.mu.RLock()
 	conn, ok := h.conns[serverID]
 	h.mu.RUnlock()
@@ -140,11 +140,11 @@ func (h *Hub) GetAgentInfo(serverID int64) AgentInfo {
 }
 
 // GetAllAgentInfo returns agent info for all connected servers.
-func (h *Hub) GetAllAgentInfo() map[int64]AgentInfo {
+func (h *Hub) GetAllAgentInfo() map[string]AgentInfo {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	result := make(map[int64]AgentInfo, len(h.conns))
+	result := make(map[string]AgentInfo, len(h.conns))
 	now := time.Now()
 
 	for serverID, conn := range h.conns {

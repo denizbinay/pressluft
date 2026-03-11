@@ -139,7 +139,7 @@ const (
 
 // Activity is a single entry in the activity stream.
 type Activity struct {
-	ID int64 `json:"id"`
+	ID string `json:"id"`
 
 	// Event classification
 	EventType EventType `json:"event_type"`
@@ -148,11 +148,11 @@ type Activity struct {
 
 	// Polymorphic resource reference
 	ResourceType ResourceType `json:"resource_type,omitempty"`
-	ResourceID   int64        `json:"resource_id,omitempty"`
+	ResourceID   string       `json:"resource_id,omitempty"`
 
 	// Secondary resource (e.g., job belongs to server)
 	ParentResourceType ResourceType `json:"parent_resource_type,omitempty"`
-	ParentResourceID   int64        `json:"parent_resource_id,omitempty"`
+	ParentResourceID   string       `json:"parent_resource_id,omitempty"`
 
 	// Actor tracking
 	ActorType ActorType `json:"actor_type"`
@@ -177,10 +177,10 @@ type EmitInput struct {
 	Level     Level
 
 	ResourceType ResourceType
-	ResourceID   int64
+	ResourceID   string
 
 	ParentResourceType ResourceType
-	ParentResourceID   int64
+	ParentResourceID   string
 
 	ActorType ActorType
 	ActorID   string
@@ -195,15 +195,15 @@ type EmitInput struct {
 // ListFilter contains filtering and pagination options for listing activity.
 type ListFilter struct {
 	// Cursor-based pagination (use ID)
-	Cursor int64
+	Cursor string
 	Limit  int
 
 	// Filtering
 	Category           Category
 	ResourceType       ResourceType
-	ResourceID         int64
+	ResourceID         string
 	ParentResourceType ResourceType
-	ParentResourceID   int64
+	ParentResourceID   string
 	RequiresAttention  *bool
 	UnreadOnly         bool
 }

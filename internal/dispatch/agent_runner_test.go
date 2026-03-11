@@ -20,7 +20,7 @@ func TestAgentRunnerFailsInvalidPayloadBeforeDispatch(t *testing.T) {
 
 	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{
 		Kind:     string(orchestrator.JobKindRestartService),
-		ServerID: 7,
+		ServerID: "00000000-0000-7000-8000-000000000007",
 		Payload:  `{"service_name":"../../etc/passwd"}`,
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func TestCompleterIgnoresLateResultForTerminalJob(t *testing.T) {
 	jobStore := orchestrator.NewStore(db)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: 5})
+	job, err := jobStore.CreateJob(context.Background(), orchestrator.CreateJobInput{Kind: string(orchestrator.JobKindRestartService), ServerID: "00000000-0000-7000-8000-000000000005"})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
 	}

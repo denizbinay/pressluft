@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -27,10 +28,10 @@ func TestServersCatalogEndpoint(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	providerID, _ := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 
 	handler := NewHandler(db)
-	path := "/api/servers/catalog?provider_id=" + intToString(providerID)
+	path := "/api/servers/catalog?provider_id=" + providerID
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	res := httptest.NewRecorder()
 
@@ -59,7 +60,7 @@ func TestServersCreateEndpoint(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	providerID, _ := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 
 	handler := NewHandler(db)
 	body := map[string]any{
@@ -109,7 +110,7 @@ func TestServersCreateEndpointValidationFailure(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	providerID, _ := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 
 	handler := NewHandler(db)
 	body := map[string]any{
@@ -135,7 +136,7 @@ func TestServersCreateEndpointRejectsUnavailableProfile(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	providerID, _ := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 
 	handler := NewHandler(db)
 	body := map[string]any{
@@ -171,11 +172,11 @@ func TestServersDeleteEndpointQueuesAsyncDeletion(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
-	serverID := mustInsertServerRecord(t, db, providerID, string(platform.ServerStatusReady))
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, string(platform.ServerStatusReady))
 
 	handler := NewHandler(db)
-	req := httptest.NewRequest(http.MethodDelete, "/api/servers/"+intToString(serverID), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/servers/"+serverID, nil)
 	res := httptest.NewRecorder()
 
 	handler.ServeHTTP(res, req)
@@ -216,18 +217,18 @@ func TestServersDeleteEndpointRejectsDuplicateDeletion(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
-	serverID := mustInsertServerRecord(t, db, providerID, string(platform.ServerStatusReady))
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, string(platform.ServerStatusReady))
 
 	handler := NewHandler(db)
-	firstReq := httptest.NewRequest(http.MethodDelete, "/api/servers/"+intToString(serverID), nil)
+	firstReq := httptest.NewRequest(http.MethodDelete, "/api/servers/"+serverID, nil)
 	firstRes := httptest.NewRecorder()
 	handler.ServeHTTP(firstRes, firstReq)
 	if firstRes.Code != http.StatusAccepted {
 		t.Fatalf("first delete status = %d, want %d", firstRes.Code, http.StatusAccepted)
 	}
 
-	secondReq := httptest.NewRequest(http.MethodDelete, "/api/servers/"+intToString(serverID), nil)
+	secondReq := httptest.NewRequest(http.MethodDelete, "/api/servers/"+serverID, nil)
 	secondRes := httptest.NewRecorder()
 	handler.ServeHTTP(secondRes, secondReq)
 
@@ -240,8 +241,8 @@ func TestAllAgentStatusIncludesStoredOfflineNodes(t *testing.T) {
 	registerTestServerProvider()
 
 	db := mustOpenServerHandlerDB(t)
-	providerID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
-	serverID := mustInsertServerRecord(t, db, providerID, string(platform.ServerStatusReady))
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, string(platform.ServerStatusReady))
 	store := NewServerStore(db)
 	if err := store.UpdateNodeStatus(context.Background(), serverID, platform.NodeStatusOffline, "2026-01-01T00:00:00Z", "1.0.0"); err != nil {
 		t.Fatalf("update node status: %v", err)
@@ -260,9 +261,9 @@ func TestAllAgentStatusIncludesStoredOfflineNodes(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	entry, ok := payload[strconv.FormatInt(serverID, 10)]
+	entry, ok := payload[serverID]
 	if !ok {
-		t.Fatalf("payload missing server %d: %+v", serverID, payload)
+		t.Fatalf("payload missing server %s: %+v", serverID, payload)
 	}
 	if entry["status"] != "offline" {
 		t.Fatalf("status = %v, want offline", entry["status"])
@@ -310,7 +311,7 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE providers (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			id         TEXT PRIMARY KEY,
 			type       TEXT    NOT NULL,
 			name       TEXT    NOT NULL,
 			api_token_encrypted TEXT NOT NULL,
@@ -326,8 +327,8 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE servers (
-			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-			provider_id        INTEGER NOT NULL,
+			id                 TEXT PRIMARY KEY,
+			provider_id        TEXT    NOT NULL,
 			provider_type      TEXT    NOT NULL,
 			provider_server_id TEXT,
 			ipv4               TEXT,
@@ -355,7 +356,7 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE server_keys (
-			server_id             INTEGER PRIMARY KEY,
+			server_id             TEXT PRIMARY KEY,
 			public_key            TEXT    NOT NULL,
 			private_key_encrypted TEXT    NOT NULL,
 			encryption_key_id     TEXT    NOT NULL,
@@ -369,8 +370,8 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE jobs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id    INTEGER,
+			id           TEXT PRIMARY KEY,
+			server_id    TEXT,
 			kind         TEXT    NOT NULL,
 			status       TEXT    NOT NULL DEFAULT 'queued',
 			current_step TEXT    NOT NULL DEFAULT '',
@@ -391,7 +392,8 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE job_events (
-			job_id     INTEGER NOT NULL,
+			id         TEXT PRIMARY KEY,
+			job_id     TEXT    NOT NULL,
 			seq        INTEGER NOT NULL,
 			event_type TEXT    NOT NULL,
 			level      TEXT    NOT NULL,
@@ -400,7 +402,6 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 			message    TEXT    NOT NULL,
 			payload    TEXT,
 			created_at TEXT    NOT NULL,
-			PRIMARY KEY (job_id, seq),
 			FOREIGN KEY (job_id) REFERENCES jobs(id)
 		);
 	`); err != nil {
@@ -410,17 +411,19 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func mustInsertProviderRecord(t *testing.T, db *sql.DB, providerType, name, token string) int64 {
+func mustInsertProviderRecord(t *testing.T, db *sql.DB, providerType, name, token string) (string, string) {
 	t.Helper()
 
+	publicID := testPublicID(1)
 	encrypted, keyID, version, err := security.EncryptProviderToken(token)
 	if err != nil {
 		t.Fatalf("encrypt provider token: %v", err)
 	}
 
-	res, err := db.Exec(
-		`INSERT INTO providers (type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+	_, err = db.Exec(
+		`INSERT INTO providers (id, type, name, api_token_encrypted, api_token_key_id, api_token_version, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		publicID,
 		providerType,
 		name,
 		encrypted,
@@ -431,23 +434,20 @@ func mustInsertProviderRecord(t *testing.T, db *sql.DB, providerType, name, toke
 		t.Fatalf("insert provider: %v", err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("provider insert id: %v", err)
-	}
-
-	return id
+	return publicID, publicID
 }
 
 func intToString(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
-func mustInsertServerRecord(t *testing.T, db *sql.DB, providerID int64, status string) int64 {
+func mustInsertServerRecord(t *testing.T, db *sql.DB, providerID string, status string) string {
 	t.Helper()
-	res, err := db.Exec(
-		`INSERT INTO servers (provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+	publicID := testPublicID(2)
+	_, err := db.Exec(
+		`INSERT INTO servers (id, provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		publicID,
 		providerID,
 		"test-server-provider",
 		"agency-prod-01",
@@ -460,9 +460,9 @@ func mustInsertServerRecord(t *testing.T, db *sql.DB, providerID int64, status s
 	if err != nil {
 		t.Fatalf("insert server: %v", err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("server insert id: %v", err)
-	}
-	return id
+	return publicID
+}
+
+func testPublicID(seq int) string {
+	return fmt.Sprintf("00000000-0000-7000-8000-%012d", seq)
 }

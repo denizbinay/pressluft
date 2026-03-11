@@ -5,13 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"pressluft/internal/idutil"
 )
 
 var (
 	ErrInvalidToken  = errors.New("invalid token")
 	ErrExpiredToken  = errors.New("expired token")
 	ErrConsumedToken = errors.New("token already consumed")
+	ErrUnknownServer = errors.New("unknown server")
 )
 
 type Store struct {
@@ -19,8 +23,8 @@ type Store struct {
 }
 
 type Token struct {
-	ID         int64
-	ServerID   int64
+	ID         string
+	ServerID   string
 	TokenHash  string
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
@@ -31,7 +35,11 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-func (s *Store) Create(serverID int64, expiresIn time.Duration) (string, error) {
+func (s *Store) Create(serverID string, expiresIn time.Duration) (string, error) {
+	serverID, err := lookupServerID(s.db, serverID)
+	if err != nil {
+		return "", err
+	}
 	plaintext, err := GenerateToken()
 	if err != nil {
 		return "", err
@@ -40,10 +48,14 @@ func (s *Store) Create(serverID int64, expiresIn time.Duration) (string, error) 
 	hash := HashToken(plaintext)
 	expiresAt := time.Now().Add(expiresIn)
 
+	tokenID, err := idutil.New()
+	if err != nil {
+		return "", err
+	}
 	_, err = s.db.Exec(`
-		INSERT INTO registration_tokens (server_id, token_hash, expires_at)
-		VALUES (?, ?, ?)
-	`, serverID, hash, expiresAt.Format(time.RFC3339))
+		INSERT INTO registration_tokens (id, server_id, token_hash, expires_at)
+		VALUES (?, ?, ?, ?)
+	`, tokenID, serverID, hash, expiresAt.Format(time.RFC3339))
 
 	if err != nil {
 		return "", fmt.Errorf("insert token: %w", err)
@@ -52,15 +64,15 @@ func (s *Store) Create(serverID int64, expiresIn time.Duration) (string, error) 
 	return plaintext, nil
 }
 
-func (s *Store) Consume(plaintext string, serverID int64) error {
+func (s *Store) Consume(plaintext string, serverID string) error {
 	return s.consume(context.Background(), s.db, plaintext, serverID)
 }
 
-func (s *Store) Validate(plaintext string, serverID int64) error {
+func (s *Store) Validate(plaintext string, serverID string) error {
 	return s.validate(context.Background(), s.db, plaintext, serverID)
 }
 
-func (s *Store) ConsumeTx(ctx context.Context, tx *sql.Tx, plaintext string, serverID int64) error {
+func (s *Store) ConsumeTx(ctx context.Context, tx *sql.Tx, plaintext string, serverID string) error {
 	return s.consume(ctx, tx, plaintext, serverID)
 }
 
@@ -69,12 +81,16 @@ type queryExecutor interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-func (s *Store) validate(ctx context.Context, db queryExecutor, plaintext string, serverID int64) error {
+func (s *Store) validate(ctx context.Context, db queryExecutor, plaintext string, serverID string) error {
+	serverID, err := lookupServerID(db, serverID)
+	if err != nil {
+		return err
+	}
 	hash := HashToken(plaintext)
 
 	var expiresAt string
 	var consumedAt sql.NullString
-	err := db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 		SELECT expires_at, consumed_at
 		FROM registration_tokens
 		WHERE token_hash = ?
@@ -101,7 +117,11 @@ func (s *Store) validate(ctx context.Context, db queryExecutor, plaintext string
 	return nil
 }
 
-func (s *Store) consume(ctx context.Context, db queryExecutor, plaintext string, serverID int64) error {
+func (s *Store) consume(ctx context.Context, db queryExecutor, plaintext string, serverID string) error {
+	serverID, err := lookupServerID(db, serverID)
+	if err != nil {
+		return err
+	}
 	if err := s.validate(ctx, db, plaintext, serverID); err != nil {
 		return err
 	}
@@ -133,6 +153,21 @@ func (s *Store) consume(ctx context.Context, db queryExecutor, plaintext string,
 	}
 
 	return nil
+}
+
+func lookupServerID(db queryExecutor, serverID string) (string, error) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return "", fmt.Errorf("server_id is required")
+	}
+	var storedID string
+	if err := db.QueryRowContext(context.Background(), `SELECT id FROM servers WHERE id = ?`, serverID).Scan(&storedID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrUnknownServer
+		}
+		return "", fmt.Errorf("lookup server id: %w", err)
+	}
+	return storedID, nil
 }
 
 func (s *Store) CleanupExpired() (int64, error) {

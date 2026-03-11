@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"pressluft/internal/agentauth"
+	"pressluft/internal/idutil"
 	"pressluft/internal/pki"
 	"pressluft/internal/ws"
 
@@ -71,9 +71,13 @@ func (h *WSHandler) handleAgentWebSocket(w http.ResponseWriter, r *http.Request)
 	h.wsHandler.HandleConnection(r.Context(), conn)
 }
 
-func parseServerCN(cn string) (int64, error) {
-	if !strings.HasPrefix(cn, "server-") {
-		return 0, fmt.Errorf("invalid CN format")
+func parseServerCN(cn string) (string, error) {
+	if strings.HasPrefix(cn, "server:") {
+		serverID, err := idutil.Normalize(strings.TrimSpace(cn[7:]))
+		if err != nil {
+			return "", err
+		}
+		return serverID, nil
 	}
-	return strconv.ParseInt(cn[7:], 10, 64)
+	return "", fmt.Errorf("invalid CN format")
 }

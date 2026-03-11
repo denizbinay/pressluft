@@ -61,7 +61,7 @@ func Register(config *Config, configPath string) error {
 
 	template := &x509.CertificateRequest{
 		Subject: pkix.Name{
-			CommonName: fmt.Sprintf("server-%d", config.ServerID),
+			CommonName: fmt.Sprintf("server:%s", config.ServerID),
 		},
 	}
 

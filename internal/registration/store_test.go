@@ -13,30 +13,43 @@ func TestStoreConsumeReplayAndExpiry(t *testing.T) {
 	db := openRegistrationTestDB(t)
 	store := NewStore(db)
 
-	token, err := store.Create(1, time.Hour)
+	token, err := store.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	if err := store.Validate(token, 1); err != nil {
+	if err := store.Validate(token, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	if err := store.Consume(token, 1); err != nil {
+	if err := store.Consume(token, "00000000-0000-7000-8000-000000000001"); err != nil {
 		t.Fatalf("Consume() error = %v", err)
 	}
-	if err := store.Consume(token, 1); !errors.Is(err, ErrConsumedToken) {
+	if err := store.Consume(token, "00000000-0000-7000-8000-000000000001"); !errors.Is(err, ErrConsumedToken) {
 		t.Fatalf("Consume() replay error = %v, want %v", err, ErrConsumedToken)
 	}
 
-	expired, err := store.Create(1, time.Hour)
+	expired, err := store.Create("00000000-0000-7000-8000-000000000001", time.Hour)
 	if err != nil {
 		t.Fatalf("Create() expired token error = %v", err)
 	}
 	if _, err := db.Exec(`UPDATE registration_tokens SET expires_at = '2000-01-01T00:00:00Z' WHERE token_hash = ?`, HashToken(expired)); err != nil {
 		t.Fatalf("expire token: %v", err)
 	}
-	if err := store.Validate(expired, 1); !errors.Is(err, ErrExpiredToken) {
+	if err := store.Validate(expired, "00000000-0000-7000-8000-000000000001"); !errors.Is(err, ErrExpiredToken) {
 		t.Fatalf("Validate() expired error = %v, want %v", err, ErrExpiredToken)
+	}
+}
+
+func TestStoreRejectsUnknownServer(t *testing.T) {
+	db := openRegistrationTestDB(t)
+	store := NewStore(db)
+
+	if _, err := store.Create("00000000-0000-7000-8000-000000000099", time.Hour); !errors.Is(err, ErrUnknownServer) {
+		t.Fatalf("Create() error = %v, want %v", err, ErrUnknownServer)
+	}
+
+	if err := store.Validate("irrelevant", "00000000-0000-7000-8000-000000000099"); !errors.Is(err, ErrUnknownServer) {
+		t.Fatalf("Validate() error = %v, want %v", err, ErrUnknownServer)
 	}
 }
 
@@ -50,16 +63,16 @@ func openRegistrationTestDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
 		t.Fatalf("enable foreign keys: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE servers (id INTEGER PRIMARY KEY);`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE servers (id TEXT PRIMARY KEY);`); err != nil {
 		t.Fatalf("create servers table: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO servers (id) VALUES (1)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO servers (id) VALUES ('00000000-0000-7000-8000-000000000001')`); err != nil {
 		t.Fatalf("insert server: %v", err)
 	}
 	if _, err := db.Exec(`
 		CREATE TABLE registration_tokens (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id INTEGER NOT NULL REFERENCES servers(id),
+			id TEXT PRIMARY KEY,
+			server_id TEXT NOT NULL REFERENCES servers(id),
 			token_hash TEXT UNIQUE NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 			expires_at TEXT NOT NULL,

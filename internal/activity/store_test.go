@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"pressluft/internal/idutil"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -18,7 +20,7 @@ func TestEmitAndGetByID(t *testing.T) {
 		Category:     CategoryJob,
 		Level:        LevelInfo,
 		ResourceType: ResourceJob,
-		ResourceID:   42,
+		ResourceID:   "job-42",
 		ActorType:    ActorSystem,
 		Title:        "Job created",
 		Message:      "Provisioning job queued",
@@ -29,8 +31,8 @@ func TestEmitAndGetByID(t *testing.T) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	if act.ID <= 0 {
-		t.Fatal("expected positive ID")
+	if !idutil.IsValid(act.ID) {
+		t.Fatalf("expected UUIDv7 public ID, got %q", act.ID)
 	}
 	if act.EventType != EventJobCreated {
 		t.Errorf("event_type = %q, want %q", act.EventType, EventJobCreated)
@@ -45,7 +47,7 @@ func TestEmitAndGetByID(t *testing.T) {
 		t.Fatalf("get by id: %v", err)
 	}
 	if fetched.ID != act.ID {
-		t.Errorf("fetched.ID = %d, want %d", fetched.ID, act.ID)
+		t.Errorf("fetched.ID = %q, want %q", fetched.ID, act.ID)
 	}
 	if fetched.Message != "Provisioning job queued" {
 		t.Errorf("message = %q, want %q", fetched.Message, "Provisioning job queued")
@@ -122,12 +124,15 @@ func TestListWithCursor(t *testing.T) {
 	}
 
 	// List next page
-	nextActivities, nextCursor, err := store.List(ctx, ListFilter{Limit: 3, Cursor: activities[2].ID})
+	nextActivities, nextCursor, err := store.List(ctx, ListFilter{Limit: 3, Cursor: cursor})
 	if err != nil {
 		t.Fatalf("list next: %v", err)
 	}
 	if len(nextActivities) != 2 {
 		t.Errorf("len = %d, want 2", len(nextActivities))
+	}
+	if nextActivities[0].ID >= activities[2].ID {
+		t.Fatalf("expected next page ids to continue after cursor")
 	}
 	if nextCursor != "" {
 		t.Errorf("expected empty cursor, got %q", nextCursor)
@@ -234,7 +239,7 @@ func TestMarkAllRead(t *testing.T) {
 	jobActivities, _, _ := store.List(ctx, ListFilter{Category: CategoryJob})
 	for _, a := range jobActivities {
 		if a.ReadAt == "" {
-			t.Errorf("job activity %d should be read", a.ID)
+			t.Errorf("job activity %q should be read", a.ID)
 		}
 	}
 
@@ -242,7 +247,7 @@ func TestMarkAllRead(t *testing.T) {
 	serverActivities, _, _ := store.List(ctx, ListFilter{Category: CategoryServer})
 	for _, a := range serverActivities {
 		if a.ReadAt != "" {
-			t.Errorf("server activity %d should be unread", a.ID)
+			t.Errorf("server activity %q should be unread", a.ID)
 		}
 	}
 }
@@ -293,12 +298,12 @@ func TestGetLatestID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get latest id: %v", err)
 	}
-	if latest != 0 {
-		t.Errorf("latest = %d, want 0", latest)
+	if latest != "" {
+		t.Errorf("latest = %q, want empty", latest)
 	}
 
 	// Add entries
-	var lastID int64
+	var lastID string
 	for i := 0; i < 3; i++ {
 		act, _ := store.Emit(ctx, EmitInput{
 			EventType: EventJobCreated,
@@ -315,7 +320,7 @@ func TestGetLatestID(t *testing.T) {
 		t.Fatalf("get latest id: %v", err)
 	}
 	if latest != lastID {
-		t.Errorf("latest = %d, want %d", latest, lastID)
+		t.Errorf("latest = %q, want %q", latest, lastID)
 	}
 }
 
@@ -354,7 +359,7 @@ func TestListSince(t *testing.T) {
 	}
 	for _, a := range activities {
 		if a.ID <= first.ID {
-			t.Errorf("activity %d should be > %d", a.ID, first.ID)
+			t.Errorf("activity %q should be > %q", a.ID, first.ID)
 		}
 	}
 }
@@ -370,7 +375,7 @@ func TestListByResource(t *testing.T) {
 		Category:     CategoryJob,
 		Level:        LevelInfo,
 		ResourceType: ResourceJob,
-		ResourceID:   100,
+		ResourceID:   "job-100",
 		ActorType:    ActorSystem,
 		Title:        "Job 100 created",
 	})
@@ -380,7 +385,7 @@ func TestListByResource(t *testing.T) {
 		Category:     CategoryJob,
 		Level:        LevelInfo,
 		ResourceType: ResourceJob,
-		ResourceID:   200,
+		ResourceID:   "job-200",
 		ActorType:    ActorSystem,
 		Title:        "Job 200 created",
 	})
@@ -388,7 +393,7 @@ func TestListByResource(t *testing.T) {
 	// Filter by resource
 	activities, _, err := store.List(ctx, ListFilter{
 		ResourceType: ResourceJob,
-		ResourceID:   100,
+		ResourceID:   "job-100",
 	})
 	if err != nil {
 		t.Fatalf("list: %v", err)
@@ -396,8 +401,8 @@ func TestListByResource(t *testing.T) {
 	if len(activities) != 1 {
 		t.Errorf("len = %d, want 1", len(activities))
 	}
-	if activities[0].ResourceID != 100 {
-		t.Errorf("resource_id = %d, want 100", activities[0].ResourceID)
+	if activities[0].ResourceID != "job-100" {
+		t.Errorf("resource_id = %q, want %q", activities[0].ResourceID, "job-100")
 	}
 }
 
@@ -412,9 +417,9 @@ func TestListByParentResource(t *testing.T) {
 		Category:           CategoryJob,
 		Level:              LevelInfo,
 		ResourceType:       ResourceJob,
-		ResourceID:         1,
+		ResourceID:         "job-1",
 		ParentResourceType: ResourceServer,
-		ParentResourceID:   10,
+		ParentResourceID:   "server-10",
 		ActorType:          ActorSystem,
 		Title:              "Job for server 10",
 	})
@@ -424,9 +429,9 @@ func TestListByParentResource(t *testing.T) {
 		Category:           CategoryJob,
 		Level:              LevelInfo,
 		ResourceType:       ResourceJob,
-		ResourceID:         2,
+		ResourceID:         "job-2",
 		ParentResourceType: ResourceServer,
-		ParentResourceID:   20,
+		ParentResourceID:   "server-20",
 		ActorType:          ActorSystem,
 		Title:              "Job for server 20",
 	})
@@ -434,7 +439,7 @@ func TestListByParentResource(t *testing.T) {
 	// Filter by parent resource
 	activities, _, err := store.List(ctx, ListFilter{
 		ParentResourceType: ResourceServer,
-		ParentResourceID:   10,
+		ParentResourceID:   "server-10",
 	})
 	if err != nil {
 		t.Fatalf("list: %v", err)
@@ -442,8 +447,8 @@ func TestListByParentResource(t *testing.T) {
 	if len(activities) != 1 {
 		t.Errorf("len = %d, want 1", len(activities))
 	}
-	if activities[0].ParentResourceID != 10 {
-		t.Errorf("parent_resource_id = %d, want 10", activities[0].ParentResourceID)
+	if activities[0].ParentResourceID != "server-10" {
+		t.Errorf("parent_resource_id = %q, want %q", activities[0].ParentResourceID, "server-10")
 	}
 }
 
@@ -462,14 +467,14 @@ func mustOpenActivityDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS activity (
-			id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+			id                   TEXT PRIMARY KEY,
 			event_type           TEXT NOT NULL,
 			category             TEXT NOT NULL,
 			level                TEXT NOT NULL,
 			resource_type        TEXT,
-			resource_id          INTEGER,
+			resource_id          TEXT,
 			parent_resource_type TEXT,
-			parent_resource_id   INTEGER,
+			parent_resource_id   TEXT,
 			actor_type           TEXT NOT NULL,
 			actor_id             TEXT,
 			title                TEXT NOT NULL,

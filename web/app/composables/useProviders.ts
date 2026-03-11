@@ -43,7 +43,7 @@ export function useProviders() {
     })
   }
 
-  const deleteProvider = async (id: number) => {
+  const deleteProvider = async (id: string) => {
     await apiFetch(`/providers/${id}`, { method: 'DELETE' })
   }
 
