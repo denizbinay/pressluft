@@ -5,6 +5,7 @@ import type {
   ActivityListResponse,
   AgentInfo,
   AgentStatusMapResponse,
+  DeleteSiteResponse,
   CreateServerResponse,
   DeleteServerResponse,
   Job,
@@ -12,6 +13,7 @@ import type {
   ServerCatalogResponse,
   ServicesResponse,
   StoredServer,
+  StoredSite,
   UnreadCountResponse,
 } from "~/lib/api-types";
 import type { AuthActor } from "~/lib/api-contract";
@@ -132,6 +134,33 @@ const deleteServerResponseSchema = z.object({
   description: z.string(),
 });
 
+const siteStatusSchema = z.enum([
+  "draft",
+  "active",
+  "attention",
+  "archived",
+]);
+
+const storedSiteSchema = z.object({
+  id: z.string(),
+  server_id: z.string(),
+  server_name: z.string(),
+  name: z.string(),
+  primary_domain: z.string().optional(),
+  status: siteStatusSchema,
+  wordpress_path: z.string().optional(),
+  php_version: z.string().optional(),
+  wordpress_version: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const deleteSiteResponseSchema = z.object({
+  site_id: z.string(),
+  deleted: z.boolean(),
+  description: z.string(),
+});
+
 const jobSchema = z.object({
   id: z.string(),
   server_id: z.string().optional(),
@@ -240,6 +269,12 @@ export const parseDeleteServerResponse = (
   payload: unknown,
 ): DeleteServerResponse =>
   decode(deleteServerResponseSchema, payload, "delete server");
+export const parseStoredSite = (payload: unknown): StoredSite =>
+  decode(storedSiteSchema, payload, "site");
+export const parseStoredSites = (payload: unknown): StoredSite[] =>
+  decode(z.array(storedSiteSchema), payload, "site list");
+export const parseDeleteSiteResponse = (payload: unknown): DeleteSiteResponse =>
+  decode(deleteSiteResponseSchema, payload, "delete site");
 export const parseAgentInfo = (payload: unknown): AgentInfo =>
   decode(agentInfoSchema, payload, "agent info");
 export const parseAgentStatusMapResponse = (

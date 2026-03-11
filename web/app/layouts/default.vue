@@ -19,7 +19,19 @@ import { computed } from 'vue'
 
 const route = useRoute()
 
-const navSections = [
+interface NavItem {
+  label: string
+  icon: any
+  to: string
+  badge?: string
+}
+
+interface NavSection {
+  title: string
+  items: NavItem[]
+}
+
+const navSections: NavSection[] = [
   {
     title: 'Main',
     items: [
@@ -30,7 +42,7 @@ const navSections = [
     title: 'Resources',
     items: [
       { label: 'Servers', icon: Server, to: '/servers' },
-      { label: 'Sites', icon: Globe, to: '/sites', badge: 'Planned' },
+      { label: 'Sites', icon: Globe, to: '/sites' },
     ],
   },
   {

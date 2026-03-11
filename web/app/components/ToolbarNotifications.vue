@@ -29,11 +29,17 @@ const {
 } = useActivity()
 
 const resolveActivityLink = (activity: ActivityEvent) => {
+  if (activity.event_type === "site.deleted") {
+    return "/sites"
+  }
   if (activity.resource_type === "job" && activity.resource_id) {
     return `/jobs/${activity.resource_id}`
   }
   if (activity.resource_type === "server" && activity.resource_id) {
     return `/servers/${activity.resource_id}`
+  }
+  if (activity.resource_type === "site" && activity.resource_id) {
+    return `/sites/${activity.resource_id}`
   }
   if (activity.parent_resource_type === "server" && activity.parent_resource_id) {
     return `/servers/${activity.parent_resource_id}`

@@ -355,6 +355,24 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
+		CREATE TABLE sites (
+			id                TEXT PRIMARY KEY,
+			server_id         TEXT    NOT NULL,
+			name              TEXT    NOT NULL,
+			primary_domain    TEXT,
+			status            TEXT    NOT NULL DEFAULT 'draft',
+			wordpress_path    TEXT,
+			php_version       TEXT,
+			wordpress_version TEXT,
+			created_at        TEXT    NOT NULL,
+			updated_at        TEXT    NOT NULL,
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		);
+	`); err != nil {
+		t.Fatalf("create sites table: %v", err)
+	}
+
+	if _, err := db.Exec(`
 		CREATE TABLE server_keys (
 			server_id             TEXT PRIMARY KEY,
 			public_key            TEXT    NOT NULL,
@@ -406,6 +424,29 @@ func mustOpenServerHandlerDB(t *testing.T) *sql.DB {
 		);
 	`); err != nil {
 		t.Fatalf("create job_events table: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE activity (
+			id                   TEXT PRIMARY KEY,
+			event_type           TEXT    NOT NULL,
+			category             TEXT    NOT NULL,
+			level                TEXT    NOT NULL,
+			resource_type        TEXT,
+			resource_id          TEXT,
+			parent_resource_type TEXT,
+			parent_resource_id   TEXT,
+			actor_type           TEXT    NOT NULL,
+			actor_id             TEXT,
+			title                TEXT    NOT NULL,
+			message              TEXT,
+			payload              TEXT,
+			requires_attention   INTEGER NOT NULL DEFAULT 0,
+			read_at              TEXT,
+			created_at           TEXT    NOT NULL
+		);
+	`); err != nil {
+		t.Fatalf("create activity table: %v", err)
 	}
 
 	return db

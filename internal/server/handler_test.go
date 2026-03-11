@@ -42,13 +42,15 @@ func TestOperatorRoutesRequireCapabilitiesWhenAuthenticatorConfigured(t *testing
 		}},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/activity", nil)
-	res := httptest.NewRecorder()
+	for _, path := range []string{"/api/activity", "/api/sites"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		res := httptest.NewRecorder()
 
-	handler.ServeHTTP(res, req)
+		handler.ServeHTTP(res, req)
 
-	if res.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", res.Code, http.StatusForbidden)
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("path %s status = %d, want %d", path, res.Code, http.StatusForbidden)
+		}
 	}
 }
 

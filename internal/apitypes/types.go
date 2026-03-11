@@ -80,6 +80,67 @@ type CreateServerRequest struct {
 	ProfileKey string `json:"profile_key"`
 }
 
+type CreateSiteRequest struct {
+	ServerID         string `json:"server_id"`
+	Name             string `json:"name"`
+	PrimaryDomain    string `json:"primary_domain,omitempty"`
+	Status           string `json:"status,omitempty"`
+	WordPressPath    string `json:"wordpress_path,omitempty"`
+	PHPVersion       string `json:"php_version,omitempty"`
+	WordPressVersion string `json:"wordpress_version,omitempty"`
+}
+
+func (r *CreateSiteRequest) Validate() error {
+	r.ServerID = strings.TrimSpace(r.ServerID)
+	r.Name = strings.TrimSpace(r.Name)
+	r.PrimaryDomain = strings.TrimSpace(r.PrimaryDomain)
+	r.Status = strings.TrimSpace(r.Status)
+	r.WordPressPath = strings.TrimSpace(r.WordPressPath)
+	r.PHPVersion = strings.TrimSpace(r.PHPVersion)
+	r.WordPressVersion = strings.TrimSpace(r.WordPressVersion)
+	if r.ServerID == "" {
+		return fmt.Errorf("server_id is required")
+	}
+	if r.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	return nil
+}
+
+type UpdateSiteRequest struct {
+	ServerID         *string `json:"server_id,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	PrimaryDomain    *string `json:"primary_domain,omitempty"`
+	Status           *string `json:"status,omitempty"`
+	WordPressPath    *string `json:"wordpress_path,omitempty"`
+	PHPVersion       *string `json:"php_version,omitempty"`
+	WordPressVersion *string `json:"wordpress_version,omitempty"`
+}
+
+func (r *UpdateSiteRequest) Validate() error {
+	trim := func(value **string) {
+		if *value == nil {
+			return
+		}
+		trimmed := strings.TrimSpace(**value)
+		*value = &trimmed
+	}
+	trim(&r.ServerID)
+	trim(&r.Name)
+	trim(&r.PrimaryDomain)
+	trim(&r.Status)
+	trim(&r.WordPressPath)
+	trim(&r.PHPVersion)
+	trim(&r.WordPressVersion)
+	if r.Name != nil && *r.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if r.ServerID != nil && *r.ServerID == "" {
+		return fmt.Errorf("server_id is required")
+	}
+	return nil
+}
+
 type ServerCatalogResponse struct {
 	Catalog  provider.ServerCatalog `json:"catalog"`
 	Profiles []profiles.Profile     `json:"profiles"`
@@ -89,6 +150,26 @@ type CreateServerResponse struct {
 	ServerID string                `json:"server_id"`
 	JobID    string                `json:"job_id"`
 	Status   platform.ServerStatus `json:"status"`
+}
+
+type StoredSite struct {
+	ID               string `json:"id"`
+	ServerID         string `json:"server_id"`
+	ServerName       string `json:"server_name"`
+	Name             string `json:"name"`
+	PrimaryDomain    string `json:"primary_domain,omitempty"`
+	Status           string `json:"status"`
+	WordPressPath    string `json:"wordpress_path,omitempty"`
+	PHPVersion       string `json:"php_version,omitempty"`
+	WordPressVersion string `json:"wordpress_version,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+}
+
+type DeleteSiteResponse struct {
+	SiteID      string `json:"site_id"`
+	Deleted     bool   `json:"deleted"`
+	Description string `json:"description"`
 }
 
 type StoredServer struct {
@@ -304,9 +385,13 @@ var PublishedTypes = map[string]any{
 	"StoredProvider":          provider.StoredProvider{},
 	"ValidationResult":        provider.ValidationResult{},
 	"CreateServerRequest":     CreateServerRequest{},
+	"CreateSiteRequest":       CreateSiteRequest{},
 	"ServerCatalogResponse":   ServerCatalogResponse{},
 	"CreateServerResponse":    CreateServerResponse{},
+	"StoredSite":              StoredSite{},
+	"DeleteSiteResponse":      DeleteSiteResponse{},
 	"DeleteServerResponse":    DeleteServerResponse{},
+	"UpdateSiteRequest":       UpdateSiteRequest{},
 	"RebuildOptionsResponse":  RebuildOptionsResponse{},
 	"ResizeOptionsResponse":   ResizeOptionsResponse{},
 	"FirewallsResponse":       FirewallsResponse{},

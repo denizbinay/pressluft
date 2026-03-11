@@ -24,6 +24,7 @@ import (
 type serversHandler struct {
 	providerStore   *provider.Store
 	serverStore     *ServerStore
+	siteStore       *SiteStore
 	jobStore        *orchestrator.Store
 	activityStore   *activity.Store
 	activityHandler *activityHandler
@@ -131,6 +132,13 @@ func (sh *serversHandler) routeWithPath(w http.ResponseWriter, r *http.Request) 
 					return
 				}
 				sh.handleListServices(w, r, serverID)
+				return
+			case "sites":
+				if r.Method != http.MethodGet {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				sh.handleListSites(w, r, serverID)
 				return
 			}
 		}
@@ -548,6 +556,27 @@ func (sh *serversHandler) handleServerVolumes(w http.ResponseWriter, r *http.Req
 		ServerID: apitypes.FormatAppID(server.ID),
 		Volumes:  volumes,
 	})
+}
+
+func (sh *serversHandler) handleListSites(w http.ResponseWriter, r *http.Request, serverID string) {
+	if _, err := sh.serverStore.GetByID(r.Context(), serverID); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if sh.siteStore == nil {
+		respondJSON(w, http.StatusOK, []apitypes.StoredSite{})
+		return
+	}
+	sites, err := sh.siteStore.ListByServer(r.Context(), serverID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	payload := make([]apitypes.StoredSite, 0, len(sites))
+	for _, site := range sites {
+		payload = append(payload, apiStoredSite(site))
+	}
+	respondJSON(w, http.StatusOK, payload)
 }
 
 func parseProviderIDQuery(r *http.Request) (string, error) {

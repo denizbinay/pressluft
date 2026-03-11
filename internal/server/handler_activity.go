@@ -244,6 +244,25 @@ func (ah *activityHandler) handleServerActivity(w http.ResponseWriter, r *http.R
 	respondJSON(w, http.StatusOK, response)
 }
 
+func (ah *activityHandler) handleSiteActivity(w http.ResponseWriter, r *http.Request, siteID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	filter := parseActivityFilter(r)
+	filter.ResourceType = activity.ResourceSite
+	filter.ResourceID = siteID
+	activities, nextCursor, err := ah.store.List(r.Context(), filter)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, apitypes.ActivityListResponse{
+		Data:       apitypes.APIActivities(activities),
+		NextCursor: nextCursor,
+	})
+}
+
 func parseActivityFilter(r *http.Request) activity.ListFilter {
 	filter := activity.ListFilter{}
 

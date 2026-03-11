@@ -1,10 +1,12 @@
 import type {
   Activity as GeneratedActivity,
   AgentInfo,
+  CreateSiteRequest,
   CreateJobRequest as GeneratedCreateJobRequest,
   CreateServerRequest,
   CreateServerResponse as GeneratedCreateServerResponse,
   DeleteServerResponse as GeneratedDeleteServerResponse,
+  DeleteSiteResponse as GeneratedDeleteSiteResponse,
   Job as GeneratedJob,
   JobEvent,
   ServerCatalogResponse as GeneratedServerCatalogResponse,
@@ -13,19 +15,27 @@ import type {
   ServerTypePrice,
   ServicesResponse as GeneratedServicesResponse,
   StoredServer as GeneratedStoredServer,
+  StoredSite as GeneratedStoredSite,
   UnreadCountResponse,
+  UpdateSiteRequest,
 } from "~/lib/api-contract";
 
 export type {
   AgentInfo,
+  CreateSiteRequest,
   CreateServerRequest,
   JobEvent,
   Service,
   ServerTypePrice,
   UnreadCountResponse,
+  UpdateSiteRequest,
 };
 
 export type StoredServer = Omit<GeneratedStoredServer, "id"> & { id: string };
+export type StoredSite = Omit<GeneratedStoredSite, "id" | "server_id"> & {
+  id: string;
+  server_id: string;
+};
 export type CreateServerResponse = Omit<
   GeneratedCreateServerResponse,
   "server_id"
@@ -34,6 +44,9 @@ export type DeleteServerResponse = Omit<
   GeneratedDeleteServerResponse,
   "server_id"
 > & { server_id: string };
+export type DeleteSiteResponse = Omit<GeneratedDeleteSiteResponse, "site_id"> & {
+  site_id: string;
+};
 export type ServicesResponse = Omit<GeneratedServicesResponse, "server_id"> & {
   server_id: string;
 };

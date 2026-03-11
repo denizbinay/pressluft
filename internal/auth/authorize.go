@@ -5,6 +5,7 @@ type Capability string
 const (
 	CapabilityManageProviders Capability = "manage_providers"
 	CapabilityManageServers   Capability = "manage_servers"
+	CapabilityManageSites     Capability = "manage_sites"
 	CapabilityQueueJobs       Capability = "queue_jobs"
 	CapabilityReadActivity    Capability = "read_activity"
 )
@@ -13,6 +14,7 @@ func AllCapabilities() []Capability {
 	return []Capability{
 		CapabilityManageProviders,
 		CapabilityManageServers,
+		CapabilityManageSites,
 		CapabilityQueueJobs,
 		CapabilityReadActivity,
 	}

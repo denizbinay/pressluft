@@ -1,297 +1,364 @@
 <script setup lang="ts">
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-// Sites page placeholder kept for future implementation.
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useServers } from "~/composables/useServers";
+import { useSites, type StoredSite } from "~/composables/useSites";
 
-// Placeholder data structure for future implementation
-interface Site {
-  id: number;
-  name: string;
-  domain: string;
-  serverId: string;
-  serverName: string;
-  status: "active" | "staging" | "maintenance" | "error";
-  wpVersion: string;
-  phpVersion: string;
-  lastBackup?: string;
-  createdAt: string;
-}
+const route = useRoute();
 
-// Placeholder state until site workflows land.
-const sites = ref<Site[]>([]);
-const loading = ref(false);
+const { servers, fetchServers } = useServers();
+const { sites, loading, saving, error, fetchSites, createSite } = useSites();
+
+const pageError = ref("");
+const successMessage = ref("");
+
+const form = reactive({
+  serverId: "",
+  name: "",
+  primaryDomain: "",
+  status: "draft",
+  wordpressPath: "/srv/www/",
+  phpVersion: "8.3",
+  wordpressVersion: "6.8",
+});
+
+const siteStatusMeta = (status: StoredSite["status"]) => {
+  switch (status) {
+    case "active":
+      return {
+        label: "Active",
+        className: "border-primary/30 bg-primary/10 text-primary",
+      };
+    case "attention":
+      return {
+        label: "Attention",
+        className: "border-accent/30 bg-accent/10 text-accent",
+      };
+    case "archived":
+      return {
+        label: "Archived",
+        className: "border-border/60 bg-muted/70 text-muted-foreground",
+      };
+    default:
+      return {
+        label: "Draft",
+        className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+      };
+  }
+};
+
+const siteStats = computed(() => {
+  const items = sites.value;
+  return {
+    total: items.length,
+    active: items.filter((site) => site.status === "active").length,
+    draft: items.filter((site) => site.status === "draft").length,
+    attention: items.filter((site) => site.status === "attention").length,
+  };
+});
+
+const serverOptions = computed(() =>
+  [...servers.value].sort((a, b) => a.name.localeCompare(b.name)),
+);
+
+const selectedServerName = computed(
+  () =>
+    serverOptions.value.find((server) => server.id === form.serverId)?.name ||
+    "Pick a server",
+);
+
+const loadPage = async () => {
+  pageError.value = "";
+  try {
+    await Promise.all([fetchServers(), fetchSites()]);
+    const requestedServer = route.query.serverId;
+    if (typeof requestedServer === "string" && requestedServer.trim()) {
+      form.serverId = requestedServer.trim();
+    }
+    if (!form.serverId && serverOptions.value[0]) {
+      form.serverId = serverOptions.value[0].id;
+    }
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to load sites";
+  }
+};
+
+const resetForm = () => {
+  form.name = "";
+  form.primaryDomain = "";
+  form.status = "draft";
+  form.wordpressPath = "/srv/www/";
+  form.phpVersion = "8.3";
+  form.wordpressVersion = "6.8";
+};
+
+const handleCreateSite = async () => {
+  successMessage.value = "";
+  pageError.value = "";
+  try {
+    const created = await createSite({
+      server_id: form.serverId,
+      name: form.name,
+      primary_domain: form.primaryDomain || undefined,
+      status: form.status,
+      wordpress_path: form.wordpressPath || undefined,
+      php_version: form.phpVersion || undefined,
+      wordpress_version: form.wordpressVersion || undefined,
+    });
+    successMessage.value = `Created ${created.name} on ${created.server_name}.`;
+    resetForm();
+    await fetchSites();
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to create site";
+  }
+};
+
+const formatDate = (iso: string) => {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+};
+
+onMounted(loadPage);
+
+watch(
+  () => route.query.serverId,
+  (value) => {
+    if (typeof value === "string" && value.trim()) {
+      form.serverId = value.trim();
+    }
+  },
+);
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-3xl font-semibold text-foreground">Sites</h1>
-        <p class="mt-2 text-base text-muted-foreground">
-          This route is reserved for future site workflows.
-        </p>
-      </div>
-      <Button
-        size="sm"
-        class="h-8 px-3 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-        disabled
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M12 4v16m8-8H4"
-          />
-        </svg>
-        Not Available Yet
-      </Button>
-    </div>
-
-    <!-- Planned surfaces -->
-    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      <!-- Planned site setup -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10"
-        >
-          <svg
-            class="h-6 w-6 text-accent"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Site Setup
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for guided WordPress site creation once the workflow is
-          implemented.
-        </p>
-      </div>
-
-      <!-- Planned cloning -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10"
-        >
-          <svg
-            class="h-6 w-6 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Clone Site
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for staging, handoff, and duplication flows in a later round.
-        </p>
-      </div>
-
-      <!-- Planned staging -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary/60"
-        >
-          <svg
-            class="h-6 w-6 text-secondary-foreground"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Staging
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for future preview and sync workflows.
-        </p>
-      </div>
-
-      <!-- Planned backups -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10"
-        >
-          <svg
-            class="h-6 w-6 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Backups
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for future backup and restore controls.
-        </p>
-      </div>
-
-      <!-- Planned domain controls -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary/60"
-        >
-          <svg
-            class="h-6 w-6 text-secondary-foreground"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Domains
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for domain, TLS, and DNS configuration once site features
-          land.
-        </p>
-      </div>
-
-      <!-- Planned monitoring -->
-      <div class="rounded-xl border border-border/60 bg-card/30 p-6">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10"
-        >
-          <svg
-            class="h-6 w-6 text-destructive"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-            />
-          </svg>
-        </div>
-        <h3 class="mt-5 text-base font-medium text-foreground">
-          Planned: Monitoring
-        </h3>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Reserved for uptime, performance, and alerting views in a later round.
-        </p>
-      </div>
-    </div>
-
-    <!-- Empty state -->
-    <Card
-      class="rounded-xl border border-border/60 bg-card/50 backdrop-blur-sm py-0 shadow-none"
+  <div class="space-y-8">
+    <section
+      class="relative overflow-hidden rounded-[28px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(226,244,240,0.88)_45%,rgba(237,233,254,0.82))] p-7 shadow-[0_32px_120px_-56px_rgba(18,95,84,0.45)] dark:bg-[linear-gradient(135deg,rgba(21,28,31,0.95),rgba(17,57,53,0.88)_50%,rgba(36,33,52,0.88))]"
     >
-      <CardContent class="px-6 py-5">
-        <div
-          class="flex flex-col items-center justify-center py-16 text-center"
-        >
-          <div
-            class="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50"
-          >
-            <svg
-              class="h-10 w-10 text-muted-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-              />
-            </svg>
+      <div class="absolute inset-y-0 right-0 hidden w-80 bg-[radial-gradient(circle_at_top,rgba(69,198,214,0.28),transparent_62%)] lg:block" />
+      <div class="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl space-y-4">
+          <div class="inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-background/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground backdrop-blur">
+            Sites Inventory
           </div>
-          <h3 class="mt-6 text-xl font-medium text-foreground">No sites yet</h3>
-          <p class="mt-3 max-w-sm text-base text-muted-foreground">
-            Site inventory is not implemented on this branch yet. For now, use
-            the active server and provider workflows under settings.
-          </p>
-          <div class="mt-8 flex gap-3">
-            <NuxtLink to="/servers">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-8 px-3 text-xs rounded-lg text-foreground hover:bg-muted/50"
-              >
-                View Servers
-              </Button>
+          <div>
+            <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              WordPress estates finally have a home in Pressluft.
+            </h1>
+            <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+              Track every client site as a first-class resource, attach it to its
+              current server, and build a believable hosting panel surface before
+              deployment automation lands.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 sm:min-w-[420px]">
+          <div class="rounded-2xl border border-border/60 bg-background/75 px-4 py-4 backdrop-blur">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Total
+            </p>
+            <p class="mt-3 text-3xl font-semibold text-foreground">{{ siteStats.total }}</p>
+          </div>
+          <div class="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-4">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/80">
+              Active
+            </p>
+            <p class="mt-3 text-3xl font-semibold text-primary">{{ siteStats.active }}</p>
+          </div>
+          <div class="rounded-2xl border border-accent/20 bg-accent/10 px-4 py-4">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent/80">
+              Attention
+            </p>
+            <p class="mt-3 text-3xl font-semibold text-accent">{{ siteStats.attention }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <Alert v-if="pageError || error" class="border-destructive/30 bg-destructive/10 text-destructive">
+      <AlertDescription>
+        {{ pageError || error }}
+      </AlertDescription>
+    </Alert>
+
+    <Alert v-if="successMessage" class="border-primary/30 bg-primary/10 text-primary">
+      <AlertDescription>
+        {{ successMessage }}
+      </AlertDescription>
+    </Alert>
+
+    <div class="grid gap-6 xl:grid-cols-[1.4fr_minmax(360px,0.9fr)]">
+      <Card class="overflow-hidden rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
+        <CardHeader class="border-b border-border/50 px-6 py-5">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Inventory
+              </p>
+              <h2 class="mt-1 text-xl font-semibold text-foreground">Managed sites</h2>
+            </div>
+            <Badge variant="outline" class="border-border/60 bg-muted/50 text-xs text-muted-foreground">
+              {{ siteStats.draft }} drafts
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent class="px-6 py-5">
+          <div v-if="loading" class="flex items-center justify-center py-16 text-sm text-muted-foreground">
+            Loading sites...
+          </div>
+
+          <div v-else-if="sites.length === 0" class="rounded-3xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
+            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-background/80 shadow-sm">
+              <svg class="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9" />
+              </svg>
+            </div>
+            <h3 class="mt-5 text-xl font-semibold text-foreground">No sites tracked yet</h3>
+            <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              Start with one flagship site. The inventory you build here becomes
+              the backbone for future deploys, staging copies, migrations, and
+              backups.
+            </p>
+          </div>
+
+          <div v-else class="space-y-4">
+            <NuxtLink
+              v-for="site in sites"
+              :key="site.id"
+              :to="`/sites/${site.id}`"
+              class="group block rounded-[22px] border border-border/60 bg-background/70 px-5 py-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_18px_50px_-28px_rgba(21,95,84,0.4)]"
+            >
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="truncate text-lg font-semibold text-foreground">
+                      {{ site.name }}
+                    </h3>
+                    <Badge variant="outline" :class="siteStatusMeta(site.status).className">
+                      {{ siteStatusMeta(site.status).label }}
+                    </Badge>
+                  </div>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ site.primary_domain || "Domain not assigned yet" }}
+                  </p>
+                  <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
+                      {{ site.server_name }}
+                    </span>
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
+                      PHP {{ site.php_version || "TBD" }}
+                    </span>
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
+                      WordPress {{ site.wordpress_version || "TBD" }}
+                    </span>
+                    <span v-if="site.wordpress_path" class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
+                      {{ site.wordpress_path }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="shrink-0 text-sm text-muted-foreground lg:text-right">
+                  <p class="font-medium text-foreground">Open site record</p>
+                  <p class="mt-1">Created {{ formatDate(site.created_at) }}</p>
+                </div>
+              </div>
             </NuxtLink>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
 
-    <!-- Planning note -->
-    <div class="rounded-xl border border-accent/30 bg-accent/5 px-6 py-5">
-      <div class="flex items-start gap-4">
-        <svg
-          class="mt-0.5 h-6 w-6 shrink-0 text-accent"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <div>
-          <p class="text-base font-medium text-accent">Planned surface</p>
-          <p class="mt-1 text-sm text-accent/80">
-            This page stays in the codebase as a placeholder for the next round.
-            It is intentionally hidden from the primary navigation until site
-            workflows are real.
+      <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
+        <CardHeader class="border-b border-border/50 px-6 py-5">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            New Site
           </p>
-        </div>
-      </div>
+          <h2 class="mt-1 text-xl font-semibold text-foreground">Create a believable site record</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Capture where the site currently lives, what stack it expects, and
+            enough metadata to make the panel feel operational.
+          </p>
+        </CardHeader>
+        <CardContent class="px-6 py-5">
+          <form class="space-y-4" @submit.prevent="handleCreateSite">
+            <div class="space-y-1.5">
+              <Label for="site-server" class="text-sm font-medium text-muted-foreground">Current server</Label>
+              <select
+                id="site-server"
+                v-model="form.serverId"
+                class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+              >
+                <option v-for="server in serverOptions" :key="server.id" :value="server.id">
+                  {{ server.name }}
+                </option>
+              </select>
+              <p class="text-xs text-muted-foreground">Attached to {{ selectedServerName }} today, but ready for future moves.</p>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="space-y-1.5 sm:col-span-2">
+                <Label for="site-name" class="text-sm font-medium text-muted-foreground">Site name</Label>
+                <Input id="site-name" v-model="form.name" placeholder="e.g. Northwind Marketing" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="site-domain" class="text-sm font-medium text-muted-foreground">Primary domain</Label>
+                <Input id="site-domain" v-model="form.primaryDomain" placeholder="northwind.example" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="site-status" class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
+                <select
+                  id="site-status"
+                  v-model="form.status"
+                  class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                  <option value="attention">Attention</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+              <div class="space-y-1.5 sm:col-span-2">
+                <Label for="site-path" class="text-sm font-medium text-muted-foreground">WordPress path</Label>
+                <Input id="site-path" v-model="form.wordpressPath" placeholder="/srv/www/client/current" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="site-php" class="text-sm font-medium text-muted-foreground">PHP version</Label>
+                <Input id="site-php" v-model="form.phpVersion" placeholder="8.3" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="site-wp" class="text-sm font-medium text-muted-foreground">WordPress version</Label>
+                <Input id="site-wp" v-model="form.wordpressVersion" placeholder="6.8" />
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-border/60 bg-muted/25 p-4">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Why this matters
+              </p>
+              <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                PR2 is about making sites feel real even before installation
+                flows exist. This metadata gives agencies a control-plane view of
+                their estate right now.
+              </p>
+            </div>
+
+            <Button type="submit" class="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !form.serverId || !form.name.trim()">
+              {{ saving ? "Creating site..." : "Create site record" }}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   </div>
 </template>
