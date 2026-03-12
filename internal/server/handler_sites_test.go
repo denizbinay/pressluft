@@ -161,6 +161,34 @@ func TestSitesCreateWithFallbackResolverPrimaryHostnameConfig(t *testing.T) {
 	}
 }
 
+func TestSitesCreateWithFallbackResolverPrimaryHostnameConfigRequiresServerIPv4(t *testing.T) {
+	db := mustOpenServerHandlerDB(t)
+	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
+	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
+	if _, err := db.Exec(`UPDATE servers SET ipv4 = NULL WHERE id = ?`, serverID); err != nil {
+		t.Fatalf("clear server ipv4: %v", err)
+	}
+	handler := NewHandler(db)
+
+	body := map[string]any{
+		"server_id": serverID,
+		"name":      "Sandbox Site",
+		"status":    "draft",
+		"primary_hostname_config": map[string]any{
+			"source": "fallback_resolver",
+			"label":  "client preview",
+		},
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/sites", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d, want %d; body = %s", res.Code, http.StatusBadRequest, res.Body.String())
+	}
+}
+
 func TestSitesCreateWithUserBaseDomainPrimaryHostnameConfig(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")

@@ -132,7 +132,7 @@ func (sh *sitesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(err.Error(), "server ") && strings.Contains(err.Error(), "not found"):
 			respondError(w, http.StatusNotFound, err.Error())
-		case strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported site status") || strings.Contains(err.Error(), "primary_hostname_config") || strings.Contains(err.Error(), "use either") || strings.Contains(err.Error(), "valid domain name") || strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "cannot"):
+		case strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported site status") || strings.Contains(err.Error(), "primary_hostname_config") || strings.Contains(err.Error(), "use either") || strings.Contains(err.Error(), "valid domain name") || strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "cannot") || strings.Contains(err.Error(), "fallback resolver hostnames") || strings.Contains(err.Error(), "IPv4 address"):
 			respondError(w, http.StatusBadRequest, err.Error())
 		default:
 			respondError(w, http.StatusInternalServerError, "failed to create site: "+err.Error())
