@@ -112,6 +112,8 @@ func NewHandlerWithOptions(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHa
 
 		sih := &sitesHandler{
 			store:         siteStore,
+			serverStore:   serverStore,
+			jobStore:      jobStore,
 			domainStore:   domainStore,
 			activityStore: activityStore,
 		}

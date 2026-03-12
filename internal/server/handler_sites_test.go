@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/orchestrator"
 )
 
 func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
@@ -158,6 +159,20 @@ func TestSitesCreateWithFallbackResolverPrimaryHostnameConfig(t *testing.T) {
 	}
 	if created["primary_domain"] != "client-preview.203-0-113-10.sslip.io" {
 		t.Fatalf("primary_domain = %v, want %q", created["primary_domain"], "client-preview.203-0-113-10.sslip.io")
+	}
+	if created["deployment_state"] != SiteDeploymentStateDeploying {
+		t.Fatalf("deployment_state = %v, want %q", created["deployment_state"], SiteDeploymentStateDeploying)
+	}
+	jobID, _ := created["last_deploy_job_id"].(string)
+	if jobID == "" {
+		t.Fatal("expected deploy job id in create response")
+	}
+	jobs, err := orchestrator.NewStore(db).ListJobsByServer(context.Background(), serverID)
+	if err != nil {
+		t.Fatalf("list site deploy jobs: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].Kind != string(orchestrator.JobKindDeploySite) {
+		t.Fatalf("jobs = %+v, want single deploy_site job", jobs)
 	}
 }
 

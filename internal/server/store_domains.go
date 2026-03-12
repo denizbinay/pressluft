@@ -248,6 +248,31 @@ func (s *DomainStore) GetByID(ctx context.Context, id string) (*StoredDomain, er
 	return &domains[0], nil
 }
 
+func (s *DomainStore) UpdateRoutingStatus(ctx context.Context, domainID, routingState, routingStatusMessage string, checkedAt time.Time) error {
+	publicID, err := idutil.Normalize(domainID)
+	if err != nil {
+		return err
+	}
+	routingState, err = normalizeDomainRoutingState(routingState)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE domains
+		 SET routing_state = ?, routing_status_message = ?, last_checked_at = ?, updated_at = ?
+		 WHERE id = ?`,
+		routingState,
+		nullableSiteString(strings.TrimSpace(routingStatusMessage)),
+		checkedAt.UTC().Format(time.RFC3339),
+		time.Now().UTC().Format(time.RFC3339),
+		publicID,
+	)
+	if err != nil {
+		return fmt.Errorf("update domain routing status: %w", err)
+	}
+	return nil
+}
+
 func (s *DomainStore) Update(ctx context.Context, id string, in UpdateDomainInput) (*StoredDomain, error) {
 	return s.updateTx(ctx, nil, id, in)
 }

@@ -144,6 +144,43 @@ export const platformContract = {
       ]
     },
     {
+      "kind": "deploy_site",
+      "label": "Site deployment",
+      "allowed_statuses": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed"
+      ],
+      "destructive": false,
+      "experimental": false,
+      "execution_path": "worker",
+      "dispatch_policy": {
+        "queue_server": false
+      },
+      "timeout_seconds": 1500,
+      "retry_limit": 0,
+      "recovery": "mark failed on worker interruption; inspect site files, database, and routing before retrying manually",
+      "steps": [
+        {
+          "key": "validate",
+          "label": "Validating request"
+        },
+        {
+          "key": "deploy",
+          "label": "Deploying site"
+        },
+        {
+          "key": "verify",
+          "label": "Verifying site routing"
+        },
+        {
+          "key": "finalize",
+          "label": "Finalizing"
+        }
+      ]
+    },
+    {
       "kind": "manage_volume",
       "label": "Volume management",
       "allowed_statuses": [

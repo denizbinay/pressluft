@@ -182,6 +182,15 @@ func (dh *domainsHandler) handleUpdate(w http.ResponseWriter, r *http.Request, d
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	current, err := dh.store.GetByID(r.Context(), domainID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if current.SiteID != "" && (req.DNSState != nil || req.RoutingState != nil || req.DNSStatusMessage != nil || req.RoutingStatusMessage != nil || req.LastCheckedAt != nil) {
+		respondError(w, http.StatusBadRequest, "attached site hostnames manage DNS and routing state automatically")
+		return
+	}
 	domain, err := dh.store.Update(r.Context(), domainID, UpdateDomainInput{
 		Hostname:             req.Hostname,
 		Kind:                 req.Kind,

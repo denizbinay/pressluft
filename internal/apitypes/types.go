@@ -277,6 +277,10 @@ type StoredSite struct {
 	Name             string `json:"name"`
 	PrimaryDomain    string `json:"primary_domain,omitempty"`
 	Status           string `json:"status"`
+	DeploymentState  string `json:"deployment_state"`
+	DeploymentStatus string `json:"deployment_status_message,omitempty"`
+	LastDeployJobID  string `json:"last_deploy_job_id,omitempty"`
+	LastDeployedAt   string `json:"last_deployed_at,omitempty"`
 	WordPressPath    string `json:"wordpress_path,omitempty"`
 	PHPVersion       string `json:"php_version,omitempty"`
 	WordPressVersion string `json:"wordpress_version,omitempty"`

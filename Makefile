@@ -49,6 +49,7 @@ INTEGRATION_TEST_PACKAGES := \
 	./internal/server/profiles
 
 ANSIBLE_PLAYBOOKS := \
+	ops/ansible/playbooks/deploy-site.yml \
 	ops/ansible/playbooks/hetzner/delete.yml \
 	ops/ansible/playbooks/hetzner/firewalls.yml \
 	ops/ansible/playbooks/hetzner/provision.yml \

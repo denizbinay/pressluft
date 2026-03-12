@@ -44,6 +44,7 @@ const (
 	JobKindUpdateFirewalls JobKind = "update_firewalls"
 	JobKindManageVolume    JobKind = "manage_volume"
 	JobKindRestartService  JobKind = "restart_service"
+	JobKindDeploySite      JobKind = "deploy_site"
 )
 
 type JobKindSpec struct {
@@ -82,6 +83,7 @@ var supportedJobKinds = []JobKindSpec{
 	{Kind: JobKindUpdateFirewalls, Label: "Firewall update", AllowedStatuses: []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed}, Experimental: true, ExecutionPath: "worker", DispatchPolicy: DispatchPolicy{QueueServer: true}, Timeout: 15 * time.Minute, RetryLimit: 0, Recovery: "mark failed on worker interruption; retry manually after inspection", Steps: []WorkflowStep{{Key: "validate", Label: "Validating request"}, {Key: "update_firewalls", Label: "Updating firewalls"}, {Key: "finalize", Label: "Finalizing"}}, ValidatePayload: validateUpdateFirewallsPayload},
 	{Kind: JobKindManageVolume, Label: "Volume management", AllowedStatuses: []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed}, Experimental: true, ExecutionPath: "worker", DispatchPolicy: DispatchPolicy{QueueServer: true}, Timeout: 20 * time.Minute, RetryLimit: 0, Recovery: "mark failed on worker interruption; retry manually after inspection", Steps: []WorkflowStep{{Key: "validate", Label: "Validating request"}, {Key: "manage_volume", Label: "Managing volume"}, {Key: "finalize", Label: "Finalizing"}}, ValidatePayload: validateManageVolumePayload},
 	{Kind: JobKindRestartService, Label: "Service restart", AllowedStatuses: []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed}, Experimental: true, ExecutionPath: "agent", DispatchPolicy: DispatchPolicy{QueueServer: true}, Timeout: 2 * time.Minute, RetryLimit: 0, Recovery: "mark failed on worker interruption or timeout; late agent results are ignored", Steps: []WorkflowStep{{Key: "validate", Label: "Validating request"}, {Key: "restart_service", Label: "Restarting service"}, {Key: "finalize", Label: "Finalizing"}}, ValidatePayload: validateRestartServicePayload},
+	{Kind: JobKindDeploySite, Label: "Site deployment", AllowedStatuses: []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusSucceeded, JobStatusFailed}, ExecutionPath: "worker", DispatchPolicy: DispatchPolicy{QueueServer: false}, Timeout: 25 * time.Minute, RetryLimit: 0, Recovery: "mark failed on worker interruption; inspect site files, database, and routing before retrying manually", Steps: []WorkflowStep{{Key: "validate", Label: "Validating request"}, {Key: "deploy", Label: "Deploying site"}, {Key: "verify", Label: "Verifying site routing"}, {Key: "finalize", Label: "Finalizing"}}, ValidatePayload: validateDeploySitePayload},
 }
 
 // SupportedJobKinds returns the current canonical job-kind contract.
@@ -190,6 +192,10 @@ type ManageVolumePayload struct {
 	Automount  *bool  `json:"automount,omitempty"`
 }
 
+type DeploySitePayload struct {
+	SiteID string `json:"site_id"`
+}
+
 func MarshalConfigureServerPayload(in ConfigureServerPayload) (string, error) {
 	return marshalNormalizedPayload(in)
 }
@@ -286,6 +292,20 @@ func UnmarshalManageVolumePayload(raw string) (ManageVolumePayload, error) {
 	out.VolumeName = strings.TrimSpace(out.VolumeName)
 	out.Location = strings.TrimSpace(out.Location)
 	out.State = strings.TrimSpace(out.State)
+	return out, nil
+}
+
+func MarshalDeploySitePayload(in DeploySitePayload) (string, error) {
+	in.SiteID = strings.TrimSpace(in.SiteID)
+	return marshalNormalizedPayload(in)
+}
+
+func UnmarshalDeploySitePayload(raw string) (DeploySitePayload, error) {
+	var out DeploySitePayload
+	if err := unmarshalNormalizedPayload(raw, &out); err != nil {
+		return DeploySitePayload{}, err
+	}
+	out.SiteID = strings.TrimSpace(out.SiteID)
 	return out, nil
 }
 
@@ -454,6 +474,20 @@ func validateRestartServicePayload(payload json.RawMessage, serverID string) (st
 		return "", fmt.Errorf("invalid restart_service payload: %w", err)
 	}
 	return string(normalizedPayload), nil
+}
+
+func validateDeploySitePayload(payload json.RawMessage, serverID string) (string, error) {
+	if err := requireServerID(serverID, JobKindDeploySite); err != nil {
+		return "", err
+	}
+	var parsed DeploySitePayload
+	if err := json.Unmarshal(bytes.TrimSpace(defaultPayloadObject(payload)), &parsed); err != nil {
+		return "", fmt.Errorf("invalid deploy_site payload: %w", err)
+	}
+	if strings.TrimSpace(parsed.SiteID) == "" {
+		return "", fmt.Errorf("site_id is required for deploy_site job")
+	}
+	return MarshalDeploySitePayload(parsed)
 }
 
 func defaultPayloadObject(payload json.RawMessage) []byte {

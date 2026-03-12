@@ -34,7 +34,7 @@ func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
 	}}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
 	}, logger)
 
@@ -60,7 +60,7 @@ func TestExecutorDeleteServerFailureLeavesRecoverableStatus(t *testing.T) {
 	}}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "delete.yml"): errors.New("provider delete failed")}}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
 	}, logger)
 
@@ -89,7 +89,7 @@ func TestExecutorRebuildServerSuccessReconfiguresAndUpdatesImage(t *testing.T) {
 	}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		PlaybookBasePath:      "playbooks",
 		ConfigurePlaybookPath: "configure.yml",
 		ControlPlaneURL:       "https://control.example.test",
@@ -162,7 +162,7 @@ func TestExecutorRebuildServerRejectsUnavailableProfile(t *testing.T) {
 	}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		PlaybookBasePath:      "playbooks",
 		ConfigurePlaybookPath: "configure.yml",
 		ControlPlaneURL:       "https://control.example.test",
@@ -195,7 +195,7 @@ func TestExecutorResizeServerFailureMarksFailed(t *testing.T) {
 	}}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{filepath.Join("playbooks", "hetzner", "resize.yml"): errors.New("provider resize failed")}}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		PlaybookBasePath: "playbooks",
 	}, logger)
 
@@ -243,7 +243,7 @@ func TestExecutorConfigureServerFailureMarksSetupDegraded(t *testing.T) {
 	}
 	providerStore := &fakeProviderStore{provider: &provider.StoredProvider{ID: "00000000-0000-7000-8000-000000000011", Type: "hetzner", APIToken: "token"}}
 	runner := &fakeRunner{failPlaybooks: map[string]error{"configure.yml": errors.New("configure failed")}}
-	executor := NewExecutor(jobStore, serverStore, providerStore, nil, runner, ExecutorConfig{
+	executor := NewExecutor(jobStore, serverStore, providerStore, nil, nil, nil, runner, ExecutorConfig{
 		ConfigurePlaybookPath: "configure.yml",
 		ControlPlaneURL:       "http://control.example.test",
 		ExecutionMode:         platform.ExecutionModeDev,

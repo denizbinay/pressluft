@@ -46,6 +46,19 @@ const siteStatusMeta = (status: StoredSite["status"]) => {
   }
 };
 
+const siteDeploymentMeta = (state: StoredSite["deployment_state"]) => {
+  switch (state) {
+    case "ready":
+      return { label: "Live", className: "border-primary/30 bg-primary/10 text-primary" };
+    case "failed":
+      return { label: "Failed", className: "border-destructive/30 bg-destructive/10 text-destructive" };
+    case "deploying":
+      return { label: "Deploying", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200" };
+    default:
+      return { label: "Pending", className: "border-border/60 bg-muted/70 text-muted-foreground" };
+  }
+};
+
 const siteStats = computed(() => {
   const items = sites.value;
   return {
@@ -302,8 +315,14 @@ watch(userBaseDomains, (value) => {
                     <Badge variant="outline" :class="siteStatusMeta(site.status).className">
                       {{ siteStatusMeta(site.status).label }}
                     </Badge>
+                    <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">
+                      {{ siteDeploymentMeta(site.deployment_state).label }}
+                    </Badge>
                   </div>
                   <p class="mt-1 text-sm text-muted-foreground">{{ site.primary_domain || "No primary hostname yet" }}</p>
+                  <p v-if="site.deployment_status_message" class="mt-2 text-sm text-muted-foreground">
+                    {{ site.deployment_status_message }}
+                  </p>
                   <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">{{ site.server_name }}</span>
                     <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">PHP {{ site.php_version || "TBD" }}</span>
@@ -454,7 +473,7 @@ watch(userBaseDomains, (value) => {
             </div>
 
             <Button type="submit" class="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !canCreateSite">
-              {{ saving ? "Creating site..." : "Create site record" }}
+              {{ saving ? "Creating site..." : "Create and deploy site" }}
             </Button>
           </form>
         </CardContent>

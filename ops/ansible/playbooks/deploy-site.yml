@@ -1,0 +1,191 @@
+---
+- name: Pressluft site deployment flow
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    site_path_clean: "{{ site_path | trim }}"
+    site_current_path: "{{ site_path_clean if (site_path_clean | length > 0) else ('/srv/www/pressluft/sites/' ~ site_id ~ '/current') }}"
+    site_root_path: "{{ site_current_path | regex_replace('/+$', '') }}"
+    site_public_path: "{{ site_root_path }}/public"
+    site_config_dir: /etc/pressluft/sites
+    site_secret_file: "{{ site_config_dir }}/{{ site_id }}.env"
+    site_vhost_path: "/etc/nginx/sites-available/pressluft-site-{{ site_id }}.conf"
+    site_vhost_link: "/etc/nginx/sites-enabled/pressluft-site-{{ site_id }}.conf"
+    site_cert_dir: "/var/lib/pressluft/certs/{{ hostname }}"
+    php_fpm_socket: "/run/php/php{{ php_version | default('8.3') }}-fpm.sock"
+  tasks:
+    - name: Validate supported site deploy contract inputs
+      ansible.builtin.assert:
+        that:
+          - profile_key == 'nginx-stack'
+          - site_id | length > 0
+          - site_name | length > 0
+          - hostname | length > 0
+          - db_name | length > 0
+          - db_user | length > 0
+          - db_password | length > 0
+          - admin_user | length > 0
+          - admin_password | length > 0
+          - admin_email | length > 0
+          - secret_key | length > 0
+
+    - name: Ensure site directories exist
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ site_root_path }}"
+          owner: www-data
+          group: www-data
+          mode: '0755'
+        - path: "{{ site_public_path }}"
+          owner: www-data
+          group: www-data
+          mode: '0755'
+        - path: "{{ site_config_dir }}"
+          owner: root
+          group: www-data
+          mode: '0750'
+
+    - name: Ensure site database exists
+      ansible.builtin.command:
+        cmd: >-
+          mysql -e "CREATE DATABASE IF NOT EXISTS \`{{ db_name }}\`
+          CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+    - name: Ensure site database user exists
+      ansible.builtin.command:
+        cmd: >-
+          mysql -e "CREATE USER IF NOT EXISTS '{{ db_user }}'@'localhost'
+          IDENTIFIED BY '{{ db_password }}'"
+
+    - name: Ensure database grants are applied
+      ansible.builtin.command:
+        cmd: >-
+          mysql -e "GRANT ALL PRIVILEGES ON \`{{ db_name }}\`.* TO '{{ db_user }}'@'localhost';
+          FLUSH PRIVILEGES"
+
+    - name: Download WordPress core
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: >-
+          wp --path={{ site_public_path }} --allow-root core download
+          --force --skip-content --version={{ wordpress_version | default('6.8') }}
+
+    - name: Write site secret record
+      ansible.builtin.copy:
+        dest: "{{ site_secret_file }}"
+        owner: root
+        group: www-data
+        mode: '0640'
+        content: |
+          SITE_ID={{ site_id }}
+          HOSTNAME={{ hostname }}
+          DB_NAME={{ db_name }}
+          DB_USER={{ db_user }}
+          DB_PASSWORD={{ db_password }}
+          ADMIN_USER={{ admin_user }}
+          ADMIN_PASSWORD={{ admin_password }}
+          ADMIN_EMAIL={{ admin_email }}
+          SECRET_KEY={{ secret_key }}
+
+    - name: Render WordPress config
+      ansible.builtin.template:
+        src: wp-config.php.j2
+        dest: "{{ site_public_path }}/wp-config.php"
+        owner: root
+        group: www-data
+        mode: '0640'
+
+    - name: Detect existing WordPress installation
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: wp --path={{ site_public_path }} --allow-root core is-installed
+      register: pressluft_wp_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Install WordPress when absent
+      when: pressluft_wp_installed.rc != 0
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: >-
+          wp --path={{ site_public_path }} --allow-root core install
+          --url=https://{{ hostname }}
+          --title={{ site_name | quote }}
+          --admin_user={{ admin_user }}
+          --admin_password={{ admin_password }}
+          --admin_email={{ admin_email }}
+          --skip-email
+
+    - name: Keep WordPress URLs aligned with hostname
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: >-
+          wp --path={{ site_public_path }} --allow-root option update {{ item.key }}
+          https://{{ hostname }}
+      loop:
+        - key: home
+        - key: siteurl
+
+    - name: Render nginx site config with default TLS
+      ansible.builtin.template:
+        src: site-nginx.conf.j2
+        dest: "{{ site_vhost_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        ssl_certificate_path: /etc/nginx/ssl/pressluft-default.crt
+        ssl_certificate_key_path: /etc/nginx/ssl/pressluft-default.key
+      notify: reload nginx
+
+    - name: Enable nginx site config
+      ansible.builtin.file:
+        src: "{{ site_vhost_path }}"
+        dest: "{{ site_vhost_link }}"
+        state: link
+      notify: reload nginx
+
+    - name: Flush nginx config before ACME issue
+      ansible.builtin.meta: flush_handlers
+
+    - name: Issue TLS certificate for site hostname
+      ansible.builtin.command:
+        cmd: /usr/local/bin/pressluft-acme-issue {{ hostname }}
+
+    - name: Render nginx site config with live certificate
+      ansible.builtin.template:
+        src: site-nginx.conf.j2
+        dest: "{{ site_vhost_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        ssl_certificate_path: "{{ site_cert_dir }}/fullchain.pem"
+        ssl_certificate_key_path: "{{ site_cert_dir }}/privkey.pem"
+      notify: reload nginx
+
+    - name: Ensure site file ownership is correct
+      ansible.builtin.file:
+        path: "{{ site_root_path }}"
+        owner: www-data
+        group: www-data
+        recurse: true
+
+    - name: Validate nginx site configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Flush handlers after site deployment
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

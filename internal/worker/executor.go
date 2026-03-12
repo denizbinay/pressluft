@@ -2,9 +2,12 @@ package worker
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -40,11 +43,23 @@ type ProviderStore interface {
 	GetByID(ctx context.Context, id string) (*provider.StoredProvider, error)
 }
 
+type SiteStore interface {
+	GetByID(ctx context.Context, id string) (*serverpkg.StoredSite, error)
+	UpdateDeployment(ctx context.Context, siteID, deploymentState, deploymentStatus, lastDeployJobID, lastDeployedAt string) error
+}
+
+type DomainStore interface {
+	ListBySite(ctx context.Context, siteID string) ([]serverpkg.StoredDomain, error)
+	UpdateRoutingStatus(ctx context.Context, domainID, routingState, routingStatusMessage string, checkedAt time.Time) error
+}
+
 // Executor runs job steps and emits events.
 type Executor struct {
 	jobStore          *orchestrator.Store
 	serverStore       ServerStore
 	providerStore     ProviderStore
+	siteStore         SiteStore
+	domainStore       DomainStore
 	activityStore     *activity.Store
 	runner            runner.Runner
 	agentRunner       AgentJobRunner
@@ -61,12 +76,13 @@ type Executor struct {
 // Each provider supplies its own set of playbooks following this naming
 // convention, making it obvious where to add playbooks for a new provider.
 const (
-	playbookProvision = "provision.yml"
-	playbookDelete    = "delete.yml"
-	playbookRebuild   = "rebuild.yml"
-	playbookResize    = "resize.yml"
-	playbookFirewalls = "firewalls.yml"
-	playbookVolume    = "volume.yml"
+	playbookProvision  = "provision.yml"
+	playbookDelete     = "delete.yml"
+	playbookRebuild    = "rebuild.yml"
+	playbookResize     = "resize.yml"
+	playbookFirewalls  = "firewalls.yml"
+	playbookVolume     = "volume.yml"
+	playbookSiteDeploy = "deploy-site.yml"
 )
 
 // ExecutorConfig defines runner configuration.
@@ -100,6 +116,8 @@ func NewExecutor(
 	jobStore *orchestrator.Store,
 	serverStore ServerStore,
 	providerStore ProviderStore,
+	siteStore SiteStore,
+	domainStore DomainStore,
 	activityStore *activity.Store,
 	runner runner.Runner,
 	config ExecutorConfig,
@@ -109,6 +127,8 @@ func NewExecutor(
 		jobStore:          jobStore,
 		serverStore:       serverStore,
 		providerStore:     providerStore,
+		siteStore:         siteStore,
+		domainStore:       domainStore,
 		activityStore:     activityStore,
 		runner:            runner,
 		agentRunner:       config.AgentRunner,
@@ -126,6 +146,10 @@ func NewExecutor(
 // The convention is: <playbookBasePath>/<providerType>/<filename>.
 func (e *Executor) providerPlaybook(providerType, filename string) string {
 	return filepath.Join(e.playbookBasePath, providerType, filename)
+}
+
+func (e *Executor) siteDeployPlaybook() string {
+	return filepath.Join(e.playbookBasePath, playbookSiteDeploy)
 }
 
 // Execute runs all steps for a job. It handles state transitions and event emission.
@@ -147,6 +171,8 @@ func (e *Executor) Execute(ctx context.Context, job *orchestrator.Job) error {
 		return e.executeManageVolume(ctx, job)
 	case string(orchestrator.JobKindRestartService):
 		return e.executeAgentJob(ctx, job)
+	case string(orchestrator.JobKindDeploySite):
+		return e.executeDeploySite(ctx, job)
 	default:
 		return e.failJob(ctx, job, fmt.Sprintf("unknown job kind: %s", job.Kind))
 	}
@@ -914,6 +940,252 @@ func (e *Executor) executeManageVolume(ctx context.Context, job *orchestrator.Jo
 	return e.completeJob(ctx, job, "finalize")
 }
 
+func (e *Executor) executeDeploySite(ctx context.Context, job *orchestrator.Job) error {
+	if strings.TrimSpace(job.ServerID) == "" {
+		return e.failJob(ctx, job, "server_id is required for site deployment job")
+	}
+	if e.siteStore == nil {
+		return e.failJob(ctx, job, "site store not configured")
+	}
+	if e.domainStore == nil {
+		return e.failJob(ctx, job, "domain store not configured")
+	}
+	if e.runner == nil {
+		return e.failJob(ctx, job, "ansible runner not configured")
+	}
+
+	if _, err := e.jobStore.TransitionJob(ctx, job.ID, orchestrator.TransitionInput{ToStatus: orchestrator.JobStatusRunning, CurrentStep: "validate"}); err != nil {
+		return fmt.Errorf("transition to running: %w", err)
+	}
+
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventJobStarted,
+		Category:           activity.CategoryJob,
+		Level:              activity.LevelInfo,
+		ResourceType:       activity.ResourceJob,
+		ResourceID:         job.ID,
+		ParentResourceType: activity.ResourceSite,
+		ParentResourceID:   e.siteIDForJob(*job),
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("%s started", orchestrator.JobKindLabel(job.Kind)),
+	})
+
+	payload, err := orchestrator.UnmarshalDeploySitePayload(job.Payload)
+	if err != nil {
+		return e.failJob(ctx, job, err.Error())
+	}
+	site, err := e.siteStore.GetByID(ctx, payload.SiteID)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("site not found: %v", err))
+	}
+	server, err := e.serverStore.GetByID(ctx, job.ServerID)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("server not found: %v", err))
+	}
+	primaryDomain, err := e.primaryDomainForSite(ctx, site.ID)
+	if err != nil {
+		return e.failJob(ctx, job, err.Error())
+	}
+	if strings.TrimSpace(site.PrimaryDomain) == "" {
+		return e.failJob(ctx, job, "site primary hostname is required for deployment")
+	}
+
+	_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateDeploying, fmt.Sprintf("Deploying WordPress to %s.", primaryDomain.Hostname), job.ID, "")
+	_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStatePending, "Applying server routing for this hostname.", time.Now().UTC())
+
+	e.emitStepStart(ctx, job.ID, "validate", "Validating site deployment inputs")
+	if strings.TrimSpace(server.ProfileKey) != "nginx-stack" {
+		return e.failJob(ctx, job, fmt.Sprintf("server profile %q is not supported for site deployment", server.ProfileKey))
+	}
+	if server.Status != platform.ServerStatusReady {
+		return e.failJob(ctx, job, "server must be ready before deploying a site")
+	}
+	if server.SetupState != platform.SetupStateReady {
+		return e.failJob(ctx, job, "server setup must be ready before deploying a site")
+	}
+	storedKey, err := e.serverStore.GetKey(ctx, server.ID)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("failed to read SSH key: %v", err))
+	}
+	if storedKey == nil {
+		return e.failJob(ctx, job, "missing SSH key for server")
+	}
+	decryptedKey, err := security.Decrypt(storedKey.PrivateKeyEncrypted)
+	if err != nil {
+		return e.failJob(ctx, job, fmt.Sprintf("failed to decrypt SSH key: %v", err))
+	}
+	e.emitStepComplete(ctx, job.ID, "validate", "Site deployment request validated")
+
+	e.updateStep(ctx, job.ID, "deploy")
+	e.emitStepStart(ctx, job.ID, "deploy", "Creating site files, database, and WordPress config")
+	if err := e.runSiteDeployPlaybook(ctx, job.ID, server, site, primaryDomain, string(decryptedKey)); err != nil {
+		_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateIssue, err.Error(), time.Now().UTC())
+		_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateFailed, err.Error(), job.ID, "")
+		return e.failJob(ctx, job, fmt.Sprintf("site deploy failed: %v", err))
+	}
+	e.emitStepComplete(ctx, job.ID, "deploy", "Site files and WordPress installation applied")
+
+	e.updateStep(ctx, job.ID, "verify")
+	e.emitStepStart(ctx, job.ID, "verify", "Verifying deployed hostname serves the site")
+	if err := e.verifySiteRouting(ctx, *site, *primaryDomain); err != nil {
+		_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateIssue, err.Error(), time.Now().UTC())
+		_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateFailed, err.Error(), job.ID, "")
+		return e.failJob(ctx, job, fmt.Sprintf("site verification failed: %v", err))
+	}
+	_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateReady, "Hostname routing verified over HTTPS.", time.Now().UTC())
+	e.emitStepComplete(ctx, job.ID, "verify", "Hostname routing verified")
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	e.updateStep(ctx, job.ID, "finalize")
+	e.emitStepStart(ctx, job.ID, "finalize", "Finalizing site deployment")
+	_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateReady, fmt.Sprintf("Site is live at https://%s/.", primaryDomain.Hostname), job.ID, now)
+	e.emitStepComplete(ctx, job.ID, "finalize", "Site deployment complete")
+	e.emitActivity(ctx, activity.EmitInput{
+		EventType:          activity.EventSiteDeployed,
+		Category:           activity.CategorySite,
+		Level:              activity.LevelSuccess,
+		ResourceType:       activity.ResourceSite,
+		ResourceID:         site.ID,
+		ParentResourceType: activity.ResourceServer,
+		ParentResourceID:   site.ServerID,
+		ActorType:          activity.ActorSystem,
+		Title:              fmt.Sprintf("Site '%s' deployed", site.Name),
+		Message:            fmt.Sprintf("WordPress is live at https://%s/.", primaryDomain.Hostname),
+	})
+	return e.completeJob(ctx, job, "finalize")
+}
+
+func (e *Executor) primaryDomainForSite(ctx context.Context, siteID string) (*serverpkg.StoredDomain, error) {
+	domains, err := e.domainStore.ListBySite(ctx, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("list site domains: %w", err)
+	}
+	for i := range domains {
+		if domains[i].IsPrimary {
+			return &domains[i], nil
+		}
+	}
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("site has no assigned hostname")
+	}
+	return &domains[0], nil
+}
+
+func (e *Executor) runSiteDeployPlaybook(ctx context.Context, jobID string, server *serverpkg.StoredServer, site *serverpkg.StoredSite, primaryDomain *serverpkg.StoredDomain, privateKey string) error {
+	if server == nil || site == nil || primaryDomain == nil {
+		return fmt.Errorf("site deployment context is incomplete")
+	}
+	workspace, err := os.MkdirTemp("", "pressluft-site-deploy-")
+	if err != nil {
+		return fmt.Errorf("failed to create deploy workspace: %w", err)
+	}
+	defer os.RemoveAll(workspace)
+
+	privateKeyPath := filepath.Join(workspace, "server.key")
+	if err := os.WriteFile(privateKeyPath, []byte(privateKey), 0o600); err != nil {
+		return fmt.Errorf("failed to write private key: %w", err)
+	}
+	inventoryPath := filepath.Join(workspace, "deploy.ini")
+	inventory := fmt.Sprintf("server ansible_host=%s ansible_user=root ansible_ssh_private_key_file=%s ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\n", server.IPv4, privateKeyPath)
+	if err := os.WriteFile(inventoryPath, []byte(inventory), 0o600); err != nil {
+		return fmt.Errorf("failed to write deploy inventory: %w", err)
+	}
+
+	dbSuffix := strings.ReplaceAll(site.ID[:8], "-", "")
+	dbName := "pl_" + dbSuffix
+	dbUser := "pl_" + dbSuffix
+	dbPassword, err := randomHex(24)
+	if err != nil {
+		return fmt.Errorf("generate database password: %w", err)
+	}
+	adminPassword, err := randomHex(24)
+	if err != nil {
+		return fmt.Errorf("generate admin password: %w", err)
+	}
+	secretKey, err := randomHex(32)
+	if err != nil {
+		return fmt.Errorf("generate secret key: %w", err)
+	}
+	deployPath := effectiveWordPressPath(*site)
+	request := runner.Request{
+		JobID:         jobID,
+		InventoryPath: inventoryPath,
+		PlaybookPath:  e.siteDeployPlaybook(),
+		ExtraVars: map[string]string{
+			"profile_key":       server.ProfileKey,
+			"site_id":           site.ID,
+			"site_name":         site.Name,
+			"hostname":          primaryDomain.Hostname,
+			"site_path":         deployPath,
+			"php_version":       firstNonEmpty(site.PHPVersion, "8.3"),
+			"wordpress_version": firstNonEmpty(site.WordPressVersion, "6.8"),
+			"db_name":           dbName,
+			"db_user":           dbUser,
+			"db_password":       dbPassword,
+			"admin_user":        "pressluft",
+			"admin_password":    adminPassword,
+			"admin_email":       fmt.Sprintf("admin@%s", primaryDomain.Hostname),
+			"secret_key":        secretKey,
+		},
+	}
+	return e.runner.Run(ctx, request, &runnerEventSink{jobStore: e.jobStore, jobID: jobID, logger: e.logger})
+}
+
+func (e *Executor) verifySiteRouting(ctx context.Context, site serverpkg.StoredSite, primaryDomain serverpkg.StoredDomain) error {
+	client := &http.Client{Timeout: 20 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+primaryDomain.Hostname+"/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("unexpected HTTPS status %d", resp.StatusCode)
+	}
+	if got := strings.TrimSpace(resp.Header.Get("X-Pressluft-Site-ID")); got != site.ID {
+		return fmt.Errorf("hostname did not route to the expected site")
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+func effectiveWordPressPath(site serverpkg.StoredSite) string {
+	path := strings.TrimSpace(site.WordPressPath)
+	if path == "" || path == "/srv/www/" {
+		return filepath.ToSlash(filepath.Join("/srv/www/pressluft/sites", site.ID, "current"))
+	}
+	return path
+}
+
+func randomHex(length int) (string, error) {
+	if length <= 0 {
+		return "", nil
+	}
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	const alphabet = "0123456789abcdef"
+	out := make([]byte, length)
+	for i := range out {
+		out[i] = alphabet[int(buf[i])%len(alphabet)]
+	}
+	return string(out), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (e *Executor) runConfigurePlaybook(ctx context.Context, jobID string, server *serverpkg.StoredServer, ipv4, privateKey string, storedKey *serverpkg.StoredServerKey) error {
 	if server == nil {
 		return fmt.Errorf("server is required")
@@ -1082,7 +1354,10 @@ func (e *Executor) completeJob(ctx context.Context, job *orchestrator.Job, step 
 		ActorType:    activity.ActorSystem,
 		Title:        fmt.Sprintf("%s completed", orchestrator.JobKindLabel(job.Kind)),
 	}
-	if job.ServerID != "" {
+	if siteID := e.siteIDForJob(*job); siteID != "" {
+		input.ParentResourceType = activity.ResourceSite
+		input.ParentResourceID = siteID
+	} else if job.ServerID != "" {
 		input.ParentResourceType = activity.ResourceServer
 		input.ParentResourceID = job.ServerID
 	}
@@ -1095,7 +1370,7 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 	corr := observability.Correlation{JobID: job.ID, ServerID: job.ServerID, CommandID: derefString(job.CommandID)}
 	e.logger.Error("job failed", corr.LogArgs("error", errMsg)...)
 
-	if job.ServerID != "" {
+	if job.ServerID != "" && job.Kind != string(orchestrator.JobKindDeploySite) {
 		if job.Kind == string(orchestrator.JobKindConfigureServer) {
 			e.setSetupState(ctx, job.ServerID, platform.SetupStateDegraded, errMsg)
 		} else if err := e.serverStore.UpdateStatus(ctx, job.ServerID, platform.ServerStatusFailed); err != nil {
@@ -1126,7 +1401,10 @@ func (e *Executor) failJob(ctx context.Context, job *orchestrator.Job, errMsg st
 		Message:           errMsg,
 		RequiresAttention: true,
 	}
-	if job.ServerID != "" {
+	if siteID := e.siteIDForJob(*job); siteID != "" {
+		input.ParentResourceType = activity.ResourceSite
+		input.ParentResourceID = siteID
+	} else if job.ServerID != "" {
 		input.ParentResourceType = activity.ResourceServer
 		input.ParentResourceID = job.ServerID
 	}
@@ -1142,6 +1420,17 @@ func (e *Executor) updateStep(ctx context.Context, jobID string, step string) {
 	}); err != nil {
 		e.logger.Error("job step transition persistence failed", "job_id", jobID, "step", step, "error", err)
 	}
+}
+
+func (e *Executor) siteIDForJob(job orchestrator.Job) string {
+	if job.Kind != string(orchestrator.JobKindDeploySite) {
+		return ""
+	}
+	payload, err := orchestrator.UnmarshalDeploySitePayload(job.Payload)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.SiteID)
 }
 
 func (e *Executor) emitStepStart(ctx context.Context, jobID string, step, message string) {

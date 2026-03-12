@@ -1,0 +1,65 @@
+server {
+    listen 80;
+    listen [::]:80;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name {{ hostname }};
+
+    root {{ site_public_path }};
+    index index.php index.html;
+
+    access_log /var/log/nginx/pressluft-site-{{ site_id }}.access.log pressluft_main;
+    error_log /var/log/nginx/pressluft-site-{{ site_id }}.error.log warn;
+
+    ssl_certificate {{ ssl_certificate_path }};
+    ssl_certificate_key {{ ssl_certificate_key_path }};
+
+    add_header X-Pressluft-Site-ID {{ site_id }} always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/pressluft/acme-webroot;
+        allow all;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location = /wp-config.php {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location = /xmlrpc.php {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* /(?:uploads|files)/.*\.php$ {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(?:css|js|gif|ico|jpe?g|png|svg|webp|avif|woff2?)$ {
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:{{ php_fpm_socket }};
+    }
+}

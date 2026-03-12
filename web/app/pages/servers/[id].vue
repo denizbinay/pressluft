@@ -609,6 +609,19 @@ const siteStatusClass = (status: StoredSite["status"]) => {
   }
 };
 
+const siteDeploymentClass = (state: StoredSite["deployment_state"]) => {
+  switch (state) {
+    case "ready":
+      return "border-primary/30 bg-primary/10 text-primary";
+    case "failed":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "deploying":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200";
+    default:
+      return "border-border/60 bg-muted/70 text-muted-foreground";
+  }
+};
+
 const retrySetup = async () => {
   if (!serverId.value) return;
   setupRetryState.loading = true;
@@ -1486,9 +1499,15 @@ onUnmounted(() => {
                             <Badge variant="outline" :class="siteStatusClass(site.status)">
                               {{ site.status }}
                             </Badge>
+                            <Badge variant="outline" :class="siteDeploymentClass(site.deployment_state)">
+                              {{ site.deployment_state }}
+                            </Badge>
                           </div>
                           <p class="mt-1 text-sm text-muted-foreground">
                             {{ site.primary_domain || "No primary hostname recorded" }}
+                          </p>
+                          <p v-if="site.deployment_status_message" class="mt-2 text-xs text-muted-foreground">
+                            {{ site.deployment_status_message }}
                           </p>
                         </div>
                         <svg

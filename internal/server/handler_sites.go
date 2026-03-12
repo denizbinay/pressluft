@@ -1,19 +1,28 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"pressluft/internal/activity"
 	"pressluft/internal/apitypes"
+	"pressluft/internal/orchestrator"
+	"pressluft/internal/platform"
 )
 
 type sitesHandler struct {
 	store           *SiteStore
+	serverStore     *ServerStore
+	jobStore        *orchestrator.Store
 	domainStore     *DomainStore
 	activityStore   *activity.Store
 	activityHandler *activityHandler
+}
+
+type deploySiteJobPayload struct {
+	SiteID string `json:"site_id"`
 }
 
 func (sh *sitesHandler) route(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +127,10 @@ func (sh *sitesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if status == "" {
 		status = SiteStatusDraft
 	}
+	if err := sh.ensureCreateTargetSupported(r, req.ServerID); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	id, err := sh.store.Create(r.Context(), CreateSiteInput{
 		ServerID:              req.ServerID,
 		Name:                  req.Name,
@@ -160,7 +173,52 @@ func (sh *sitesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 			Message:            "The site is now tracked as a first-class resource in the control plane.",
 		})
 	}
+	if sh.jobStore != nil && strings.TrimSpace(site.PrimaryDomain) != "" {
+		payload, err := json.Marshal(deploySiteJobPayload{SiteID: site.ID})
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to queue site deployment: marshal payload")
+			return
+		}
+		job, err := sh.jobStore.CreateJob(r.Context(), orchestrator.CreateJobInput{
+			Kind:     string(orchestrator.JobKindDeploySite),
+			ServerID: site.ServerID,
+			Payload:  string(payload),
+		})
+		if err != nil {
+			_ = sh.store.UpdateDeployment(r.Context(), site.ID, SiteDeploymentStateFailed, "Failed to queue site deployment.", "", "")
+			respondError(w, http.StatusInternalServerError, "failed to queue site deployment: "+err.Error())
+			return
+		}
+		_, _ = sh.jobStore.AppendEvent(r.Context(), job.ID, orchestrator.CreateEventInput{
+			EventType: orchestrator.JobEventTypeCreated,
+			Level:     "info",
+			Status:    string(job.Status),
+			Message:   "Site deployment accepted and queued",
+		})
+		_ = sh.store.UpdateDeployment(r.Context(), site.ID, SiteDeploymentStateDeploying, "Site deployment queued.", job.ID, "")
+		site, _ = sh.store.GetByID(r.Context(), id)
+	}
 	respondJSON(w, http.StatusCreated, apiStoredSite(*site))
+}
+
+func (sh *sitesHandler) ensureCreateTargetSupported(r *http.Request, serverID string) error {
+	if sh.serverStore == nil {
+		return nil
+	}
+	server, err := sh.serverStore.GetByID(r.Context(), serverID)
+	if err != nil {
+		return err
+	}
+	if server.Status != platform.ServerStatusReady {
+		return fmt.Errorf("selected server must be in ready status before a site can be deployed")
+	}
+	if server.SetupState != platform.SetupStateReady {
+		return fmt.Errorf("selected server setup must be ready before a site can be deployed")
+	}
+	if strings.TrimSpace(server.ProfileKey) != "nginx-stack" {
+		return fmt.Errorf("selected server profile %q is not supported for site deployment", server.ProfileKey)
+	}
+	return nil
 }
 
 func apiCreateSitePrimaryHostnameConfig(in *apitypes.SitePrimaryHostnameConfig) *CreateSitePrimaryHostnameInput {
@@ -277,6 +335,10 @@ func apiStoredSite(in StoredSite) apitypes.StoredSite {
 		Name:             in.Name,
 		PrimaryDomain:    in.PrimaryDomain,
 		Status:           in.Status,
+		DeploymentState:  in.DeploymentState,
+		DeploymentStatus: in.DeploymentStatus,
+		LastDeployJobID:  apitypes.FormatAppID(in.LastDeployJobID),
+		LastDeployedAt:   in.LastDeployedAt,
 		WordPressPath:    in.WordPressPath,
 		PHPVersion:       in.PHPVersion,
 		WordPressVersion: in.WordPressVersion,

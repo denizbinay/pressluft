@@ -328,6 +328,10 @@ export interface StoredSite {
   name: string
   primary_domain?: string
   status: string
+  deployment_state: string
+  deployment_status_message?: string
+  last_deploy_job_id?: string
+  last_deployed_at?: string
   wordpress_path?: string
   php_version?: string
   wordpress_version?: string

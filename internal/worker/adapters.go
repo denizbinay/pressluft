@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"time"
 
 	"pressluft/internal/platform"
 	"pressluft/internal/provider"
@@ -62,4 +63,36 @@ func NewProviderStoreAdapter(store *provider.Store) *ProviderStoreAdapter {
 
 func (a *ProviderStoreAdapter) GetByID(ctx context.Context, id string) (*provider.StoredProvider, error) {
 	return a.store.GetByID(ctx, id)
+}
+
+type SiteStoreAdapter struct {
+	store *server.SiteStore
+}
+
+func NewSiteStoreAdapter(store *server.SiteStore) *SiteStoreAdapter {
+	return &SiteStoreAdapter{store: store}
+}
+
+func (a *SiteStoreAdapter) GetByID(ctx context.Context, id string) (*server.StoredSite, error) {
+	return a.store.GetByID(ctx, id)
+}
+
+func (a *SiteStoreAdapter) UpdateDeployment(ctx context.Context, siteID, deploymentState, deploymentStatus, lastDeployJobID, lastDeployedAt string) error {
+	return a.store.UpdateDeployment(ctx, siteID, deploymentState, deploymentStatus, lastDeployJobID, lastDeployedAt)
+}
+
+type DomainStoreAdapter struct {
+	store *server.DomainStore
+}
+
+func NewDomainStoreAdapter(store *server.DomainStore) *DomainStoreAdapter {
+	return &DomainStoreAdapter{store: store}
+}
+
+func (a *DomainStoreAdapter) ListBySite(ctx context.Context, siteID string) ([]server.StoredDomain, error) {
+	return a.store.ListBySite(ctx, siteID)
+}
+
+func (a *DomainStoreAdapter) UpdateRoutingStatus(ctx context.Context, domainID, routingState, routingStatusMessage string, checkedAt time.Time) error {
+	return a.store.UpdateRoutingStatus(ctx, domainID, routingState, routingStatusMessage, checkedAt)
 }

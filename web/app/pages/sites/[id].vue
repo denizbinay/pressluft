@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import JobTimeline from "~/components/JobTimeline.vue";
 import { useActivity } from "~/composables/useActivity";
 import { useDomains, type StoredDomain } from "~/composables/useDomains";
 import { useServers } from "~/composables/useServers";
@@ -57,6 +58,19 @@ const siteStatusMeta = (status: StoredSite["status"]) => {
       return { label: "Archived", className: "border-border/60 bg-muted/70 text-muted-foreground" };
     default:
       return { label: "Draft", className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" };
+  }
+};
+
+const siteDeploymentMeta = (state: StoredSite["deployment_state"]) => {
+  switch (state) {
+    case "ready":
+      return { label: "Live", className: "border-primary/30 bg-primary/10 text-primary" };
+    case "failed":
+      return { label: "Failed", className: "border-destructive/30 bg-destructive/10 text-destructive" };
+    case "deploying":
+      return { label: "Deploying", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200" };
+    default:
+      return { label: "Pending", className: "border-border/60 bg-muted/60 text-muted-foreground" };
   }
 };
 
@@ -227,18 +241,6 @@ const handleSetPrimary = async (domainId: string) => {
   }
 };
 
-const handleDNSStateChange = async (domainId: string, dnsState: string) => {
-  pageError.value = "";
-  successMessage.value = "";
-  try {
-    await updateDomain(domainId, { dns_state: dnsState });
-    successMessage.value = "DNS state updated.";
-    await Promise.all([refreshDomains(), loadPage()]);
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to update DNS state";
-  }
-};
-
 const handleRemoveHostname = async (domain: StoredDomain) => {
   if (!window.confirm(`Remove ${domain.hostname} from this site?`)) {
     return;
@@ -294,10 +296,11 @@ watch(currentServerIPv4, (value) => {
             <div class="flex flex-wrap items-center gap-3">
               <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ site.name }}</h1>
               <Badge variant="outline" :class="siteStatusMeta(site.status).className">{{ siteStatusMeta(site.status).label }}</Badge>
+              <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">{{ siteDeploymentMeta(site.deployment_state).label }}</Badge>
             </div>
             <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
               {{ site.primary_domain || "No primary hostname assigned yet." }}
-              This record keeps DNS readiness and routing readiness separate so later deployment work has a clean source of truth.
+              {{ site.deployment_status_message || "Pressluft keeps deployment and hostname routing truthfully in sync." }}
             </p>
           </div>
 
@@ -374,6 +377,25 @@ watch(currentServerIPv4, (value) => {
         <div class="space-y-6">
           <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
             <CardHeader class="border-b border-border/50 px-6 py-5">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Deployment</p>
+              <h2 class="mt-1 text-xl font-semibold text-foreground">Live deployment status</h2>
+            </CardHeader>
+            <CardContent class="space-y-4 px-6 py-5">
+              <div class="rounded-2xl border border-border/60 bg-background/70 p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">{{ siteDeploymentMeta(site.deployment_state).label }}</Badge>
+                  <span class="text-sm text-muted-foreground">{{ site.deployment_status_message || "Waiting for deployment activity." }}</span>
+                </div>
+                <p v-if="site.last_deployed_at" class="mt-3 text-xs text-muted-foreground">Last deployed {{ formatDate(site.last_deployed_at) }}</p>
+              </div>
+              <div v-if="site.last_deploy_job_id" class="rounded-2xl border border-border/60 bg-background/70 p-4">
+                <JobTimeline :job-id="site.last_deploy_job_id" :compact="true" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
+            <CardHeader class="border-b border-border/50 px-6 py-5">
               <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Hostnames</p>
               <h2 class="mt-1 text-xl font-semibold text-foreground">Primary and additional hostnames</h2>
             </CardHeader>
@@ -390,24 +412,17 @@ watch(currentServerIPv4, (value) => {
                         <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">DNS {{ domain.dns_state }}</Badge>
                         <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">Routing {{ domain.routing_state }}</Badge>
                       </div>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        {{ domain.parent_hostname || (domain.source === "fallback_resolver" ? "Generated from the current server IP via sslip.io." : "User-managed hostname record.") }}
-                      </p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <select
-                        :value="domain.dns_state"
-                        class="flex h-9 rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
-                        @change="handleDNSStateChange(domain.id, ($event.target as HTMLSelectElement).value)"
-                      >
-                        <option value="pending">Pending DNS</option>
-                        <option value="ready">DNS ready</option>
-                        <option value="issue">Needs attention</option>
-                        <option value="disabled">Disabled</option>
-                      </select>
-                      <Button v-if="!domain.is_primary" type="button" variant="outline" size="sm" @click="handleSetPrimary(domain.id)">Make primary</Button>
-                      <Button type="button" variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleRemoveHostname(domain)">Remove</Button>
-                    </div>
+                       <p class="mt-1 text-xs text-muted-foreground">
+                         {{ domain.parent_hostname || (domain.source === "fallback_resolver" ? "Generated from the current server IP via sslip.io." : "User-managed hostname record.") }}
+                       </p>
+                       <p v-if="domain.routing_status_message || domain.dns_status_message" class="mt-2 text-xs text-muted-foreground">
+                         {{ domain.routing_status_message || domain.dns_status_message }}
+                       </p>
+                     </div>
+                     <div class="flex flex-wrap items-center gap-2">
+                       <Button v-if="!domain.is_primary" type="button" variant="outline" size="sm" @click="handleSetPrimary(domain.id)">Make primary</Button>
+                       <Button type="button" variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleRemoveHostname(domain)">Remove</Button>
+                     </div>
                   </div>
                 </div>
               </div>
