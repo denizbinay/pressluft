@@ -21,13 +21,7 @@ const siteId = computed(() => {
 const { servers, fetchServers } = useServers();
 const { fetchSite, updateSite, deleteSite, saving } = useSites();
 const { activities, listSiteActivity } = useActivity();
-const {
-  fetchDomains,
-  fetchSiteDomains,
-  createSiteDomain,
-  updateDomain,
-  deleteDomain,
-} = useDomains();
+const { fetchDomains, fetchSiteDomains, createSiteDomain, updateDomain, deleteDomain } = useDomains();
 
 const site = ref<StoredSite | null>(null);
 const siteDomains = ref<StoredDomain[]>([]);
@@ -45,40 +39,29 @@ const form = reactive({
 });
 
 const hostnameForm = reactive({
-  mode: "wildcard",
-  label: "",
+  source: "fallback_resolver",
+  fallbackLabel: "",
+  userMode: "base_domain",
+  baseDomainId: "",
+  userLabel: "",
   hostname: "",
-  parentDomainId: "",
 });
 
 const siteStatusMeta = (status: StoredSite["status"]) => {
   switch (status) {
     case "active":
-      return {
-        label: "Active",
-        className: "border-primary/30 bg-primary/10 text-primary",
-      };
+      return { label: "Active", className: "border-primary/30 bg-primary/10 text-primary" };
     case "attention":
-      return {
-        label: "Attention",
-        className: "border-accent/30 bg-accent/10 text-accent",
-      };
+      return { label: "Attention", className: "border-accent/30 bg-accent/10 text-accent" };
     case "archived":
-      return {
-        label: "Archived",
-        className: "border-border/60 bg-muted/70 text-muted-foreground",
-      };
+      return { label: "Archived", className: "border-border/60 bg-muted/70 text-muted-foreground" };
     default:
-      return {
-        label: "Draft",
-        className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-      };
+      return { label: "Draft", className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" };
   }
 };
 
-const currentServer = computed(() =>
-  servers.value.find((server) => server.id === form.serverId),
-);
+const currentServer = computed(() => servers.value.find((server) => server.id === form.serverId) || null);
+const currentServerIPv4 = computed(() => currentServer.value?.ipv4 || "");
 
 const hydrateForm = (value: StoredSite) => {
   form.serverId = value.server_id;
@@ -112,48 +95,47 @@ const loadActivity = async () => {
   }
 };
 
-const allWildcardDomains = ref<StoredDomain[]>([]);
-const availableWildcardDomains = ref<StoredDomain[]>([]);
-const hasMultipleWildcardDomains = computed(() => availableWildcardDomains.value.length > 1);
+const userBaseDomains = ref<StoredDomain[]>([]);
+
+const selectedBaseDomain = computed(() =>
+  userBaseDomains.value.find((domain) => domain.id === hostnameForm.baseDomainId) || null,
+);
+
+const normalizeLabel = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const buildFallbackHostname = () => {
+  const label = normalizeLabel(hostnameForm.fallbackLabel);
+  if (!label || !currentServerIPv4.value) {
+    return "";
+  }
+  return `${label}.${currentServerIPv4.value.replace(/\./g, "-")}.sslip.io`;
+};
+
+const buildBaseDomainHostname = () => {
+  const label = normalizeLabel(hostnameForm.userLabel);
+  if (!label || !selectedBaseDomain.value) {
+    return "";
+  }
+  return `${label}.${selectedBaseDomain.value.hostname}`;
+};
 
 const refreshDomains = async () => {
   if (!siteId.value) return;
-  const [allDomains, assignedDomains] = await Promise.all([
-    fetchDomains(),
-    fetchSiteDomains(siteId.value),
-  ]);
-  allWildcardDomains.value = allDomains.filter(
-    (domain) => domain.kind === "wildcard",
-  );
-  availableWildcardDomains.value = allWildcardDomains.value.filter((domain) => domain.status === "active");
+  const [allDomains, assignedDomains] = await Promise.all([fetchDomains(), fetchSiteDomains(siteId.value)]);
+  userBaseDomains.value = allDomains.filter((domain) => domain.kind === "base_domain" && domain.source === "user");
   siteDomains.value = assignedDomains;
-  if (!hostnameForm.parentDomainId && availableWildcardDomains.value[0]) {
-    hostnameForm.parentDomainId = availableWildcardDomains.value[0].id;
+  if (!hostnameForm.baseDomainId && userBaseDomains.value[0]) {
+    hostnameForm.baseDomainId = userBaseDomains.value[0].id;
   }
-  if (!availableWildcardDomains.value.length) {
-    hostnameForm.mode = "direct";
+  if (!currentServerIPv4.value && hostnameForm.source === "fallback_resolver") {
+    hostnameForm.source = "user";
   }
-};
-
-const futureWildcardDomains = computed(() =>
-  allWildcardDomains.value.filter((domain) => domain.status !== "active"),
-);
-
-const selectedWildcardDomain = computed(() =>
-  availableWildcardDomains.value.find((domain) => domain.id === hostnameForm.parentDomainId) || null,
-);
-
-const wildcardDomainLabel = (domain: StoredDomain | null) => {
-  if (!domain) return "";
-  return domain.ownership === "platform" ? "Pressluft" : "Your domain";
-};
-
-const buildWildcardHostname = () => {
-  const base = selectedWildcardDomain.value;
-  if (!base) return "";
-  const label = hostnameForm.label.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-  if (!label) return "";
-  return `${label}.${base.hostname}`;
 };
 
 const loadPage = async () => {
@@ -203,14 +185,29 @@ const handleAssignHostname = async () => {
   pageError.value = "";
   successMessage.value = "";
   try {
-    const hostname = hostnameForm.mode === "wildcard" ? buildWildcardHostname() : hostnameForm.hostname.trim();
-    const created = await createSiteDomain(siteId.value, {
-      hostname,
-      parent_domain_id: hostnameForm.mode === "wildcard" ? hostnameForm.parentDomainId : undefined,
-      is_primary: siteDomains.value.length === 0,
-    });
+    const payload =
+      hostnameForm.source === "fallback_resolver"
+        ? {
+            hostname: buildFallbackHostname(),
+            source: "fallback_resolver",
+            is_primary: siteDomains.value.length === 0,
+          }
+        : hostnameForm.userMode === "base_domain"
+          ? {
+              hostname: buildBaseDomainHostname(),
+              source: "user",
+              parent_domain_id: hostnameForm.baseDomainId,
+              is_primary: siteDomains.value.length === 0,
+            }
+          : {
+              hostname: hostnameForm.hostname.trim(),
+              source: "user",
+              is_primary: siteDomains.value.length === 0,
+            };
+    const created = await createSiteDomain(siteId.value, payload);
     successMessage.value = `Assigned ${created.hostname}.`;
-    hostnameForm.label = "";
+    hostnameForm.fallbackLabel = "";
+    hostnameForm.userLabel = "";
     hostnameForm.hostname = "";
     await Promise.all([refreshDomains(), loadPage()]);
   } catch (e: any) {
@@ -227,6 +224,18 @@ const handleSetPrimary = async (domainId: string) => {
     await Promise.all([refreshDomains(), loadPage()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to update primary hostname";
+  }
+};
+
+const handleDNSStateChange = async (domainId: string, dnsState: string) => {
+  pageError.value = "";
+  successMessage.value = "";
+  try {
+    await updateDomain(domainId, { dns_state: dnsState });
+    successMessage.value = "DNS state updated.";
+    await Promise.all([refreshDomains(), loadPage()]);
+  } catch (e: any) {
+    pageError.value = e.message || "Failed to update DNS state";
   }
 };
 
@@ -265,31 +274,31 @@ watch(siteId, async (value, previous) => {
   if (!value || value === previous) return;
   await loadPage();
 });
+
+watch(currentServerIPv4, (value) => {
+  if (!value && hostnameForm.source === "fallback_resolver") {
+    hostnameForm.source = "user";
+  }
+});
 </script>
 
 <template>
   <div class="space-y-8">
-    <div v-if="loading" class="flex items-center justify-center py-24 text-sm text-muted-foreground">
-      Loading site record...
-    </div>
+    <div v-if="loading" class="flex items-center justify-center py-24 text-sm text-muted-foreground">Loading site record...</div>
 
     <template v-else-if="site">
       <div class="flex flex-col gap-5 rounded-[28px] border border-border/60 bg-[linear-gradient(135deg,rgba(18,34,42,0.96),rgba(18,58,56,0.9)_52%,rgba(28,38,61,0.92))] px-7 py-7 text-white shadow-[0_32px_120px_-52px_rgba(9,18,32,0.85)]">
-        <NuxtLink to="/sites" class="text-xs font-semibold uppercase tracking-[0.22em] text-white/65 transition hover:text-white">
-          Back to sites
-        </NuxtLink>
+        <NuxtLink to="/sites" class="text-xs font-semibold uppercase tracking-[0.22em] text-white/65 transition hover:text-white">Back to sites</NuxtLink>
         <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div class="flex flex-wrap items-center gap-3">
               <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ site.name }}</h1>
-              <Badge variant="outline" :class="siteStatusMeta(site.status).className">
-                {{ siteStatusMeta(site.status).label }}
-              </Badge>
+              <Badge variant="outline" :class="siteStatusMeta(site.status).className">{{ siteStatusMeta(site.status).label }}</Badge>
             </div>
-             <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
-               {{ site.primary_domain || "No primary domain assigned yet." }}
-               This site lives on {{ site.server_name }} and keeps every direct domain or wildcard-derived hostname visible as its own record.
-             </p>
+            <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
+              {{ site.primary_domain || "No primary hostname assigned yet." }}
+              This record keeps DNS readiness and routing readiness separate so later deployment work has a clean source of truth.
+            </p>
           </div>
 
           <div class="grid grid-cols-2 gap-3 sm:min-w-[360px]">
@@ -337,9 +346,7 @@ watch(siteId, async (value, previous) => {
                 <div class="space-y-1.5 sm:col-span-2">
                   <Label class="text-sm font-medium text-muted-foreground">Current server</Label>
                   <select v-model="form.serverId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
-                    <option v-for="server in servers" :key="server.id" :value="server.id">
-                      {{ server.name }}
-                    </option>
+                    <option v-for="server in servers" :key="server.id" :value="server.id">{{ server.name }}</option>
                   </select>
                 </div>
                 <div class="space-y-1.5 sm:col-span-2">
@@ -357,12 +364,8 @@ watch(siteId, async (value, previous) => {
               </div>
 
               <div class="flex flex-col gap-3 border-t border-border/50 pt-4 sm:flex-row sm:justify-between">
-                <Button type="button" variant="ghost" class="justify-start text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleDelete">
-                  Delete site record
-                </Button>
-                <Button type="submit" class="bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving">
-                  {{ saving ? "Saving..." : "Save changes" }}
-                </Button>
+                <Button type="button" variant="ghost" class="justify-start text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleDelete">Delete site record</Button>
+                <Button type="submit" class="bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving">{{ saving ? "Saving..." : "Save changes" }}</Button>
               </div>
             </form>
           </CardContent>
@@ -371,94 +374,110 @@ watch(siteId, async (value, previous) => {
         <div class="space-y-6">
           <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
             <CardHeader class="border-b border-border/50 px-6 py-5">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Domains</p>
-              <h2 class="mt-1 text-xl font-semibold text-foreground">Primary and additional domains</h2>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Hostnames</p>
+              <h2 class="mt-1 text-xl font-semibold text-foreground">Primary and additional hostnames</h2>
             </CardHeader>
             <CardContent class="space-y-4 px-6 py-5">
-              <div v-if="siteDomains.length === 0" class="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-                No domains assigned yet.
-              </div>
+              <div v-if="siteDomains.length === 0" class="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">No hostnames assigned yet.</div>
               <div v-else class="space-y-3">
                 <div v-for="domain in siteDomains" :key="domain.id" class="rounded-2xl border border-border/60 bg-background/70 p-4">
-                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <div class="flex flex-wrap items-center gap-2">
                         <p class="text-sm font-semibold text-foreground">{{ domain.hostname }}</p>
                         <Badge v-if="domain.is_primary" variant="outline" class="border-primary/30 bg-primary/10 text-primary">Primary</Badge>
-                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.parent_domain_id ? 'Wildcard child' : 'Direct domain' }}</Badge>
-                        <Badge v-if="domain.parent_domain_id" variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }}</Badge>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">{{ domain.source === 'fallback_resolver' ? 'Fallback resolver' : domain.parent_domain_id ? 'Child hostname' : 'Exact hostname' }}</Badge>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">DNS {{ domain.dns_state }}</Badge>
+                        <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">Routing {{ domain.routing_state }}</Badge>
                       </div>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        {{ domain.parent_hostname || (domain.ownership === "platform" ? "Provided by Pressluft" : "Managed by the agency") }}
+                        {{ domain.parent_hostname || (domain.source === "fallback_resolver" ? "Generated from the current server IP via sslip.io." : "User-managed hostname record.") }}
                       </p>
                     </div>
-                    <div class="flex gap-2">
-                      <Button v-if="!domain.is_primary" type="button" variant="outline" size="sm" @click="handleSetPrimary(domain.id)">
-                        Make primary
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleRemoveHostname(domain)">
-                        Remove
-                      </Button>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <select
+                        :value="domain.dns_state"
+                        class="flex h-9 rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+                        @change="handleDNSStateChange(domain.id, ($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="pending">Pending DNS</option>
+                        <option value="ready">DNS ready</option>
+                        <option value="issue">Needs attention</option>
+                        <option value="disabled">Disabled</option>
+                      </select>
+                      <Button v-if="!domain.is_primary" type="button" variant="outline" size="sm" @click="handleSetPrimary(domain.id)">Make primary</Button>
+                      <Button type="button" variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10 hover:text-destructive" @click="handleRemoveHostname(domain)">Remove</Button>
                     </div>
                   </div>
                 </div>
               </div>
 
-                <div class="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                   <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                     Attach Domain
-                   </p>
-                   <div class="flex gap-2">
-                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'wildcard' ? 'default' : 'outline'" @click="hostnameForm.mode = 'wildcard'" :disabled="availableWildcardDomains.length === 0">
-                      Wildcard domain
-                    </Button>
-                    <Button type="button" size="sm" :variant="hostnameForm.mode === 'direct' ? 'default' : 'outline'" @click="hostnameForm.mode = 'direct'">
-                      Direct domain
-                    </Button>
+              <div class="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Attach hostname</p>
+                <div class="mt-4 space-y-4">
+                  <div class="space-y-1.5">
+                    <Label class="text-sm font-medium text-muted-foreground">Hostname source</Label>
+                    <select v-model="hostnameForm.source" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
+                      <option value="fallback_resolver" :disabled="!currentServerIPv4">Fallback resolver hostname (sslip.io-style)</option>
+                      <option value="user">User-added domain/base domain</option>
+                    </select>
                   </div>
-                <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                  <template v-if="hostnameForm.mode === 'wildcard'">
+
+                  <template v-if="hostnameForm.source === 'fallback_resolver'">
                     <div class="space-y-1.5">
-                      <Label class="text-sm font-medium text-muted-foreground">Child label</Label>
-                      <Input v-model="hostnameForm.label" placeholder="northwind-live" />
+                      <Label class="text-sm font-medium text-muted-foreground">Hostname label</Label>
+                      <Input v-model="hostnameForm.fallbackLabel" placeholder="preview" />
                     </div>
-                    <div v-if="hasMultipleWildcardDomains" class="space-y-1.5">
-                      <Label class="text-sm font-medium text-muted-foreground">Wildcard root</Label>
-                      <select v-model="hostnameForm.parentDomainId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
-                        <option v-for="domain in availableWildcardDomains" :key="domain.id" :value="domain.id">
-                          {{ domain.hostname }} ({{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }})
-                        </option>
+                    <div class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                      <Input :model-value="buildFallbackHostname()" readonly placeholder="Current server needs an IPv4 address" />
+                    </div>
+                    <Alert class="border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                      <AlertDescription>
+                        Fallback resolver hostnames are fine for onboarding and evaluation, but they are not recommended for production.
+                      </AlertDescription>
+                    </Alert>
+                  </template>
+
+                  <template v-else>
+                    <div class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">User domain path</Label>
+                      <select v-model="hostnameForm.userMode" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
+                        <option value="base_domain">Mint from a reusable base domain</option>
+                        <option value="hostname">Use an exact manual hostname</option>
                       </select>
                     </div>
-                    <div class="space-y-1.5 sm:col-span-2">
-                      <Label class="text-sm font-medium text-muted-foreground">Result</Label>
-                      <Input :model-value="buildWildcardHostname()" readonly placeholder="Enter a label to preview the allocated hostname" />
+                    <div v-if="hostnameForm.userMode === 'base_domain'" class="grid gap-4 sm:grid-cols-2">
+                      <div class="space-y-1.5">
+                        <Label class="text-sm font-medium text-muted-foreground">Base domain</Label>
+                        <select v-model="hostnameForm.baseDomainId" class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40">
+                          <option v-for="domain in userBaseDomains" :key="domain.id" :value="domain.id">
+                            {{ domain.hostname }} ({{ domain.dns_state }})
+                          </option>
+                        </select>
+                      </div>
+                      <div class="space-y-1.5">
+                        <Label class="text-sm font-medium text-muted-foreground">Hostname label</Label>
+                        <Input v-model="hostnameForm.userLabel" placeholder="staging" />
+                      </div>
+                      <div class="space-y-1.5 sm:col-span-2">
+                        <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                        <Input :model-value="buildBaseDomainHostname()" readonly placeholder="Choose a base domain and enter a label" />
+                      </div>
                     </div>
-                    <div v-if="selectedWildcardDomain" class="sm:col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">
-                        {{ wildcardDomainLabel(selectedWildcardDomain) }}
-                      </Badge>
-                      <span>{{ selectedWildcardDomain.hostname }} stays reusable while this site gets a concrete child hostname row.</span>
-                    </div>
-                    <p class="sm:col-span-2 text-sm text-muted-foreground">
-                      Wildcard roots are better when you want previews, staging, rollbacks, or future generated hostnames without pre-registering each child.
-                    </p>
-                    <p v-if="availableWildcardDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                      No wildcard domains are available right now, so attach a direct domain instead.
-                    </p>
-                    <p v-if="futureWildcardDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                      Not active yet: {{ futureWildcardDomains.map((domain) => domain.hostname).join(", ") }}.
-                    </p>
-                  </template>
-                  <template v-else>
-                    <div class="space-y-1.5 sm:col-span-2">
-                      <Label class="text-sm font-medium text-muted-foreground">Hostname</Label>
+                    <div v-else class="space-y-1.5">
+                      <Label class="text-sm font-medium text-muted-foreground">Exact hostname</Label>
                       <Input v-model="hostnameForm.hostname" placeholder="www.client-example.com" />
                     </div>
                   </template>
                 </div>
-                <Button type="button" class="mt-4 bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || (hostnameForm.mode === 'wildcard' ? !buildWildcardHostname() : !hostnameForm.hostname.trim())" @click="handleAssignHostname">
-                  Add domain
+                <Button
+                  type="button"
+                  class="mt-4 bg-accent text-accent-foreground hover:bg-accent/85"
+                  :disabled="saving || (hostnameForm.source === 'fallback_resolver' ? !buildFallbackHostname() : hostnameForm.userMode === 'base_domain' ? !buildBaseDomainHostname() : !hostnameForm.hostname.trim())"
+                  @click="handleAssignHostname"
+                >
+                  Add hostname
                 </Button>
               </div>
             </CardContent>
@@ -474,12 +493,9 @@ watch(siteId, async (value, previous) => {
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Server</p>
                 <p class="mt-2 text-lg font-semibold text-foreground">{{ currentServer?.name || site.server_name }}</p>
                 <p class="mt-1 text-sm text-muted-foreground">
-                  This relationship stays explicit so future staging moves and
-                  migrations have a clear current-home reference.
+                  This relationship stays explicit so future routing and deployment work has a clear target.
                 </p>
-                <NuxtLink :to="`/servers/${form.serverId}?tab=sites`" class="mt-4 inline-flex text-sm font-medium text-accent transition hover:text-accent/80">
-                  Open server view
-                </NuxtLink>
+                <NuxtLink :to="`/servers/${form.serverId}?tab=sites`" class="mt-4 inline-flex text-sm font-medium text-accent transition hover:text-accent/80">Open server view</NuxtLink>
               </div>
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div class="rounded-2xl border border-border/60 bg-muted/20 p-4">
@@ -500,16 +516,12 @@ watch(siteId, async (value, previous) => {
               <h2 class="mt-1 text-xl font-semibold text-foreground">Timeline</h2>
             </CardHeader>
             <CardContent class="px-6 py-5">
-              <div v-if="activities.length === 0" class="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-                No site activity recorded yet.
-              </div>
+              <div v-if="activities.length === 0" class="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">No site activity recorded yet.</div>
               <div v-else class="space-y-3">
                 <div v-for="activity in activities" :key="activity.id" class="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
                   <div class="flex items-center justify-between gap-3">
                     <p class="text-sm font-medium text-foreground">{{ activity.title }}</p>
-                    <Badge variant="outline" class="border-border/60 bg-muted/50 text-xs text-muted-foreground">
-                      {{ activity.level }}
-                    </Badge>
+                    <Badge variant="outline" class="border-border/60 bg-muted/50 text-xs text-muted-foreground">{{ activity.level }}</Badge>
                   </div>
                   <p v-if="activity.message" class="mt-1 text-sm text-muted-foreground">{{ activity.message }}</p>
                   <p class="mt-2 text-xs text-muted-foreground">{{ formatDate(activity.created_at) }}</p>

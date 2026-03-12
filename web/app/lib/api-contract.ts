@@ -61,8 +61,12 @@ export interface AuthActor {
 export interface CreateDomainRequest {
   hostname: string
   kind?: string
-  ownership?: string
-  status?: string
+  source?: string
+  dns_state?: string
+  routing_state?: string
+  dns_status_message?: string
+  routing_status_message?: string
+  last_checked_at?: string
   site_id?: string
   parent_domain_id?: string
   is_primary?: boolean
@@ -103,7 +107,7 @@ export interface CreateSiteRequest {
   server_id: string
   name: string
   primary_domain?: string
-  primary_domain_config?: { mode: string; hostname?: string; label?: string; parent_domain_id?: string }
+  primary_hostname_config?: { source: string; hostname?: string; label?: string; domain_id?: string }
   status?: string
   wordpress_path?: string
   php_version?: string
@@ -268,8 +272,12 @@ export interface StoredDomain {
   id: string
   hostname: string
   kind: string
-  ownership: string
-  status: string
+  source: string
+  dns_state: string
+  routing_state: string
+  dns_status_message?: string
+  routing_status_message?: string
+  last_checked_at?: string
   site_id?: string
   site_name?: string
   parent_domain_id?: string
@@ -334,8 +342,12 @@ export interface UnreadCountResponse {
 export interface UpdateDomainRequest {
   hostname?: string
   kind?: string
-  ownership?: string
-  status?: string
+  source?: string
+  dns_state?: string
+  routing_state?: string
+  dns_status_message?: string
+  routing_status_message?: string
+  last_checked_at?: string
   site_id?: string
   parent_domain_id?: string
   is_primary?: boolean

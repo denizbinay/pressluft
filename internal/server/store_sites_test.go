@@ -47,28 +47,28 @@ func TestSiteStoreCreateListAndGet(t *testing.T) {
 	}
 }
 
-func TestSiteStoreCreateWithWildcardPrimaryDomain(t *testing.T) {
+func TestSiteStoreCreateWithUserBaseDomainPrimaryHostname(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewSiteStore(db)
 	domainStore := NewDomainStore(db)
 	serverID := mustInsertServerWithStatus(t, db, "ready")
 	baseID, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "pressluft.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipPlatform,
-		Status:    DomainStatusActive,
+		Hostname: "agency.dev",
+		Kind:     DomainKindBaseDomain,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStateReady,
 	})
 	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
+		t.Fatalf("create base domain: %v", err)
 	}
 
 	siteID, err := store.Create(context.Background(), CreateSiteInput{
 		ServerID: serverID,
 		Name:     "Agency Brochure",
-		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
-			Mode:           "wildcard",
-			Label:          "Northwind Live",
-			ParentDomainID: baseID,
+		PrimaryHostnameConfig: &CreateSitePrimaryHostnameInput{
+			Source:   DomainSourceUser,
+			Label:    "Northwind Live",
+			DomainID: baseID,
 		},
 		Status: SiteStatusDraft,
 	})
@@ -80,8 +80,8 @@ func TestSiteStoreCreateWithWildcardPrimaryDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get site: %v", err)
 	}
-	if site.PrimaryDomain != "northwind-live.pressluft.dev" {
-		t.Fatalf("primary_domain = %q, want %q", site.PrimaryDomain, "northwind-live.pressluft.dev")
+	if site.PrimaryDomain != "northwind-live.agency.dev" {
+		t.Fatalf("primary_domain = %q, want %q", site.PrimaryDomain, "northwind-live.agency.dev")
 	}
 	domains, err := domainStore.ListBySite(context.Background(), siteID)
 	if err != nil {
@@ -93,66 +93,39 @@ func TestSiteStoreCreateWithWildcardPrimaryDomain(t *testing.T) {
 	if domains[0].ParentDomainID != baseID {
 		t.Fatalf("parent_domain_id = %q, want %q", domains[0].ParentDomainID, baseID)
 	}
-	if domains[0].Kind != DomainKindDirect {
-		t.Fatalf("kind = %q, want %q", domains[0].Kind, DomainKindDirect)
+	if domains[0].Kind != DomainKindHostname {
+		t.Fatalf("kind = %q, want %q", domains[0].Kind, DomainKindHostname)
 	}
-	if domains[0].Ownership != DomainOwnershipPlatform {
-		t.Fatalf("ownership = %q, want %q", domains[0].Ownership, DomainOwnershipPlatform)
+	if domains[0].Source != DomainSourceUser {
+		t.Fatalf("source = %q, want %q", domains[0].Source, DomainSourceUser)
+	}
+	if domains[0].DNSState != DomainDNSStateReady {
+		t.Fatalf("dns_state = %q, want %q", domains[0].DNSState, DomainDNSStateReady)
 	}
 }
 
-func TestSiteStoreCreateWithPendingWildcardDomainFails(t *testing.T) {
+func TestSiteStoreCreateWithPendingBaseDomainKeepsChildPending(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewSiteStore(db)
 	domainStore := NewDomainStore(db)
 	serverID := mustInsertServerWithStatus(t, db, "ready")
 	baseID, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "pressluft.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipPlatform,
-		Status:    DomainStatusPending,
+		Hostname: "agency.dev",
+		Kind:     DomainKindBaseDomain,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStatePending,
 	})
 	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
-	}
-
-	_, err = store.Create(context.Background(), CreateSiteInput{
-		ServerID: serverID,
-		Name:     "Agency Brochure",
-		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
-			Mode:           "wildcard",
-			Label:          "Northwind Live",
-			ParentDomainID: baseID,
-		},
-		Status: SiteStatusDraft,
-	})
-	if err == nil || !strings.Contains(err.Error(), "active wildcard domain") {
-		t.Fatalf("create site error = %v, want active wildcard domain failure", err)
-	}
-}
-
-func TestSiteStoreCreateWithCustomerWildcardPrimaryDomain(t *testing.T) {
-	db := mustOpenTestDB(t)
-	store := NewSiteStore(db)
-	domainStore := NewDomainStore(db)
-	serverID := mustInsertServerWithStatus(t, db, "ready")
-	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "agency.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipCustomer,
-		Status:    DomainStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
+		t.Fatalf("create base domain: %v", err)
 	}
 
 	siteID, err := store.Create(context.Background(), CreateSiteInput{
 		ServerID: serverID,
 		Name:     "Agency Brochure",
-		PrimaryDomainConfig: &CreateSitePrimaryDomainInput{
-			Mode:           "wildcard",
-			Label:          "preview-42",
-			ParentDomainID: parentID,
+		PrimaryHostnameConfig: &CreateSitePrimaryHostnameInput{
+			Source:   DomainSourceUser,
+			Label:    "preview-42",
+			DomainID: baseID,
 		},
 		Status: SiteStatusDraft,
 	})
@@ -170,8 +143,49 @@ func TestSiteStoreCreateWithCustomerWildcardPrimaryDomain(t *testing.T) {
 	if domains[0].Hostname != "preview-42.agency.dev" {
 		t.Fatalf("hostname = %q, want %q", domains[0].Hostname, "preview-42.agency.dev")
 	}
-	if domains[0].Ownership != DomainOwnershipCustomer {
-		t.Fatalf("ownership = %q, want %q", domains[0].Ownership, DomainOwnershipCustomer)
+	if domains[0].DNSState != DomainDNSStatePending {
+		t.Fatalf("dns_state = %q, want %q", domains[0].DNSState, DomainDNSStatePending)
+	}
+}
+
+func TestSiteStoreCreateWithFallbackResolverPrimaryHostname(t *testing.T) {
+	db := mustOpenTestDB(t)
+	store := NewSiteStore(db)
+	domainStore := NewDomainStore(db)
+	serverID := mustInsertServerWithStatus(t, db, "ready")
+
+	siteID, err := store.Create(context.Background(), CreateSiteInput{
+		ServerID: serverID,
+		Name:     "Agency Brochure",
+		PrimaryHostnameConfig: &CreateSitePrimaryHostnameInput{
+			Source: DomainSourceFallbackResolver,
+			Label:  "Northwind Live",
+		},
+		Status: SiteStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("create site: %v", err)
+	}
+
+	site, err := store.GetByID(context.Background(), siteID)
+	if err != nil {
+		t.Fatalf("get site: %v", err)
+	}
+	if site.PrimaryDomain != "northwind-live.203-0-113-10.sslip.io" {
+		t.Fatalf("primary_domain = %q, want %q", site.PrimaryDomain, "northwind-live.203-0-113-10.sslip.io")
+	}
+	domains, err := domainStore.ListBySite(context.Background(), siteID)
+	if err != nil {
+		t.Fatalf("list site domains: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("site domains = %d, want 1", len(domains))
+	}
+	if domains[0].Source != DomainSourceFallbackResolver {
+		t.Fatalf("source = %q, want %q", domains[0].Source, DomainSourceFallbackResolver)
+	}
+	if domains[0].DNSState != DomainDNSStateReady {
+		t.Fatalf("dns_state = %q, want %q", domains[0].DNSState, DomainDNSStateReady)
 	}
 }
 
@@ -230,7 +244,7 @@ func TestSiteStoreUpdate(t *testing.T) {
 	}
 }
 
-func TestSiteStoreUpdateRollsBackWhenPrimaryDomainAssignmentFails(t *testing.T) {
+func TestSiteStoreUpdateRollsBackWhenPrimaryHostnameAssignmentFails(t *testing.T) {
 	db := mustOpenTestDB(t)
 	store := NewSiteStore(db)
 	domainStore := NewDomainStore(db)
@@ -245,25 +259,25 @@ func TestSiteStoreUpdateRollsBackWhenPrimaryDomainAssignmentFails(t *testing.T) 
 		t.Fatalf("create site: %v", err)
 	}
 	_, err = domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "pressluft.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipPlatform,
-		Status:    DomainStatusActive,
+		Hostname: "agency.example.test",
+		Kind:     DomainKindBaseDomain,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStateReady,
 	})
 	if err != nil {
 		t.Fatalf("create base domain: %v", err)
 	}
 	updatedName := "Changed"
 	updatedStatus := SiteStatusActive
-	invalidPrimary := "pressluft.dev"
+	invalidPrimary := "agency.example.test"
 
 	_, err = store.Update(context.Background(), siteID, UpdateSiteInput{
 		Name:          &updatedName,
 		Status:        &updatedStatus,
 		PrimaryDomain: &invalidPrimary,
 	})
-	if err == nil || !strings.Contains(err.Error(), "cannot be used as a site primary domain") {
-		t.Fatalf("update error = %v, want primary domain assignment failure", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot be used as a site primary hostname") {
+		t.Fatalf("update error = %v, want primary hostname assignment failure", err)
 	}
 
 	site, err := store.GetByID(context.Background(), siteID)

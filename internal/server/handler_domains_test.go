@@ -23,7 +23,7 @@ func TestDomainsCreateAssignListDeleteEndpoints(t *testing.T) {
 		t.Fatalf("create site: %v", err)
 	}
 
-	createBaseBody, _ := json.Marshal(map[string]any{"hostname": "sandbox.pressluft.test", "kind": "wildcard", "ownership": "platform"})
+	createBaseBody, _ := json.Marshal(map[string]any{"hostname": "agency.example.test", "kind": "base_domain", "source": "user", "dns_state": "ready"})
 	createBaseReq := httptest.NewRequest(http.MethodPost, "/api/domains", bytes.NewReader(createBaseBody))
 	createBaseReq.Header.Set("Content-Type", "application/json")
 	createBaseRes := httptest.NewRecorder()
@@ -37,7 +37,7 @@ func TestDomainsCreateAssignListDeleteEndpoints(t *testing.T) {
 	}
 	baseID, _ := createdBase["id"].(string)
 
-	assignBody, _ := json.Marshal(map[string]any{"hostname": "agency.sandbox.pressluft.test", "parent_domain_id": baseID, "is_primary": true})
+	assignBody, _ := json.Marshal(map[string]any{"hostname": "preview.agency.example.test", "source": "user", "parent_domain_id": baseID, "is_primary": true})
 	assignReq := httptest.NewRequest(http.MethodPost, "/api/sites/"+siteID+"/domains", bytes.NewReader(assignBody))
 	assignReq.Header.Set("Content-Type", "application/json")
 	assignRes := httptest.NewRecorder()
@@ -74,7 +74,7 @@ func TestDomainsCreateAssignListDeleteEndpoints(t *testing.T) {
 	}
 }
 
-func TestDomainsCreateDefaultsToCustomerDirectInventory(t *testing.T) {
+func TestDomainsCreateDefaultsToUserHostnameInventory(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	handler := NewHandler(db)
 
@@ -91,15 +91,15 @@ func TestDomainsCreateDefaultsToCustomerDirectInventory(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	if created.Kind != DomainKindDirect {
-		t.Fatalf("kind = %q, want %q", created.Kind, DomainKindDirect)
+	if created.Kind != DomainKindHostname {
+		t.Fatalf("kind = %q, want %q", created.Kind, DomainKindHostname)
 	}
-	if created.Ownership != DomainOwnershipCustomer {
-		t.Fatalf("ownership = %q, want %q", created.Ownership, DomainOwnershipCustomer)
+	if created.Source != DomainSourceUser {
+		t.Fatalf("source = %q, want %q", created.Source, DomainSourceUser)
 	}
 }
 
-func TestDomainsCreateForSiteDerivesOwnershipFromWildcardParent(t *testing.T) {
+func TestDomainsCreateForSiteDerivesUserSourceFromBaseDomainParent(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
@@ -110,13 +110,13 @@ func TestDomainsCreateForSiteDerivesOwnershipFromWildcardParent(t *testing.T) {
 		t.Fatalf("create site: %v", err)
 	}
 	parentID, err := NewDomainStore(db).Create(context.Background(), CreateDomainInput{
-		Hostname:  "agency.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipCustomer,
-		Status:    DomainStatusActive,
+		Hostname: "agency.dev",
+		Kind:     DomainKindBaseDomain,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStateReady,
 	})
 	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
+		t.Fatalf("create base domain: %v", err)
 	}
 
 	body, _ := json.Marshal(map[string]any{"hostname": "preview.agency.dev", "parent_domain_id": parentID, "is_primary": true})
@@ -132,7 +132,7 @@ func TestDomainsCreateForSiteDerivesOwnershipFromWildcardParent(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode assigned domain response: %v", err)
 	}
-	if created.Ownership != DomainOwnershipCustomer {
-		t.Fatalf("ownership = %q, want %q", created.Ownership, DomainOwnershipCustomer)
+	if created.Source != DomainSourceUser {
+		t.Fatalf("source = %q, want %q", created.Source, DomainSourceUser)
 	}
 }

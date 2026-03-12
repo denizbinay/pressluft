@@ -28,7 +28,6 @@ SELECT
         ELSE kind
     END,
     CASE
-        WHEN hostname IN ('pressluft.bombig.app', 'pressluft.dev') THEN 'platform'
         WHEN ownership = 'platform' AND kind = 'base' AND site_id IS NULL AND parent_domain_id IS NULL THEN 'customer'
         ELSE ownership
     END,
