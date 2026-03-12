@@ -25,15 +25,6 @@ Pressluft is the attempt to build that same experience as open-source software y
 
 I'm sure all of you have 101 more features that fit your agency workflow.
 
-## Where we are today
-
-- Provision, delete, rebuild, and resize VPS servers (Hetzner Cloud only so far — add more yourself!)
-- Run Ansible-based provisioning/configuration flows and deploy the Pressluft agent (profile roles are scaffolded and evolving)
-- Deploy a lightweight agent to each server during provisioning — it connects back to the control plane, accepts commands, and reports CPU and memory usage
-- Restart services on managed servers remotely
-- Job queue with real-time step-by-step timeline
-- Account-wide activity log
-
 ## Security
 
 Security is a core concern for a tool that manages production infrastructure. Here is what the current implementation does:
@@ -90,4 +81,3 @@ make build   # control plane — builds bin/pressluft with embedded dashboard
 make agent   # agent binary — statically linked, for deployment to managed servers
 make all     # both
 ```
-
