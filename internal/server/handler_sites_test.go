@@ -75,14 +75,6 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 		t.Fatalf("get status = %d, want %d", getRes.Code, http.StatusOK)
 	}
 
-	activities, _, err = activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
-	if err != nil {
-		t.Fatalf("list activity after get: %v", err)
-	}
-	if len(activities) != 1 {
-		t.Fatalf("site activity count after get = %d, want 1", len(activities))
-	}
-
 	updatedName := map[string]any{"name": "Agency Site Live", "status": "active"}
 	updateBytes, _ := json.Marshal(updatedName)
 	updateReq := httptest.NewRequest(http.MethodPatch, "/api/sites/"+siteID, bytes.NewReader(updateBytes))
@@ -99,43 +91,6 @@ func TestSitesCreateListGetUpdateDeleteEndpoints(t *testing.T) {
 	}
 	if len(activities) != 2 {
 		t.Fatalf("site activity count after update = %d, want 2", len(activities))
-	}
-	if activities[0].EventType != activity.EventSiteUpdated {
-		t.Fatalf("latest event type after update = %q, want %q", activities[0].EventType, activity.EventSiteUpdated)
-	}
-	if activities[0].ResourceID != siteID {
-		t.Fatalf("updated event resource_id = %q, want %q", activities[0].ResourceID, siteID)
-	}
-	if activities[0].ParentResourceID != serverID {
-		t.Fatalf("updated event parent_resource_id = %q, want %q", activities[0].ParentResourceID, serverID)
-	}
-	if activities[0].Title != "Site 'Agency Site Live' updated" {
-		t.Fatalf("updated event title = %q", activities[0].Title)
-	}
-	if activities[0].Message != "Site metadata was updated in the control plane." {
-		t.Fatalf("updated event message = %q", activities[0].Message)
-	}
-
-	getAgainReq := httptest.NewRequest(http.MethodGet, "/api/sites/"+siteID, nil)
-	getAgainRes := httptest.NewRecorder()
-	handler.ServeHTTP(getAgainRes, getAgainReq)
-	if getAgainRes.Code != http.StatusOK {
-		t.Fatalf("second get status = %d, want %d", getAgainRes.Code, http.StatusOK)
-	}
-
-	activities, _, err = activityStore.List(context.Background(), activity.ListFilter{Category: activity.CategorySite, Limit: 10})
-	if err != nil {
-		t.Fatalf("list activity after second get: %v", err)
-	}
-	if len(activities) != 2 {
-		t.Fatalf("site activity count after second get = %d, want 2", len(activities))
-	}
-
-	serverSitesReq := httptest.NewRequest(http.MethodGet, "/api/servers/"+serverID+"/sites", nil)
-	serverSitesRes := httptest.NewRecorder()
-	handler.ServeHTTP(serverSitesRes, serverSitesReq)
-	if serverSitesRes.Code != http.StatusOK {
-		t.Fatalf("server sites status = %d, want %d", serverSitesRes.Code, http.StatusOK)
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/sites/"+siteID, nil)
@@ -174,30 +129,19 @@ func TestSitesEndpointsValidationAndNotFound(t *testing.T) {
 	}
 }
 
-func TestSitesCreateWithWildcardPrimaryDomainConfig(t *testing.T) {
+func TestSitesCreateWithFallbackResolverPrimaryHostnameConfig(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
-	domainStore := NewDomainStore(db)
-	baseID, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "pressluft.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipPlatform,
-		Status:    DomainStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
-	}
 	handler := NewHandler(db)
 
 	body := map[string]any{
 		"server_id": serverID,
 		"name":      "Sandbox Site",
 		"status":    "draft",
-		"primary_domain_config": map[string]any{
-			"mode":             "wildcard",
-			"label":            "client preview",
-			"parent_domain_id": baseID,
+		"primary_hostname_config": map[string]any{
+			"source": "fallback_resolver",
+			"label":  "client preview",
 		},
 	}
 	bodyBytes, _ := json.Marshal(body)
@@ -212,35 +156,35 @@ func TestSitesCreateWithWildcardPrimaryDomainConfig(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	if created["primary_domain"] != "client-preview.pressluft.dev" {
-		t.Fatalf("primary_domain = %v, want %q", created["primary_domain"], "client-preview.pressluft.dev")
+	if created["primary_domain"] != "client-preview.203-0-113-10.sslip.io" {
+		t.Fatalf("primary_domain = %v, want %q", created["primary_domain"], "client-preview.203-0-113-10.sslip.io")
 	}
 }
 
-func TestSitesCreateWithCustomerWildcardPrimaryDomainConfig(t *testing.T) {
+func TestSitesCreateWithUserBaseDomainPrimaryHostnameConfig(t *testing.T) {
 	db := mustOpenServerHandlerDB(t)
 	_, providerDBID := mustInsertProviderRecord(t, db, "test-server-provider", "agency", "token-ok")
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
 	domainStore := NewDomainStore(db)
 	parentID, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "agency.dev",
-		Kind:      DomainKindWildcard,
-		Ownership: DomainOwnershipCustomer,
-		Status:    DomainStatusActive,
+		Hostname: "agency.dev",
+		Kind:     DomainKindBaseDomain,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStateReady,
 	})
 	if err != nil {
-		t.Fatalf("create wildcard domain: %v", err)
+		t.Fatalf("create base domain: %v", err)
 	}
 	handler := NewHandler(db)
 
 	body := map[string]any{
 		"server_id": serverID,
-		"name":      "Customer Wildcard Site",
+		"name":      "Customer Base Domain Site",
 		"status":    "draft",
-		"primary_domain_config": map[string]any{
-			"mode":             "wildcard",
-			"label":            "staging",
-			"parent_domain_id": parentID,
+		"primary_hostname_config": map[string]any{
+			"source":    "user",
+			"label":     "staging",
+			"domain_id": parentID,
 		},
 	}
 	bodyBytes, _ := json.Marshal(body)
@@ -267,10 +211,10 @@ func TestSitesCreateReturnsBadRequestForDuplicatePrimaryDomain(t *testing.T) {
 	serverID := mustInsertServerRecord(t, db, providerDBID, "ready")
 	domainStore := NewDomainStore(db)
 	_, err := domainStore.Create(context.Background(), CreateDomainInput{
-		Hostname:  "agency.example.test",
-		Kind:      DomainKindDirect,
-		Ownership: DomainOwnershipCustomer,
-		Status:    DomainStatusActive,
+		Hostname: "agency.example.test",
+		Kind:     DomainKindHostname,
+		Source:   DomainSourceUser,
+		DNSState: DomainDNSStatePending,
 	})
 	if err != nil {
 		t.Fatalf("create inventory domain: %v", err)

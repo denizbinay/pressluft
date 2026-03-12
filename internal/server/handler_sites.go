@@ -119,20 +119,20 @@ func (sh *sitesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		status = SiteStatusDraft
 	}
 	id, err := sh.store.Create(r.Context(), CreateSiteInput{
-		ServerID:            req.ServerID,
-		Name:                req.Name,
-		PrimaryDomain:       req.PrimaryDomain,
-		PrimaryDomainConfig: apiCreateSitePrimaryDomainConfig(req.PrimaryDomainConfig),
-		Status:              status,
-		WordPressPath:       req.WordPressPath,
-		PHPVersion:          req.PHPVersion,
-		WordPressVersion:    req.WordPressVersion,
+		ServerID:              req.ServerID,
+		Name:                  req.Name,
+		PrimaryDomain:         req.PrimaryDomain,
+		PrimaryHostnameConfig: apiCreateSitePrimaryHostnameConfig(req.PrimaryHostnameConfig),
+		Status:                status,
+		WordPressPath:         req.WordPressPath,
+		PHPVersion:            req.PHPVersion,
+		WordPressVersion:      req.WordPressVersion,
 	})
 	if err != nil {
 		switch {
 		case strings.Contains(err.Error(), "server ") && strings.Contains(err.Error(), "not found"):
 			respondError(w, http.StatusNotFound, err.Error())
-		case strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported site status") || strings.Contains(err.Error(), "primary_domain_config") || strings.Contains(err.Error(), "use either") || strings.Contains(err.Error(), "valid domain name") || strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "cannot"):
+		case strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported site status") || strings.Contains(err.Error(), "primary_hostname_config") || strings.Contains(err.Error(), "use either") || strings.Contains(err.Error(), "valid domain name") || strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "cannot"):
 			respondError(w, http.StatusBadRequest, err.Error())
 		default:
 			respondError(w, http.StatusInternalServerError, "failed to create site: "+err.Error())
@@ -163,15 +163,15 @@ func (sh *sitesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, apiStoredSite(*site))
 }
 
-func apiCreateSitePrimaryDomainConfig(in *apitypes.SitePrimaryDomainConfig) *CreateSitePrimaryDomainInput {
+func apiCreateSitePrimaryHostnameConfig(in *apitypes.SitePrimaryHostnameConfig) *CreateSitePrimaryHostnameInput {
 	if in == nil {
 		return nil
 	}
-	return &CreateSitePrimaryDomainInput{
-		Mode:           in.Mode,
-		Hostname:       in.Hostname,
-		Label:          in.Label,
-		ParentDomainID: in.ParentDomainID,
+	return &CreateSitePrimaryHostnameInput{
+		Source:   in.Source,
+		Hostname: in.Hostname,
+		Label:    in.Label,
+		DomainID: in.DomainID,
 	}
 }
 

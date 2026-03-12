@@ -81,64 +81,81 @@ type CreateServerRequest struct {
 }
 
 type CreateSiteRequest struct {
-	ServerID            string                   `json:"server_id"`
-	Name                string                   `json:"name"`
-	PrimaryDomain       string                   `json:"primary_domain,omitempty"`
-	PrimaryDomainConfig *SitePrimaryDomainConfig `json:"primary_domain_config,omitempty"`
-	Status              string                   `json:"status,omitempty"`
-	WordPressPath       string                   `json:"wordpress_path,omitempty"`
-	PHPVersion          string                   `json:"php_version,omitempty"`
-	WordPressVersion    string                   `json:"wordpress_version,omitempty"`
+	ServerID              string                     `json:"server_id"`
+	Name                  string                     `json:"name"`
+	PrimaryDomain         string                     `json:"primary_domain,omitempty"`
+	PrimaryHostnameConfig *SitePrimaryHostnameConfig `json:"primary_hostname_config,omitempty"`
+	Status                string                     `json:"status,omitempty"`
+	WordPressPath         string                     `json:"wordpress_path,omitempty"`
+	PHPVersion            string                     `json:"php_version,omitempty"`
+	WordPressVersion      string                     `json:"wordpress_version,omitempty"`
 }
 
-type SitePrimaryDomainConfig struct {
-	Mode           string `json:"mode"`
-	Hostname       string `json:"hostname,omitempty"`
-	Label          string `json:"label,omitempty"`
-	ParentDomainID string `json:"parent_domain_id,omitempty"`
+type SitePrimaryHostnameConfig struct {
+	Source   string `json:"source"`
+	Hostname string `json:"hostname,omitempty"`
+	Label    string `json:"label,omitempty"`
+	DomainID string `json:"domain_id,omitempty"`
 }
 
-func (c *SitePrimaryDomainConfig) Validate() error {
+func (c *SitePrimaryHostnameConfig) Validate() error {
 	if c == nil {
 		return nil
 	}
-	c.Mode = strings.TrimSpace(c.Mode)
+	c.Source = strings.TrimSpace(c.Source)
 	c.Hostname = strings.TrimSpace(c.Hostname)
 	c.Label = strings.TrimSpace(c.Label)
-	c.ParentDomainID = strings.TrimSpace(c.ParentDomainID)
-	switch c.Mode {
-	case "wildcard":
+	c.DomainID = strings.TrimSpace(c.DomainID)
+	switch c.Source {
+	case "fallback_resolver":
 		if c.Label == "" {
-			return fmt.Errorf("primary_domain_config.label is required for wildcard domains")
+			return fmt.Errorf("primary_hostname_config.label is required for fallback resolver hostnames")
 		}
-		if c.ParentDomainID == "" {
-			return fmt.Errorf("primary_domain_config.parent_domain_id is required for wildcard domains")
-		}
-	case "direct":
-		if c.Hostname == "" {
-			return fmt.Errorf("primary_domain_config.hostname is required for direct domains")
+	case "user":
+		hasHostname := c.Hostname != ""
+		hasDomain := c.DomainID != ""
+		hasLabel := c.Label != ""
+		switch {
+		case hasHostname && (hasDomain || hasLabel):
+			return fmt.Errorf("primary_hostname_config.user requires either hostname or domain_id plus label")
+		case hasHostname:
+			return nil
+		case hasDomain && hasLabel:
+			return nil
+		case hasDomain && !hasLabel:
+			return fmt.Errorf("primary_hostname_config.label is required when domain_id is set")
+		default:
+			return fmt.Errorf("primary_hostname_config.user requires hostname or domain_id")
 		}
 	default:
-		return fmt.Errorf("primary_domain_config.mode must be direct or wildcard")
+		return fmt.Errorf("primary_hostname_config.source must be fallback_resolver or user")
 	}
 	return nil
 }
 
 type CreateDomainRequest struct {
-	Hostname       string `json:"hostname"`
-	Kind           string `json:"kind,omitempty"`
-	Ownership      string `json:"ownership,omitempty"`
-	Status         string `json:"status,omitempty"`
-	SiteID         string `json:"site_id,omitempty"`
-	ParentDomainID string `json:"parent_domain_id,omitempty"`
-	IsPrimary      bool   `json:"is_primary,omitempty"`
+	Hostname             string `json:"hostname"`
+	Kind                 string `json:"kind,omitempty"`
+	Source               string `json:"source,omitempty"`
+	DNSState             string `json:"dns_state,omitempty"`
+	RoutingState         string `json:"routing_state,omitempty"`
+	DNSStatusMessage     string `json:"dns_status_message,omitempty"`
+	RoutingStatusMessage string `json:"routing_status_message,omitempty"`
+	LastCheckedAt        string `json:"last_checked_at,omitempty"`
+	SiteID               string `json:"site_id,omitempty"`
+	ParentDomainID       string `json:"parent_domain_id,omitempty"`
+	IsPrimary            bool   `json:"is_primary,omitempty"`
 }
 
 func (r *CreateDomainRequest) Validate() error {
 	r.Hostname = strings.TrimSpace(r.Hostname)
 	r.Kind = strings.TrimSpace(r.Kind)
-	r.Ownership = strings.TrimSpace(r.Ownership)
-	r.Status = strings.TrimSpace(r.Status)
+	r.Source = strings.TrimSpace(r.Source)
+	r.DNSState = strings.TrimSpace(r.DNSState)
+	r.RoutingState = strings.TrimSpace(r.RoutingState)
+	r.DNSStatusMessage = strings.TrimSpace(r.DNSStatusMessage)
+	r.RoutingStatusMessage = strings.TrimSpace(r.RoutingStatusMessage)
+	r.LastCheckedAt = strings.TrimSpace(r.LastCheckedAt)
 	r.SiteID = strings.TrimSpace(r.SiteID)
 	r.ParentDomainID = strings.TrimSpace(r.ParentDomainID)
 	if r.Hostname == "" {
@@ -148,13 +165,17 @@ func (r *CreateDomainRequest) Validate() error {
 }
 
 type UpdateDomainRequest struct {
-	Hostname       *string `json:"hostname,omitempty"`
-	Kind           *string `json:"kind,omitempty"`
-	Ownership      *string `json:"ownership,omitempty"`
-	Status         *string `json:"status,omitempty"`
-	SiteID         *string `json:"site_id,omitempty"`
-	ParentDomainID *string `json:"parent_domain_id,omitempty"`
-	IsPrimary      *bool   `json:"is_primary,omitempty"`
+	Hostname             *string `json:"hostname,omitempty"`
+	Kind                 *string `json:"kind,omitempty"`
+	Source               *string `json:"source,omitempty"`
+	DNSState             *string `json:"dns_state,omitempty"`
+	RoutingState         *string `json:"routing_state,omitempty"`
+	DNSStatusMessage     *string `json:"dns_status_message,omitempty"`
+	RoutingStatusMessage *string `json:"routing_status_message,omitempty"`
+	LastCheckedAt        *string `json:"last_checked_at,omitempty"`
+	SiteID               *string `json:"site_id,omitempty"`
+	ParentDomainID       *string `json:"parent_domain_id,omitempty"`
+	IsPrimary            *bool   `json:"is_primary,omitempty"`
 }
 
 func (r *UpdateDomainRequest) Validate() error {
@@ -167,8 +188,12 @@ func (r *UpdateDomainRequest) Validate() error {
 	}
 	trim(&r.Hostname)
 	trim(&r.Kind)
-	trim(&r.Ownership)
-	trim(&r.Status)
+	trim(&r.Source)
+	trim(&r.DNSState)
+	trim(&r.RoutingState)
+	trim(&r.DNSStatusMessage)
+	trim(&r.RoutingStatusMessage)
+	trim(&r.LastCheckedAt)
 	trim(&r.SiteID)
 	trim(&r.ParentDomainID)
 	if r.Hostname != nil && *r.Hostname == "" {
@@ -191,10 +216,10 @@ func (r *CreateSiteRequest) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if r.PrimaryDomain != "" && r.PrimaryDomainConfig != nil {
-		return fmt.Errorf("use either primary_domain or primary_domain_config, not both")
+	if r.PrimaryDomain != "" && r.PrimaryHostnameConfig != nil {
+		return fmt.Errorf("use either primary_domain or primary_hostname_config, not both")
 	}
-	if err := r.PrimaryDomainConfig.Validate(); err != nil {
+	if err := r.PrimaryHostnameConfig.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -260,18 +285,22 @@ type StoredSite struct {
 }
 
 type StoredDomain struct {
-	ID             string `json:"id"`
-	Hostname       string `json:"hostname"`
-	Kind           string `json:"kind"`
-	Ownership      string `json:"ownership"`
-	Status         string `json:"status"`
-	SiteID         string `json:"site_id,omitempty"`
-	SiteName       string `json:"site_name,omitempty"`
-	ParentDomainID string `json:"parent_domain_id,omitempty"`
-	ParentHostname string `json:"parent_hostname,omitempty"`
-	IsPrimary      bool   `json:"is_primary"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID                   string `json:"id"`
+	Hostname             string `json:"hostname"`
+	Kind                 string `json:"kind"`
+	Source               string `json:"source"`
+	DNSState             string `json:"dns_state"`
+	RoutingState         string `json:"routing_state"`
+	DNSStatusMessage     string `json:"dns_status_message,omitempty"`
+	RoutingStatusMessage string `json:"routing_status_message,omitempty"`
+	LastCheckedAt        string `json:"last_checked_at,omitempty"`
+	SiteID               string `json:"site_id,omitempty"`
+	SiteName             string `json:"site_name,omitempty"`
+	ParentDomainID       string `json:"parent_domain_id,omitempty"`
+	ParentHostname       string `json:"parent_hostname,omitempty"`
+	IsPrimary            bool   `json:"is_primary"`
+	CreatedAt            string `json:"created_at"`
+	UpdatedAt            string `json:"updated_at"`
 }
 
 type DeleteDomainResponse struct {

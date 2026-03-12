@@ -317,16 +317,20 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 
 	if _, err := db.Exec(`
 		CREATE TABLE domains (
-			id               TEXT PRIMARY KEY,
-			hostname         TEXT    NOT NULL,
-			kind             TEXT    NOT NULL,
-			ownership        TEXT    NOT NULL,
-			status           TEXT    NOT NULL DEFAULT 'active',
-			site_id          TEXT,
-			parent_domain_id TEXT,
-			is_primary       INTEGER NOT NULL DEFAULT 0,
-			created_at       TEXT    NOT NULL,
-			updated_at       TEXT    NOT NULL,
+			id                     TEXT PRIMARY KEY,
+			hostname               TEXT    NOT NULL,
+			kind                   TEXT    NOT NULL,
+			source                 TEXT    NOT NULL,
+			dns_state              TEXT    NOT NULL DEFAULT 'pending',
+			routing_state          TEXT    NOT NULL DEFAULT 'not_configured',
+			dns_status_message     TEXT,
+			routing_status_message TEXT,
+			last_checked_at        TEXT,
+			site_id                TEXT,
+			parent_domain_id       TEXT,
+			is_primary             INTEGER NOT NULL DEFAULT 0,
+			created_at             TEXT    NOT NULL,
+			updated_at             TEXT    NOT NULL,
 			FOREIGN KEY (site_id) REFERENCES sites(id),
 			FOREIGN KEY (parent_domain_id) REFERENCES domains(id)
 		);
@@ -337,8 +341,10 @@ func mustOpenTestDB(t *testing.T) *sql.DB {
 		CREATE UNIQUE INDEX idx_domains_hostname_unique ON domains(hostname);
 		CREATE INDEX idx_domains_site_id ON domains(site_id);
 		CREATE INDEX idx_domains_parent_domain_id ON domains(parent_domain_id);
-		CREATE INDEX idx_domains_status ON domains(status);
+		CREATE INDEX idx_domains_dns_state ON domains(dns_state);
+		CREATE INDEX idx_domains_routing_state ON domains(routing_state);
 		CREATE INDEX idx_domains_kind ON domains(kind);
+		CREATE INDEX idx_domains_source ON domains(source);
 		CREATE UNIQUE INDEX idx_domains_primary_site_unique ON domains(site_id) WHERE site_id IS NOT NULL AND is_primary = 1;
 	`); err != nil {
 		t.Fatalf("create domain indexes: %v", err)
@@ -427,11 +433,12 @@ func mustInsertServerWithStatus(t *testing.T, db *sql.DB, status string) string 
 	providerID, _ := mustInsertProvider(t, db, "hetzner", "secondary")
 	publicID := nextTestPublicID(t, db, "servers")
 	_, err := db.Exec(
-		`INSERT INTO servers (id, provider_id, provider_type, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO servers (id, provider_id, provider_type, ipv4, name, location, server_type, image, profile_key, status, setup_state, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
 		publicID,
 		providerID,
 		"hetzner",
+		"203.0.113.10",
 		"server-under-test",
 		"fsn1",
 		"cx22",

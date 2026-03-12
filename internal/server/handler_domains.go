@@ -98,22 +98,17 @@ func (dh *domainsHandler) handleCreateForSite(w http.ResponseWriter, r *http.Req
 	}
 	req.SiteID = siteID
 	if strings.TrimSpace(req.Kind) == "" {
-		req.Kind = DomainKindDirect
+		req.Kind = DomainKindHostname
 	}
-	if strings.TrimSpace(req.Ownership) == "" {
+	if strings.TrimSpace(req.Source) == "" {
 		if strings.TrimSpace(req.ParentDomainID) != "" {
-			parent, err := dh.store.GetByID(r.Context(), req.ParentDomainID)
-			if err != nil {
-				respondDomainError(w, fmt.Errorf("parent_domain_id: %w", err), "failed to create domain")
-				return
-			}
-			req.Ownership = parent.Ownership
+			req.Source = DomainSourceUser
 		} else {
-			req.Ownership = DomainOwnershipCustomer
+			req.Source = DomainSourceUser
 		}
 	}
-	if strings.TrimSpace(req.Status) == "" {
-		req.Status = DomainStatusActive
+	if strings.TrimSpace(req.DNSState) == "" && strings.TrimSpace(req.Source) == DomainSourceFallbackResolver {
+		req.DNSState = DomainDNSStateReady
 	}
 	dh.createDomain(w, r, req)
 }
@@ -124,13 +119,13 @@ func (dh *domainsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(req.Kind) == "" {
-		req.Kind = DomainKindDirect
+		req.Kind = DomainKindHostname
 	}
-	if strings.TrimSpace(req.Ownership) == "" {
-		req.Ownership = DomainOwnershipCustomer
+	if strings.TrimSpace(req.Source) == "" {
+		req.Source = DomainSourceUser
 	}
-	if strings.TrimSpace(req.Status) == "" {
-		req.Status = DomainStatusActive
+	if strings.TrimSpace(req.DNSState) == "" && strings.TrimSpace(req.Source) == DomainSourceFallbackResolver {
+		req.DNSState = DomainDNSStateReady
 	}
 	dh.createDomain(w, r, req)
 }
@@ -141,13 +136,17 @@ func (dh *domainsHandler) createDomain(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	id, err := dh.store.Create(r.Context(), CreateDomainInput{
-		Hostname:       req.Hostname,
-		Kind:           req.Kind,
-		Ownership:      req.Ownership,
-		Status:         req.Status,
-		SiteID:         req.SiteID,
-		ParentDomainID: req.ParentDomainID,
-		IsPrimary:      req.IsPrimary,
+		Hostname:             req.Hostname,
+		Kind:                 req.Kind,
+		Source:               req.Source,
+		DNSState:             req.DNSState,
+		RoutingState:         req.RoutingState,
+		DNSStatusMessage:     req.DNSStatusMessage,
+		RoutingStatusMessage: req.RoutingStatusMessage,
+		LastCheckedAt:        req.LastCheckedAt,
+		SiteID:               req.SiteID,
+		ParentDomainID:       req.ParentDomainID,
+		IsPrimary:            req.IsPrimary,
 	})
 	if err != nil {
 		respondDomainError(w, err, "failed to create domain")
@@ -184,13 +183,17 @@ func (dh *domainsHandler) handleUpdate(w http.ResponseWriter, r *http.Request, d
 		return
 	}
 	domain, err := dh.store.Update(r.Context(), domainID, UpdateDomainInput{
-		Hostname:       req.Hostname,
-		Kind:           req.Kind,
-		Ownership:      req.Ownership,
-		Status:         req.Status,
-		SiteID:         req.SiteID,
-		ParentDomainID: req.ParentDomainID,
-		IsPrimary:      req.IsPrimary,
+		Hostname:             req.Hostname,
+		Kind:                 req.Kind,
+		Source:               req.Source,
+		DNSState:             req.DNSState,
+		RoutingState:         req.RoutingState,
+		DNSStatusMessage:     req.DNSStatusMessage,
+		RoutingStatusMessage: req.RoutingStatusMessage,
+		LastCheckedAt:        req.LastCheckedAt,
+		SiteID:               req.SiteID,
+		ParentDomainID:       req.ParentDomainID,
+		IsPrimary:            req.IsPrimary,
 	})
 	if err != nil {
 		respondDomainError(w, err, "failed to update domain")
@@ -241,7 +244,7 @@ func respondDomainError(w http.ResponseWriter, err error, prefix string) {
 	switch {
 	case strings.Contains(err.Error(), "not found"):
 		respondError(w, http.StatusNotFound, err.Error())
-	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "unsupported"), strings.Contains(err.Error(), "valid domain name"), strings.Contains(err.Error(), "already exists"), strings.Contains(err.Error(), "cannot"), strings.Contains(err.Error(), "must reference"), strings.Contains(err.Error(), "within the parent wildcard domain"):
+	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "unsupported"), strings.Contains(err.Error(), "valid domain name"), strings.Contains(err.Error(), "already exists"), strings.Contains(err.Error(), "cannot"), strings.Contains(err.Error(), "must reference"), strings.Contains(err.Error(), "within the selected base domain"):
 		respondError(w, http.StatusBadRequest, err.Error())
 	default:
 		respondError(w, http.StatusInternalServerError, prefix+": "+err.Error())
@@ -250,17 +253,21 @@ func respondDomainError(w http.ResponseWriter, err error, prefix string) {
 
 func apiStoredDomain(in StoredDomain) apitypes.StoredDomain {
 	return apitypes.StoredDomain{
-		ID:             apitypes.FormatAppID(in.ID),
-		Hostname:       in.Hostname,
-		Kind:           in.Kind,
-		Ownership:      in.Ownership,
-		Status:         in.Status,
-		SiteID:         apitypes.FormatAppID(in.SiteID),
-		SiteName:       in.SiteName,
-		ParentDomainID: apitypes.FormatAppID(in.ParentDomainID),
-		ParentHostname: in.ParentHostname,
-		IsPrimary:      in.IsPrimary,
-		CreatedAt:      in.CreatedAt,
-		UpdatedAt:      in.UpdatedAt,
+		ID:                   apitypes.FormatAppID(in.ID),
+		Hostname:             in.Hostname,
+		Kind:                 in.Kind,
+		Source:               in.Source,
+		DNSState:             in.DNSState,
+		RoutingState:         in.RoutingState,
+		DNSStatusMessage:     in.DNSStatusMessage,
+		RoutingStatusMessage: in.RoutingStatusMessage,
+		LastCheckedAt:        in.LastCheckedAt,
+		SiteID:               apitypes.FormatAppID(in.SiteID),
+		SiteName:             in.SiteName,
+		ParentDomainID:       apitypes.FormatAppID(in.ParentDomainID),
+		ParentHostname:       in.ParentHostname,
+		IsPrimary:            in.IsPrimary,
+		CreatedAt:            in.CreatedAt,
+		UpdatedAt:            in.UpdatedAt,
 	}
 }

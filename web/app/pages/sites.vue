@@ -25,34 +25,24 @@ const form = reactive({
   wordpressPath: "/srv/www/",
   phpVersion: "8.3",
   wordpressVersion: "6.8",
-  domainMode: "wildcard",
-  directHostname: "",
-  wildcardLabel: "",
-  wildcardParentDomainId: "",
+  hostnameSource: "fallback_resolver",
+  fallbackLabel: "",
+  userDomainMode: "base_domain",
+  baseDomainId: "",
+  userDomainLabel: "",
+  exactHostname: "",
 });
 
 const siteStatusMeta = (status: StoredSite["status"]) => {
   switch (status) {
     case "active":
-      return {
-        label: "Active",
-        className: "border-primary/30 bg-primary/10 text-primary",
-      };
+      return { label: "Active", className: "border-primary/30 bg-primary/10 text-primary" };
     case "attention":
-      return {
-        label: "Attention",
-        className: "border-accent/30 bg-accent/10 text-accent",
-      };
+      return { label: "Attention", className: "border-accent/30 bg-accent/10 text-accent" };
     case "archived":
-      return {
-        label: "Archived",
-        className: "border-border/60 bg-muted/70 text-muted-foreground",
-      };
+      return { label: "Archived", className: "border-border/60 bg-muted/70 text-muted-foreground" };
     default:
-      return {
-        label: "Draft",
-        className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-      };
+      return { label: "Draft", className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" };
   }
 };
 
@@ -66,58 +56,55 @@ const siteStats = computed(() => {
   };
 });
 
-const serverOptions = computed(() =>
-  [...servers.value].sort((a, b) => a.name.localeCompare(b.name)),
+const serverOptions = computed(() => [...servers.value].sort((a, b) => a.name.localeCompare(b.name)));
+const selectedServer = computed(() => serverOptions.value.find((server) => server.id === form.serverId) || null);
+const selectedServerName = computed(() => selectedServer.value?.name || "Pick a server");
+const selectedServerIPv4 = computed(() => selectedServer.value?.ipv4 || "");
+
+const userBaseDomains = computed(() =>
+  domains.value.filter((domain) => domain.kind === "base_domain" && domain.source === "user"),
 );
 
-const wildcardDomains = computed(() =>
-  domains.value.filter((domain) => domain.kind === "wildcard" && domain.status === "active"),
+const selectedBaseDomain = computed(() =>
+  userBaseDomains.value.find((domain) => domain.id === form.baseDomainId) || null,
 );
 
-const futureWildcardDomains = computed(() =>
-  domains.value.filter((domain) => domain.kind === "wildcard" && domain.status !== "active"),
-);
-
-const hasMultipleWildcardDomains = computed(() => wildcardDomains.value.length > 1);
-
-const selectedWildcardDomain = computed(() =>
-  wildcardDomains.value.find((domain) => domain.id === form.wildcardParentDomainId) || null,
-);
-
-const wildcardDomainLabel = (domainId: string) => {
-  const domain = domains.value.find((item) => item.id === domainId);
-  if (!domain) return "";
-  return domain.ownership === "platform" ? "Pressluft" : "Your domain";
-};
-
-const buildWildcardPrimaryDomain = () => {
-  const label = form.wildcardLabel
+const normalizeLabel = (value: string) =>
+  value
     .trim()
     .toLowerCase()
     .replace(/_/g, "-")
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  if (!label || !selectedWildcardDomain.value) {
+
+const buildFallbackHostname = () => {
+  const label = normalizeLabel(form.fallbackLabel);
+  if (!label || !selectedServerIPv4.value) {
     return "";
   }
-  return `${label}.${selectedWildcardDomain.value.hostname}`;
+  return `${label}.${selectedServerIPv4.value.replace(/\./g, "-")}.sslip.io`;
+};
+
+const buildBaseDomainHostname = () => {
+  const label = normalizeLabel(form.userDomainLabel);
+  if (!label || !selectedBaseDomain.value) {
+    return "";
+  }
+  return `${label}.${selectedBaseDomain.value.hostname}`;
 };
 
 const canCreateSite = computed(() => {
   if (!form.serverId || !form.name.trim()) {
     return false;
   }
-  if (form.domainMode === "wildcard") {
-    return Boolean(buildWildcardPrimaryDomain() && form.wildcardParentDomainId);
+  if (form.hostnameSource === "fallback_resolver") {
+    return Boolean(buildFallbackHostname());
   }
-  return Boolean(form.directHostname.trim());
+  if (form.userDomainMode === "base_domain") {
+    return Boolean(buildBaseDomainHostname() && form.baseDomainId);
+  }
+  return Boolean(form.exactHostname.trim());
 });
-
-const selectedServerName = computed(
-  () =>
-    serverOptions.value.find((server) => server.id === form.serverId)?.name ||
-    "Pick a server",
-);
 
 const loadPage = async () => {
   pageError.value = "";
@@ -130,11 +117,11 @@ const loadPage = async () => {
     if (!form.serverId && serverOptions.value[0]) {
       form.serverId = serverOptions.value[0].id;
     }
-    if (!form.wildcardParentDomainId && wildcardDomains.value[0]) {
-      form.wildcardParentDomainId = wildcardDomains.value[0].id;
+    if (!form.baseDomainId && userBaseDomains.value[0]) {
+      form.baseDomainId = userBaseDomains.value[0].id;
     }
-    if (!wildcardDomains.value.length) {
-      form.domainMode = "direct";
+    if (!selectedServerIPv4.value) {
+      form.hostnameSource = "user";
     }
   } catch (e: any) {
     pageError.value = e.message || "Failed to load sites";
@@ -147,10 +134,12 @@ const resetForm = () => {
   form.wordpressPath = "/srv/www/";
   form.phpVersion = "8.3";
   form.wordpressVersion = "6.8";
-  form.directHostname = "";
-  form.wildcardLabel = "";
-  form.domainMode = wildcardDomains.value.length ? "wildcard" : "direct";
-  form.wildcardParentDomainId = wildcardDomains.value[0]?.id || "";
+  form.fallbackLabel = "";
+  form.userDomainLabel = "";
+  form.exactHostname = "";
+  form.userDomainMode = "base_domain";
+  form.baseDomainId = userBaseDomains.value[0]?.id || "";
+  form.hostnameSource = selectedServerIPv4.value ? "fallback_resolver" : "user";
 };
 
 const handleCreateSite = async () => {
@@ -164,17 +153,22 @@ const handleCreateSite = async () => {
       wordpress_path: form.wordpressPath || undefined,
       php_version: form.phpVersion || undefined,
       wordpress_version: form.wordpressVersion || undefined,
-      primary_domain_config:
-        form.domainMode === "wildcard"
+      primary_hostname_config:
+        form.hostnameSource === "fallback_resolver"
           ? {
-              mode: "wildcard",
-              label: form.wildcardLabel,
-              parent_domain_id: form.wildcardParentDomainId,
+              source: "fallback_resolver",
+              label: form.fallbackLabel,
             }
-          : {
-              mode: "direct",
-              hostname: form.directHostname,
-            },
+          : form.userDomainMode === "base_domain"
+            ? {
+                source: "user",
+                label: form.userDomainLabel,
+                domain_id: form.baseDomainId,
+              }
+            : {
+                source: "user",
+                hostname: form.exactHostname,
+              },
     });
     successMessage.value = `Created ${created.name} on ${created.server_name} with ${created.primary_domain}.`;
     resetForm();
@@ -207,16 +201,15 @@ watch(
   },
 );
 
-watch(wildcardDomains, (value) => {
-  if (!value.length) {
-    form.wildcardParentDomainId = "";
-    if (form.domainMode === "wildcard") {
-      form.domainMode = "direct";
-    }
-    return;
+watch(selectedServerIPv4, (value) => {
+  if (!value && form.hostnameSource === "fallback_resolver") {
+    form.hostnameSource = "user";
   }
-  if (!value.some((domain) => domain.id === form.wildcardParentDomainId)) {
-    form.wildcardParentDomainId = value[0].id;
+});
+
+watch(userBaseDomains, (value) => {
+  if (!value.some((domain) => domain.id === form.baseDomainId)) {
+    form.baseDomainId = value[0]?.id || "";
   }
 });
 </script>
@@ -234,33 +227,25 @@ watch(wildcardDomains, (value) => {
           </div>
           <div>
             <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              WordPress estates finally have a home in Pressluft.
+              Track each WordPress site with the hostname path it will really use.
             </h1>
-             <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-               Track every client site as a first-class resource, attach it to its
-               current server, and decide from day one whether it starts on a
-               reusable wildcard root or a direct standalone domain.
-             </p>
+            <p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+              Choose either a fallback resolver hostname for onboarding and evaluation, or a user-managed domain path that matches production reality.
+            </p>
           </div>
         </div>
 
         <div class="grid grid-cols-3 gap-3 sm:min-w-[420px]">
           <div class="rounded-2xl border border-border/60 bg-background/75 px-4 py-4 backdrop-blur">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Total
-            </p>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Total</p>
             <p class="mt-3 text-3xl font-semibold text-foreground">{{ siteStats.total }}</p>
           </div>
           <div class="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-4">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/80">
-              Active
-            </p>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/80">Active</p>
             <p class="mt-3 text-3xl font-semibold text-primary">{{ siteStats.active }}</p>
           </div>
           <div class="rounded-2xl border border-accent/20 bg-accent/10 px-4 py-4">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent/80">
-              Attention
-            </p>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent/80">Attention</p>
             <p class="mt-3 text-3xl font-semibold text-accent">{{ siteStats.attention }}</p>
           </div>
         </div>
@@ -268,15 +253,11 @@ watch(wildcardDomains, (value) => {
     </section>
 
     <Alert v-if="pageError || error" class="border-destructive/30 bg-destructive/10 text-destructive">
-      <AlertDescription>
-        {{ pageError || error }}
-      </AlertDescription>
+      <AlertDescription>{{ pageError || error }}</AlertDescription>
     </Alert>
 
     <Alert v-if="successMessage" class="border-primary/30 bg-primary/10 text-primary">
-      <AlertDescription>
-        {{ successMessage }}
-      </AlertDescription>
+      <AlertDescription>{{ successMessage }}</AlertDescription>
     </Alert>
 
     <div class="grid gap-6 xl:grid-cols-[1.4fr_minmax(360px,0.9fr)]">
@@ -284,9 +265,7 @@ watch(wildcardDomains, (value) => {
         <CardHeader class="border-b border-border/50 px-6 py-5">
           <div class="flex items-center justify-between gap-3">
             <div>
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Inventory
-              </p>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Inventory</p>
               <h2 class="mt-1 text-xl font-semibold text-foreground">Managed sites</h2>
             </div>
             <Badge variant="outline" class="border-border/60 bg-muted/50 text-xs text-muted-foreground">
@@ -295,9 +274,7 @@ watch(wildcardDomains, (value) => {
           </div>
         </CardHeader>
         <CardContent class="px-6 py-5">
-          <div v-if="loading" class="flex items-center justify-center py-16 text-sm text-muted-foreground">
-            Loading sites...
-          </div>
+          <div v-if="loading" class="flex items-center justify-center py-16 text-sm text-muted-foreground">Loading sites...</div>
 
           <div v-else-if="sites.length === 0" class="rounded-3xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center">
             <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-background/80 shadow-sm">
@@ -307,9 +284,7 @@ watch(wildcardDomains, (value) => {
             </div>
             <h3 class="mt-5 text-xl font-semibold text-foreground">No sites tracked yet</h3>
             <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              Start with one flagship site. The inventory you build here becomes
-              the backbone for future deploys, staging copies, migrations, and
-              backups.
+              Start with one site record and choose a hostname source that matches how you plan to bring it online.
             </p>
           </div>
 
@@ -323,29 +298,17 @@ watch(wildcardDomains, (value) => {
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <h3 class="truncate text-lg font-semibold text-foreground">
-                      {{ site.name }}
-                    </h3>
+                    <h3 class="truncate text-lg font-semibold text-foreground">{{ site.name }}</h3>
                     <Badge variant="outline" :class="siteStatusMeta(site.status).className">
                       {{ siteStatusMeta(site.status).label }}
                     </Badge>
                   </div>
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    {{ site.primary_domain || "No primary hostname yet" }}
-                  </p>
+                  <p class="mt-1 text-sm text-muted-foreground">{{ site.primary_domain || "No primary hostname yet" }}</p>
                   <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
-                      {{ site.server_name }}
-                    </span>
-                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
-                      PHP {{ site.php_version || "TBD" }}
-                    </span>
-                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
-                      WordPress {{ site.wordpress_version || "TBD" }}
-                    </span>
-                    <span v-if="site.wordpress_path" class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">
-                      {{ site.wordpress_path }}
-                    </span>
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">{{ site.server_name }}</span>
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">PHP {{ site.php_version || "TBD" }}</span>
+                    <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">WordPress {{ site.wordpress_version || "TBD" }}</span>
+                    <span v-if="site.wordpress_path" class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">{{ site.wordpress_path }}</span>
                   </div>
                 </div>
 
@@ -361,14 +324,11 @@ watch(wildcardDomains, (value) => {
 
       <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
         <CardHeader class="border-b border-border/50 px-6 py-5">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            New Site
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">New Site</p>
+          <h2 class="mt-1 text-xl font-semibold text-foreground">Create a site with its primary hostname</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Capture the site record first, then choose whether it starts on a fallback resolver hostname or a user-managed domain path.
           </p>
-          <h2 class="mt-1 text-xl font-semibold text-foreground">Create a site with its primary domain</h2>
-             <p class="mt-2 text-sm leading-6 text-muted-foreground">
-               Capture the hosting record and decide what address the site should
-               open on first.
-             </p>
         </CardHeader>
         <CardContent class="px-6 py-5">
           <form class="space-y-4" @submit.prevent="handleCreateSite">
@@ -379,11 +339,9 @@ watch(wildcardDomains, (value) => {
                 v-model="form.serverId"
                 class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
               >
-                <option v-for="server in serverOptions" :key="server.id" :value="server.id">
-                  {{ server.name }}
-                </option>
+                <option v-for="server in serverOptions" :key="server.id" :value="server.id">{{ server.name }}</option>
               </select>
-              <p class="text-xs text-muted-foreground">Attached to {{ selectedServerName }} today, but ready for future moves.</p>
+              <p class="text-xs text-muted-foreground">Attached to {{ selectedServerName }} today, with room for future moves and routing changes.</p>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
@@ -391,8 +349,8 @@ watch(wildcardDomains, (value) => {
                 <Label for="site-name" class="text-sm font-medium text-muted-foreground">Site name</Label>
                 <Input id="site-name" v-model="form.name" placeholder="e.g. Northwind Marketing" />
               </div>
-               <div class="space-y-1.5">
-                 <Label for="site-status" class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
+              <div class="space-y-1.5">
+                <Label for="site-status" class="text-sm font-medium text-muted-foreground">Lifecycle state</Label>
                 <select
                   id="site-status"
                   v-model="form.status"
@@ -419,64 +377,80 @@ watch(wildcardDomains, (value) => {
             </div>
 
             <div class="space-y-4 rounded-2xl border border-border/60 bg-muted/25 p-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Primary Domain
-              </p>
-              <div class="flex flex-wrap gap-2">
-                <Button type="button" size="sm" :variant="form.domainMode === 'wildcard' ? 'default' : 'outline'" @click="form.domainMode = 'wildcard'" :disabled="wildcardDomains.length === 0">
-                  Wildcard domain
-                </Button>
-                <Button type="button" size="sm" :variant="form.domainMode === 'direct' ? 'default' : 'outline'" @click="form.domainMode = 'direct'">
-                  Direct domain
-                </Button>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Primary Hostname</p>
+
+              <div class="space-y-1.5">
+                <Label class="text-sm font-medium text-muted-foreground">Hostname source</Label>
+                <select
+                  v-model="form.hostnameSource"
+                  class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+                >
+                  <option value="fallback_resolver" :disabled="!selectedServerIPv4">Fallback resolver hostname (sslip.io-style)</option>
+                  <option value="user">User-added domain/base domain</option>
+                </select>
               </div>
 
-              <div v-if="form.domainMode === 'wildcard'" class="grid gap-4 sm:grid-cols-2">
+              <template v-if="form.hostnameSource === 'fallback_resolver'">
                 <div class="space-y-1.5">
-                  <Label for="site-wildcard-label" class="text-sm font-medium text-muted-foreground">Child label</Label>
-                  <Input id="site-wildcard-label" v-model="form.wildcardLabel" placeholder="northwind-live" />
+                  <Label class="text-sm font-medium text-muted-foreground">Hostname label</Label>
+                  <Input v-model="form.fallbackLabel" placeholder="northwind-preview" />
                 </div>
-                <div v-if="hasMultipleWildcardDomains" class="space-y-1.5">
-                  <Label for="site-wildcard-domain" class="text-sm font-medium text-muted-foreground">Wildcard root</Label>
+                <div class="space-y-1.5">
+                  <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                  <Input :model-value="buildFallbackHostname()" readonly placeholder="Select a server with IPv4 and enter a label" />
+                </div>
+                <Alert class="border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                  <AlertDescription>
+                    Fallback resolver hostnames are useful for onboarding, development, and evaluation, but they are not recommended for production.
+                  </AlertDescription>
+                </Alert>
+              </template>
+
+              <template v-else>
+                <div class="space-y-1.5">
+                  <Label class="text-sm font-medium text-muted-foreground">User domain path</Label>
                   <select
-                    id="site-wildcard-domain"
-                    v-model="form.wildcardParentDomainId"
+                    v-model="form.userDomainMode"
                     class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
                   >
-                    <option v-for="domain in wildcardDomains" :key="domain.id" :value="domain.id">
-                      {{ domain.hostname }} ({{ domain.ownership === 'platform' ? 'Pressluft' : 'Your domain' }})
-                    </option>
+                    <option value="base_domain">Mint from a reusable base domain</option>
+                    <option value="hostname">Use an exact manual hostname</option>
                   </select>
                 </div>
-                <div class="space-y-1.5 sm:col-span-2">
-                  <Label class="text-sm font-medium text-muted-foreground">Result</Label>
-                  <Input :model-value="buildWildcardPrimaryDomain()" readonly placeholder="Enter a label to preview the allocated hostname" />
-                </div>
-                <div v-if="selectedWildcardDomain" class="sm:col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant="outline" class="border-border/60 bg-muted/40 text-muted-foreground">
-                    {{ wildcardDomainLabel(form.wildcardParentDomainId) }}
-                  </Badge>
-                  <span>{{ selectedWildcardDomain.hostname }} will act as the reusable parent for this and future generated hostnames.</span>
-                </div>
-                <p v-if="wildcardDomains.length === 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                  No wildcard domains are available right now, so start with a direct domain instead.
-                </p>
-                <p v-else class="sm:col-span-2 text-sm text-muted-foreground">
-                  Wildcard domains are better for previews, rollbacks, staging, and future generated hostnames because Pressluft can mint concrete child hostnames on demand.
-                </p>
-                <p v-if="futureWildcardDomains.length > 0" class="sm:col-span-2 text-sm text-muted-foreground">
-                  Not active yet: {{ futureWildcardDomains.map((domain) => domain.hostname).join(", ") }}.
-                </p>
-              </div>
 
-              <div v-else class="space-y-1.5">
-                <Label for="site-direct-domain" class="text-sm font-medium text-muted-foreground">Hostname</Label>
-                <Input id="site-direct-domain" v-model="form.directHostname" placeholder="www.client-example.com" />
-              </div>
+                <div v-if="form.userDomainMode === 'base_domain'" class="grid gap-4 sm:grid-cols-2">
+                  <div class="space-y-1.5">
+                    <Label class="text-sm font-medium text-muted-foreground">Base domain</Label>
+                    <select
+                      v-model="form.baseDomainId"
+                      class="flex h-10 w-full rounded-lg border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none transition focus:border-accent/40"
+                    >
+                      <option v-for="domain in userBaseDomains" :key="domain.id" :value="domain.id">
+                        {{ domain.hostname }} ({{ domain.dns_state }})
+                      </option>
+                    </select>
+                  </div>
+                  <div class="space-y-1.5">
+                    <Label class="text-sm font-medium text-muted-foreground">Hostname label</Label>
+                    <Input v-model="form.userDomainLabel" placeholder="northwind-live" />
+                  </div>
+                  <div class="space-y-1.5 sm:col-span-2">
+                    <Label class="text-sm font-medium text-muted-foreground">Result</Label>
+                    <Input :model-value="buildBaseDomainHostname()" readonly placeholder="Choose a base domain and enter a label" />
+                  </div>
+                  <p class="sm:col-span-2 text-sm text-muted-foreground">
+                    Reusable base domains are first-class inventory records. Wildcard-ready domains can mint child hostnames later, while still keeping DNS readiness visible.
+                  </p>
+                </div>
 
-              <p class="text-sm leading-6 text-muted-foreground">
-                `/domains` stores reusable wildcard roots and standalone direct domains. Site creation mints the concrete hostname row when needed.
-              </p>
+                <div v-else class="space-y-1.5">
+                  <Label class="text-sm font-medium text-muted-foreground">Exact hostname</Label>
+                  <Input v-model="form.exactHostname" placeholder="www.client-example.com" />
+                  <p class="text-sm text-muted-foreground">
+                    Use this when the site needs a manually managed concrete hostname instead of a reusable base domain.
+                  </p>
+                </div>
+              </template>
             </div>
 
             <Button type="submit" class="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/85" :disabled="saving || !canCreateSite">
