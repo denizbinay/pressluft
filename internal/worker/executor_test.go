@@ -26,6 +26,71 @@ import (
 
 var executorTestDB *sql.DB
 
+func TestResolveACMEContactEmailPrefersOperatorWhenUsable(t *testing.T) {
+	executor := &Executor{executionMode: platform.ExecutionModeDev}
+
+	email, err := executor.resolveACMEContactEmail("operator@agency.testable.io", "site-owner@client.testable.io")
+	if err != nil {
+		t.Fatalf("resolve acme contact email: %v", err)
+	}
+	if email != "operator@agency.testable.io" {
+		t.Fatalf("email = %q, want %q", email, "operator@agency.testable.io")
+	}
+}
+
+func TestResolveACMEContactEmailFallsBackToSiteAdminInDev(t *testing.T) {
+	executor := &Executor{executionMode: platform.ExecutionModeDev}
+
+	email, err := executor.resolveACMEContactEmail("dev@example.com", "site-owner@client.testable.io")
+	if err != nil {
+		t.Fatalf("resolve acme contact email: %v", err)
+	}
+	if email != "site-owner@client.testable.io" {
+		t.Fatalf("email = %q, want %q", email, "site-owner@client.testable.io")
+	}
+}
+
+func TestResolveACMEContactEmailRejectsReservedEmailsWithoutFallback(t *testing.T) {
+	executor := &Executor{executionMode: platform.ExecutionModeDev}
+
+	_, err := executor.resolveACMEContactEmail("dev@example.com", "owner@example.test")
+	if err == nil {
+		t.Fatal("expected acme contact email resolution to fail")
+	}
+}
+
+func TestResolveACMEContactEmailRejectsInvalidOperatorInProduction(t *testing.T) {
+	executor := &Executor{executionMode: platform.ExecutionModeProductionBootstrap}
+
+	_, err := executor.resolveACMEContactEmail("dev@example.com", "site-owner@client.testable.io")
+	if err == nil {
+		t.Fatal("expected acme contact email resolution to fail")
+	}
+}
+
+func TestIsUsableACMEContactEmail(t *testing.T) {
+	tests := []struct {
+		name  string
+		email string
+		want  bool
+	}{
+		{name: "real email", email: "hello@agency.pressluft.dev", want: true},
+		{name: "localhost", email: "dev@localhost", want: false},
+		{name: "reserved example", email: "dev@example.com", want: false},
+		{name: "reserved test tld", email: "dev@example.test", want: false},
+		{name: "invalid tld", email: "dev@example.invalid", want: false},
+		{name: "bad format", email: "not-an-email", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUsableACMEContactEmail(tt.email); got != tt.want {
+				t.Fatalf("isUsableACMEContactEmail(%q) = %v, want %v", tt.email, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExecutorDeleteServerSuccessMarksDeleted(t *testing.T) {
 	jobStore := mustOpenExecutorJobStore(t)
 	logger := testLogger()

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1075,6 +1076,10 @@ func (e *Executor) runSiteDeployPlaybook(ctx context.Context, jobID string, serv
 	if server == nil || site == nil || primaryDomain == nil {
 		return fmt.Errorf("site deployment context is incomplete")
 	}
+	effectiveTLSContactEmail, err := e.resolveACMEContactEmail(strings.TrimSpace(tlsContactEmail), strings.TrimSpace(site.WordPressAdminEmail))
+	if err != nil {
+		return err
+	}
 	workspace, err := os.MkdirTemp("", "pressluft-site-deploy-")
 	if err != nil {
 		return fmt.Errorf("failed to create deploy workspace: %w", err)
@@ -1125,11 +1130,49 @@ func (e *Executor) runSiteDeployPlaybook(ctx context.Context, jobID string, serv
 			"admin_user":        "pressluft",
 			"admin_password":    adminPassword,
 			"admin_email":       firstNonEmpty(site.WordPressAdminEmail, fmt.Sprintf("admin@%s", primaryDomain.Hostname)),
-			"tls_contact_email": strings.TrimSpace(tlsContactEmail),
+			"tls_contact_email": effectiveTLSContactEmail,
 			"secret_key":        secretKey,
 		},
 	}
 	return e.runner.Run(ctx, request, &runnerEventSink{jobStore: e.jobStore, jobID: jobID, logger: e.logger})
+}
+
+func (e *Executor) resolveACMEContactEmail(operatorEmail, siteAdminEmail string) (string, error) {
+	if isUsableACMEContactEmail(operatorEmail) {
+		return operatorEmail, nil
+	}
+	if e.executionMode == platform.ExecutionModeDev && isUsableACMEContactEmail(siteAdminEmail) {
+		return siteAdminEmail, nil
+	}
+	if e.executionMode == platform.ExecutionModeDev {
+		return "", fmt.Errorf("no usable ACME contact email available: update the site WordPress admin email to a real address")
+	}
+	return "", fmt.Errorf("no usable ACME contact email available for certificate issuance")
+}
+
+func isUsableACMEContactEmail(email string) bool {
+	address, err := mail.ParseAddress(strings.TrimSpace(email))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(address.Address, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	domain := strings.ToLower(strings.TrimSpace(parts[1]))
+	if domain == "" || !strings.Contains(domain, ".") {
+		return false
+	}
+	if domain == "localhost" || domain == "localdomain" {
+		return false
+	}
+	if domain == "example.com" || domain == "example.net" || domain == "example.org" {
+		return false
+	}
+	if strings.HasSuffix(domain, ".example") || strings.HasSuffix(domain, ".invalid") || strings.HasSuffix(domain, ".localhost") || strings.HasSuffix(domain, ".test") {
+		return false
+	}
+	return true
 }
 
 func (e *Executor) verifySiteRouting(ctx context.Context, site serverpkg.StoredSite, primaryDomain serverpkg.StoredDomain) error {
