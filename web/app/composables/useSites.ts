@@ -2,16 +2,18 @@ import { ref, readonly } from "vue";
 import type {
   CreateSiteRequest,
   DeleteSiteResponse,
+  SiteHealthResponse,
   StoredSite,
   UpdateSiteRequest,
 } from "~/lib/api-types";
 import {
   parseDeleteSiteResponse,
+  parseSiteHealthResponse,
   parseStoredSite,
   parseStoredSites,
 } from "~/lib/api-runtime";
 
-export type { CreateSiteRequest, DeleteSiteResponse, StoredSite, UpdateSiteRequest } from "~/lib/api-types";
+export type { CreateSiteRequest, DeleteSiteResponse, SiteHealthResponse, StoredSite, UpdateSiteRequest } from "~/lib/api-types";
 
 export function useSites() {
   const { apiFetch } = useApiClient();
@@ -42,6 +44,11 @@ export function useSites() {
   const fetchServerSites = async (serverId: string): Promise<StoredSite[]> => {
     error.value = "";
     return parseStoredSites(await apiFetch(`/servers/${serverId}/sites`));
+  };
+
+  const fetchSiteHealth = async (siteId: string): Promise<SiteHealthResponse> => {
+    error.value = "";
+    return parseSiteHealthResponse(await apiFetch(`/sites/${siteId}/health`));
   };
 
   const createSite = async (payload: CreateSiteRequest): Promise<StoredSite> => {
@@ -93,6 +100,7 @@ export function useSites() {
     error: readonly(error),
     fetchSites,
     fetchSite,
+    fetchSiteHealth,
     fetchServerSites,
     createSite,
     updateSite,

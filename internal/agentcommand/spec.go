@@ -12,6 +12,7 @@ import (
 const (
 	TypeRestartService = "restart_service"
 	TypeListServices   = "list_services"
+	TypeSiteHealth     = "site_health_snapshot"
 
 	ErrorCodeUnknownCommand      = "unknown_command"
 	ErrorCodeInvalidPayload      = "invalid_payload"
@@ -55,6 +56,29 @@ type ListServicesResult struct {
 	Services []Service `json:"services"`
 }
 
+type SiteHealthSnapshotParams struct {
+	SiteID   string `json:"site_id"`
+	Hostname string `json:"hostname"`
+	SitePath string `json:"site_path"`
+}
+
+type SiteHealthCheck struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type SiteHealthSnapshot struct {
+	SiteID       string            `json:"site_id"`
+	Hostname     string            `json:"hostname"`
+	GeneratedAt  string            `json:"generated_at"`
+	Healthy      bool              `json:"healthy"`
+	Summary      string            `json:"summary"`
+	Services     []Service         `json:"services,omitempty"`
+	Checks       []SiteHealthCheck `json:"checks,omitempty"`
+	RecentErrors []string          `json:"recent_errors,omitempty"`
+}
+
 var serviceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$`)
 
 var allowedServiceNames = map[string]struct{}{
@@ -67,6 +91,7 @@ var allowedServiceNames = map[string]struct{}{
 var specs = map[string]Spec{
 	TypeRestartService: {Type: TypeRestartService, Timeout: 2 * time.Minute, Validate: validateRestartServicePayload},
 	TypeListServices:   {Type: TypeListServices, Timeout: 10 * time.Second, Validate: validateEmptyPayload},
+	TypeSiteHealth:     {Type: TypeSiteHealth, Timeout: 20 * time.Second, Validate: validateSiteHealthPayload},
 }
 
 func Lookup(commandType string) (Spec, bool) {
@@ -111,6 +136,18 @@ func AllowedServiceNames() []string {
 	return out
 }
 
+func DecodeSiteHealthPayload(payload json.RawMessage) (SiteHealthSnapshotParams, error) {
+	normalized, err := validateSiteHealthPayload(payload)
+	if err != nil {
+		return SiteHealthSnapshotParams{}, err
+	}
+	var params SiteHealthSnapshotParams
+	if err := json.Unmarshal(normalized, &params); err != nil {
+		return SiteHealthSnapshotParams{}, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "invalid site_health_snapshot payload"}
+	}
+	return params, nil
+}
+
 func validateEmptyPayload(payload json.RawMessage) (json.RawMessage, error) {
 	trimmed := strings.TrimSpace(string(payload))
 	if trimmed == "" || trimmed == "null" {
@@ -140,6 +177,33 @@ func validateRestartServicePayload(payload json.RawMessage) (json.RawMessage, er
 	normalized, err := json.Marshal(params)
 	if err != nil {
 		return nil, &ValidationError{Code: ErrorCodeSerializationFailed, Message: "failed to normalize restart_service payload"}
+	}
+	return normalized, nil
+}
+
+func validateSiteHealthPayload(payload json.RawMessage) (json.RawMessage, error) {
+	if strings.TrimSpace(string(payload)) == "" {
+		return nil, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "site_health_snapshot payload is required"}
+	}
+	var params SiteHealthSnapshotParams
+	if err := json.Unmarshal(payload, &params); err != nil {
+		return nil, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "invalid site_health_snapshot payload"}
+	}
+	params.SiteID = strings.TrimSpace(params.SiteID)
+	params.Hostname = strings.TrimSpace(params.Hostname)
+	params.SitePath = strings.TrimSpace(params.SitePath)
+	if params.SiteID == "" {
+		return nil, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "site_id is required"}
+	}
+	if params.Hostname == "" {
+		return nil, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "hostname is required"}
+	}
+	if params.SitePath == "" {
+		return nil, &ValidationError{Code: ErrorCodeInvalidPayload, Message: "site_path is required"}
+	}
+	normalized, err := json.Marshal(params)
+	if err != nil {
+		return nil, &ValidationError{Code: ErrorCodeSerializationFailed, Message: "failed to normalize site_health_snapshot payload"}
 	}
 	return normalized, nil
 }

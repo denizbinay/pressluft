@@ -116,6 +116,7 @@ func NewHandlerWithOptions(db *sql.DB, hub *ws.Hub, wsHandler *WSHandler, nodeHa
 			jobStore:      jobStore,
 			domainStore:   domainStore,
 			activityStore: activityStore,
+			hub:           hub,
 		}
 		operatorMux.Handle("/api/sites", authorize(withRateLimit(http.HandlerFunc(sih.route), newRateLimiter(30, time.Minute), "sites"), auth.RequireCapability(auth.CapabilityManageSites)))
 		operatorMux.Handle("/api/sites/", authorize(withRateLimit(http.HandlerFunc(sih.routeWithID), newRateLimiter(60, time.Minute), "sites-path"), auth.RequireCapability(auth.CapabilityManageSites)))

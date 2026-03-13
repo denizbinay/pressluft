@@ -9,7 +9,7 @@ import JobTimeline from "~/components/JobTimeline.vue";
 import { useActivity } from "~/composables/useActivity";
 import { useDomains, type StoredDomain } from "~/composables/useDomains";
 import { useServers } from "~/composables/useServers";
-import { useSites, type StoredSite } from "~/composables/useSites";
+import { useSites, type SiteHealthResponse, type StoredSite } from "~/composables/useSites";
 
 const route = useRoute();
 const router = useRouter();
@@ -20,11 +20,12 @@ const siteId = computed(() => {
 });
 
 const { servers, fetchServers } = useServers();
-const { fetchSite, updateSite, deleteSite, saving } = useSites();
+const { fetchSite, fetchSiteHealth, updateSite, deleteSite, saving } = useSites();
 const { activities, listSiteActivity } = useActivity();
 const { fetchSiteDomains, createSiteDomain, updateDomain, deleteDomain } = useDomains();
 
 const site = ref<StoredSite | null>(null);
+const siteHealth = ref<SiteHealthResponse | null>(null);
 const siteDomains = ref<StoredDomain[]>([]);
 const loading = ref(true);
 const pageError = ref("");
@@ -64,6 +65,19 @@ const siteDeploymentMeta = (state: StoredSite["deployment_state"]) => {
       return { label: "Deploying", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200" };
     default:
       return { label: "Pending", className: "border-border/60 bg-muted/60 text-muted-foreground" };
+  }
+};
+
+const siteRuntimeMeta = (state: StoredSite["runtime_health_state"]) => {
+  switch (state) {
+    case "healthy":
+      return { label: "Healthy", className: "border-primary/30 bg-primary/10 text-primary" };
+    case "issue":
+      return { label: "Runtime issue", className: "border-destructive/30 bg-destructive/10 text-destructive" };
+    case "unknown":
+      return { label: "Unknown", className: "border-border/60 bg-muted/60 text-muted-foreground" };
+    default:
+      return { label: "Checking", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200" };
   }
 };
 
@@ -122,6 +136,15 @@ const refreshDomains = async () => {
   }
 };
 
+const refreshHealth = async () => {
+  if (!siteId.value) return;
+  try {
+    siteHealth.value = await fetchSiteHealth(siteId.value);
+  } catch {
+    siteHealth.value = null;
+  }
+};
+
 const loadPage = async () => {
   if (!siteId.value) {
     pageError.value = "Invalid site ID";
@@ -134,7 +157,7 @@ const loadPage = async () => {
     const [loadedSite] = await Promise.all([fetchSite(siteId.value), fetchServers()]);
     site.value = loadedSite;
     hydrateForm(loadedSite);
-    await Promise.all([loadActivity(), refreshDomains()]);
+    await Promise.all([loadActivity(), refreshDomains(), refreshHealth()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to load site";
   } finally {
@@ -153,7 +176,7 @@ const handleSave = async () => {
     });
     site.value = updated;
     hydrateForm(updated);
-    await refreshDomains();
+    await Promise.all([refreshDomains(), refreshHealth()]);
     successMessage.value = "Site details updated.";
   } catch (e: any) {
     pageError.value = e.message || "Failed to update site";
@@ -181,7 +204,7 @@ const handleAssignHostname = async () => {
     successMessage.value = `Assigned ${created.hostname}.`;
     hostnameForm.fallbackLabel = "";
     hostnameForm.hostname = "";
-    await Promise.all([refreshDomains(), loadPage()]);
+    await Promise.all([refreshDomains(), loadPage(), refreshHealth()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to assign hostname";
   }
@@ -193,7 +216,7 @@ const handleSetPrimary = async (domainId: string) => {
   try {
     await updateDomain(domainId, { is_primary: true });
     successMessage.value = "Primary hostname updated.";
-    await Promise.all([refreshDomains(), loadPage()]);
+    await Promise.all([refreshDomains(), loadPage(), refreshHealth()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to update primary hostname";
   }
@@ -208,7 +231,7 @@ const handleRemoveHostname = async (domain: StoredDomain) => {
   try {
     await deleteDomain(domain.id);
     successMessage.value = `Removed ${domain.hostname}.`;
-    await Promise.all([refreshDomains(), loadPage()]);
+    await Promise.all([refreshDomains(), loadPage(), refreshHealth()]);
   } catch (e: any) {
     pageError.value = e.message || "Failed to remove hostname";
   }
@@ -255,10 +278,11 @@ watch(currentServerIPv4, (value) => {
               <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ site.name }}</h1>
               <Badge variant="outline" :class="siteStatusMeta(site.status).className">{{ siteStatusMeta(site.status).label }}</Badge>
               <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">{{ siteDeploymentMeta(site.deployment_state).label }}</Badge>
+              <Badge variant="outline" :class="siteRuntimeMeta(site.runtime_health_state).className">{{ siteRuntimeMeta(site.runtime_health_state).label }}</Badge>
             </div>
             <p class="mt-3 max-w-2xl text-base leading-7 text-white/72">
               {{ site.primary_domain || "No primary hostname assigned yet." }}
-              {{ site.deployment_status_message || "Pressluft keeps deployment and hostname routing truthfully in sync." }}
+              {{ site.runtime_health_status_message || site.deployment_status_message || "Pressluft keeps deployment, routing, and runtime health truthfully in sync." }}
             </p>
           </div>
 
@@ -322,12 +346,51 @@ watch(currentServerIPv4, (value) => {
               <div class="rounded-2xl border border-border/60 bg-background/70 p-4">
                 <div class="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">{{ siteDeploymentMeta(site.deployment_state).label }}</Badge>
+                  <Badge variant="outline" :class="siteRuntimeMeta(site.runtime_health_state).className">{{ siteRuntimeMeta(site.runtime_health_state).label }}</Badge>
                   <span class="text-sm text-muted-foreground">{{ site.deployment_status_message || "Waiting for deployment activity." }}</span>
                 </div>
                 <p v-if="site.last_deployed_at" class="mt-3 text-xs text-muted-foreground">Last deployed {{ formatDate(site.last_deployed_at) }}</p>
               </div>
               <div v-if="site.last_deploy_job_id" class="rounded-2xl border border-border/60 bg-background/70 p-4">
                 <JobTimeline :job-id="site.last_deploy_job_id" :compact="true" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card class="rounded-[24px] border border-border/60 bg-card/70 py-0 shadow-none">
+            <CardHeader class="border-b border-border/50 px-6 py-5">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Runtime</p>
+              <h2 class="mt-1 text-xl font-semibold text-foreground">Managed runtime health</h2>
+            </CardHeader>
+            <CardContent class="space-y-4 px-6 py-5">
+              <div class="rounded-2xl border border-border/60 bg-background/70 p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" :class="siteRuntimeMeta(site.runtime_health_state).className">{{ siteRuntimeMeta(site.runtime_health_state).label }}</Badge>
+                  <span class="text-sm text-muted-foreground">{{ site.runtime_health_status_message || "Waiting for the first runtime health check." }}</span>
+                </div>
+                <p v-if="site.last_health_check_at" class="mt-3 text-xs text-muted-foreground">Last checked {{ formatDate(site.last_health_check_at) }}</p>
+              </div>
+              <div v-if="siteHealth?.snapshot" class="rounded-2xl border border-border/60 bg-background/70 p-4">
+                <p class="text-sm font-semibold text-foreground">{{ siteHealth.snapshot.summary }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">Agent snapshot captured {{ formatDate(siteHealth.snapshot.generated_at) }}</p>
+                <div v-if="siteHealth.snapshot.checks?.length" class="mt-4 space-y-2">
+                  <div v-for="check in siteHealth.snapshot.checks" :key="check.name" class="flex items-start justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-sm">
+                    <span class="font-medium text-foreground">{{ check.name }}</span>
+                    <span :class="check.ok ? 'text-primary' : 'text-destructive'">{{ check.ok ? 'OK' : (check.detail || 'Issue') }}</span>
+                  </div>
+                </div>
+                <div v-if="siteHealth.snapshot.services?.length" class="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span v-for="service in siteHealth.snapshot.services" :key="service.name" class="rounded-full border border-border/60 bg-muted/30 px-2.5 py-1">
+                    {{ service.name }} {{ service.active_state }}
+                  </span>
+                </div>
+                <div v-if="siteHealth.snapshot.recent_errors?.length" class="mt-4 rounded-xl border border-border/60 bg-muted/20 p-3">
+                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Recent diagnostics</p>
+                  <p v-for="entry in siteHealth.snapshot.recent_errors" :key="entry" class="mt-2 break-words text-xs text-muted-foreground">{{ entry }}</p>
+                </div>
+              </div>
+              <div v-else class="rounded-2xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
+                {{ siteHealth?.agent_connected ? 'Agent diagnostics are available but no live snapshot was returned yet.' : 'Live agent diagnostics are unavailable right now, so this view falls back to the cached runtime health state.' }}
               </div>
             </CardContent>
           </Card>

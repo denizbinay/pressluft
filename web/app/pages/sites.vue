@@ -56,13 +56,26 @@ const siteDeploymentMeta = (state: StoredSite["deployment_state"]) => {
   }
 };
 
+const siteRuntimeMeta = (state: StoredSite["runtime_health_state"]) => {
+  switch (state) {
+    case "healthy":
+      return { label: "Healthy", className: "border-primary/30 bg-primary/10 text-primary" };
+    case "issue":
+      return { label: "Runtime issue", className: "border-destructive/30 bg-destructive/10 text-destructive" };
+    case "unknown":
+      return { label: "Unknown", className: "border-border/60 bg-muted/70 text-muted-foreground" };
+    default:
+      return { label: "Checking", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200" };
+  }
+};
+
 const siteStats = computed(() => {
   const items = sites.value;
   return {
     total: items.length,
     live: items.filter((site) => site.deployment_state === "ready").length,
     deploying: items.filter((site) => site.deployment_state === "deploying").length,
-    needsAttention: items.filter((site) => site.deployment_state === "failed" || site.status === "attention").length,
+    needsAttention: items.filter((site) => site.deployment_state === "failed" || site.runtime_health_state === "issue" || site.status === "attention").length,
   };
 });
 
@@ -197,10 +210,13 @@ onMounted(loadPage);
                   <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">
                     {{ siteDeploymentMeta(site.deployment_state).label }}
                   </Badge>
+                  <Badge variant="outline" :class="siteRuntimeMeta(site.runtime_health_state).className">
+                    {{ siteRuntimeMeta(site.runtime_health_state).label }}
+                  </Badge>
                 </div>
                 <p class="mt-1 text-sm text-muted-foreground">{{ site.primary_domain || "No primary hostname yet" }}</p>
-                <p v-if="site.deployment_status_message" class="mt-2 text-sm text-muted-foreground">
-                  {{ site.deployment_status_message }}
+                <p class="mt-2 text-sm text-muted-foreground">
+                  {{ site.runtime_health_status_message || site.deployment_status_message || "Waiting for the first runtime health check." }}
                 </p>
                 <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span class="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1">{{ site.server_name }}</span>

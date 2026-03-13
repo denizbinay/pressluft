@@ -64,10 +64,11 @@ const (
 
 // Site events
 const (
-	EventSiteCreated  EventType = "site.created"
-	EventSiteUpdated  EventType = "site.updated"
-	EventSiteDeployed EventType = "site.deployed"
-	EventSiteDeleted  EventType = "site.deleted"
+	EventSiteCreated       EventType = "site.created"
+	EventSiteUpdated       EventType = "site.updated"
+	EventSiteDeployed      EventType = "site.deployed"
+	EventSiteHealthChanged EventType = "site.health_changed"
+	EventSiteDeleted       EventType = "site.deleted"
 )
 
 // Domain events
@@ -112,10 +113,11 @@ var validEventTypes = map[EventType]bool{
 	EventProviderUpdated: true,
 	EventProviderRemoved: true,
 	// Site events
-	EventSiteCreated:  true,
-	EventSiteUpdated:  true,
-	EventSiteDeployed: true,
-	EventSiteDeleted:  true,
+	EventSiteCreated:       true,
+	EventSiteUpdated:       true,
+	EventSiteDeployed:      true,
+	EventSiteHealthChanged: true,
+	EventSiteDeleted:       true,
 	// Domain events
 	EventDomainCreated:  true,
 	EventDomainUpdated:  true,

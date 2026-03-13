@@ -265,6 +265,32 @@ export interface ServicesResponse {
   services: Service[]
 }
 
+export interface SiteHealthCheck {
+  name: string
+  ok: boolean
+  detail?: string
+}
+
+export interface SiteHealthResponse {
+  site_id: string
+  agent_connected: boolean
+  snapshot?: SiteHealthSnapshot
+  runtime_health_state: string
+  runtime_health_status_message?: string
+  last_health_check_at?: string
+}
+
+export interface SiteHealthSnapshot {
+  site_id: string
+  hostname: string
+  generated_at: string
+  healthy: boolean
+  summary: string
+  services?: Service[]
+  checks?: SiteHealthCheck[]
+  recent_errors?: string[]
+}
+
 export interface StatusResponse {
   status: string
 }
@@ -334,6 +360,9 @@ export interface StoredSite {
   deployment_status_message?: string
   last_deploy_job_id?: string
   last_deployed_at?: string
+  runtime_health_state: string
+  runtime_health_status_message?: string
+  last_health_check_at?: string
   wordpress_path?: string
   php_version?: string
   wordpress_version?: string

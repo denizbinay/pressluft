@@ -22,6 +22,11 @@ const (
 	SiteDeploymentStateDeploying = "deploying"
 	SiteDeploymentStateReady     = "ready"
 	SiteDeploymentStateFailed    = "failed"
+
+	SiteRuntimeHealthStatePending = "pending"
+	SiteRuntimeHealthStateHealthy = "healthy"
+	SiteRuntimeHealthStateIssue   = "issue"
+	SiteRuntimeHealthStateUnknown = "unknown"
 )
 
 type StoredSite struct {
@@ -36,6 +41,9 @@ type StoredSite struct {
 	DeploymentStatus    string `json:"deployment_status_message,omitempty"`
 	LastDeployJobID     string `json:"last_deploy_job_id,omitempty"`
 	LastDeployedAt      string `json:"last_deployed_at,omitempty"`
+	RuntimeHealthState  string `json:"runtime_health_state"`
+	RuntimeHealthStatus string `json:"runtime_health_status_message,omitempty"`
+	LastHealthCheckAt   string `json:"last_health_check_at,omitempty"`
 	WordPressPath       string `json:"wordpress_path,omitempty"`
 	PHPVersion          string `json:"php_version,omitempty"`
 	WordPressVersion    string `json:"wordpress_version,omitempty"`
@@ -89,6 +97,10 @@ func AllSiteDeploymentStates() []string {
 	return []string{SiteDeploymentStatePending, SiteDeploymentStateDeploying, SiteDeploymentStateReady, SiteDeploymentStateFailed}
 }
 
+func AllSiteRuntimeHealthStates() []string {
+	return []string{SiteRuntimeHealthStatePending, SiteRuntimeHealthStateHealthy, SiteRuntimeHealthStateIssue, SiteRuntimeHealthStateUnknown}
+}
+
 func NormalizeSiteStatus(raw string) (string, error) {
 	status := strings.TrimSpace(raw)
 	switch status {
@@ -106,6 +118,16 @@ func NormalizeSiteDeploymentState(raw string) (string, error) {
 		return state, nil
 	default:
 		return "", fmt.Errorf("unsupported site deployment_state %q", raw)
+	}
+}
+
+func NormalizeSiteRuntimeHealthState(raw string) (string, error) {
+	state := strings.TrimSpace(raw)
+	switch state {
+	case SiteRuntimeHealthStatePending, SiteRuntimeHealthStateHealthy, SiteRuntimeHealthStateIssue, SiteRuntimeHealthStateUnknown:
+		return state, nil
+	default:
+		return "", fmt.Errorf("unsupported site runtime_health_state %q", raw)
 	}
 }
 
@@ -131,8 +153,8 @@ func (s *SiteStore) Create(ctx context.Context, in CreateSiteInput) (string, err
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO sites (id, server_id, name, wordpress_admin_email, primary_domain, status, deployment_state, deployment_status_message, last_deploy_job_id, last_deployed_at, wordpress_path, php_version, wordpress_version, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO sites (id, server_id, name, wordpress_admin_email, primary_domain, status, deployment_state, deployment_status_message, last_deploy_job_id, last_deployed_at, runtime_health_state, runtime_health_status_message, last_health_check_at, wordpress_path, php_version, wordpress_version, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		publicID,
 		serverID,
 		strings.TrimSpace(in.Name),
@@ -142,6 +164,9 @@ func (s *SiteStore) Create(ctx context.Context, in CreateSiteInput) (string, err
 		SiteDeploymentStatePending,
 		nil,
 		nil,
+		nil,
+		SiteRuntimeHealthStatePending,
+		"Waiting for the first runtime health check.",
 		nil,
 		nullableSiteString(in.WordPressPath),
 		nullableSiteString(in.PHPVersion),
@@ -165,7 +190,7 @@ func (s *SiteStore) Create(ctx context.Context, in CreateSiteInput) (string, err
 
 func (s *SiteStore) List(ctx context.Context) ([]StoredSite, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), COALESCE(si.runtime_health_state, 'pending'), COALESCE(si.runtime_health_status_message, ''), COALESCE(si.last_health_check_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
 		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
@@ -184,7 +209,7 @@ func (s *SiteStore) ListByServer(ctx context.Context, serverID string) ([]Stored
 		return nil, fmt.Errorf("server_id: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), COALESCE(si.runtime_health_state, 'pending'), COALESCE(si.runtime_health_status_message, ''), COALESCE(si.last_health_check_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
 		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
@@ -205,17 +230,20 @@ func (s *SiteStore) GetByID(ctx context.Context, id string) (*StoredSite, error)
 		return nil, err
 	}
 	var (
-		site             StoredSite
-		primaryDomain    sql.NullString
-		deploymentStatus sql.NullString
-		lastDeployJobID  sql.NullString
-		lastDeployedAt   sql.NullString
-		wordpressPath    sql.NullString
-		phpVersion       sql.NullString
-		wordpressVersion sql.NullString
+		site                StoredSite
+		primaryDomain       sql.NullString
+		deploymentStatus    sql.NullString
+		lastDeployJobID     sql.NullString
+		lastDeployedAt      sql.NullString
+		runtimeHealthState  sql.NullString
+		runtimeHealthStatus sql.NullString
+		lastHealthCheckAt   sql.NullString
+		wordpressPath       sql.NullString
+		phpVersion          sql.NullString
+		wordpressVersion    sql.NullString
 	)
 	err = s.db.QueryRowContext(ctx,
-		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
+		`SELECT si.id, si.server_id, srv.name, si.name, COALESCE(si.wordpress_admin_email, ''), COALESCE(dom.hostname, si.primary_domain), si.status, si.deployment_state, COALESCE(si.deployment_status_message, ''), COALESCE(si.last_deploy_job_id, ''), COALESCE(si.last_deployed_at, ''), COALESCE(si.runtime_health_state, 'pending'), COALESCE(si.runtime_health_status_message, ''), COALESCE(si.last_health_check_at, ''), si.wordpress_path, si.php_version, si.wordpress_version, si.created_at, si.updated_at
 		 FROM sites si
 		 JOIN servers srv ON srv.id = si.server_id
 		 LEFT JOIN domains dom ON dom.site_id = si.id AND dom.is_primary = 1
@@ -233,6 +261,9 @@ func (s *SiteStore) GetByID(ctx context.Context, id string) (*StoredSite, error)
 		&deploymentStatus,
 		&lastDeployJobID,
 		&lastDeployedAt,
+		&runtimeHealthState,
+		&runtimeHealthStatus,
+		&lastHealthCheckAt,
 		&wordpressPath,
 		&phpVersion,
 		&wordpressVersion,
@@ -249,6 +280,9 @@ func (s *SiteStore) GetByID(ctx context.Context, id string) (*StoredSite, error)
 	site.DeploymentStatus = nullStringValue(deploymentStatus)
 	site.LastDeployJobID = nullStringValue(lastDeployJobID)
 	site.LastDeployedAt = nullStringValue(lastDeployedAt)
+	site.RuntimeHealthState = nullStringValue(runtimeHealthState)
+	site.RuntimeHealthStatus = nullStringValue(runtimeHealthStatus)
+	site.LastHealthCheckAt = nullStringValue(lastHealthCheckAt)
 	site.WordPressPath = nullStringValue(wordpressPath)
 	site.PHPVersion = nullStringValue(phpVersion)
 	site.WordPressVersion = nullStringValue(wordpressVersion)
@@ -257,6 +291,9 @@ func (s *SiteStore) GetByID(ctx context.Context, id string) (*StoredSite, error)
 	}
 	if _, err := NormalizeSiteDeploymentState(site.DeploymentState); err != nil {
 		return nil, fmt.Errorf("get site deployment state: %w", err)
+	}
+	if _, err := NormalizeSiteRuntimeHealthState(site.RuntimeHealthState); err != nil {
+		return nil, fmt.Errorf("get site runtime health state: %w", err)
 	}
 	return &site, nil
 }
@@ -290,6 +327,37 @@ func (s *SiteStore) UpdateDeployment(ctx context.Context, siteID, deploymentStat
 	)
 	if err != nil {
 		return fmt.Errorf("update site deployment: %w", err)
+	}
+	return nil
+}
+
+func (s *SiteStore) UpdateRuntimeHealth(ctx context.Context, siteID, runtimeHealthState, runtimeHealthStatus, lastHealthCheckAt string) error {
+	publicID, err := idutil.Normalize(siteID)
+	if err != nil {
+		return err
+	}
+	runtimeHealthState, err = NormalizeSiteRuntimeHealthState(runtimeHealthState)
+	if err != nil {
+		return err
+	}
+	lastHealthCheckAt = strings.TrimSpace(lastHealthCheckAt)
+	if lastHealthCheckAt != "" {
+		if _, err := time.Parse(time.RFC3339, lastHealthCheckAt); err != nil {
+			return fmt.Errorf("last_health_check_at: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE sites
+		 SET runtime_health_state = ?, runtime_health_status_message = ?, last_health_check_at = ?, updated_at = ?
+		 WHERE id = ?`,
+		runtimeHealthState,
+		nullableSiteString(runtimeHealthStatus),
+		nullableSiteString(lastHealthCheckAt),
+		time.Now().UTC().Format(time.RFC3339),
+		publicID,
+	)
+	if err != nil {
+		return fmt.Errorf("update site runtime health: %w", err)
 	}
 	return nil
 }
@@ -687,6 +755,9 @@ func scanSites(rows *sql.Rows) ([]StoredSite, error) {
 			deploymentStatus    sql.NullString
 			lastDeployJobID     sql.NullString
 			lastDeployedAt      sql.NullString
+			runtimeHealthState  sql.NullString
+			runtimeHealthStatus sql.NullString
+			lastHealthCheckAt   sql.NullString
 			wordpressPath       sql.NullString
 			phpVersion          sql.NullString
 			wordpressVersion    sql.NullString
@@ -703,6 +774,9 @@ func scanSites(rows *sql.Rows) ([]StoredSite, error) {
 			&deploymentStatus,
 			&lastDeployJobID,
 			&lastDeployedAt,
+			&runtimeHealthState,
+			&runtimeHealthStatus,
+			&lastHealthCheckAt,
 			&wordpressPath,
 			&phpVersion,
 			&wordpressVersion,
@@ -717,11 +791,17 @@ func scanSites(rows *sql.Rows) ([]StoredSite, error) {
 		if _, err := NormalizeSiteDeploymentState(site.DeploymentState); err != nil {
 			return nil, fmt.Errorf("scan site deployment state: %w", err)
 		}
+		site.RuntimeHealthState = nullStringValue(runtimeHealthState)
+		if _, err := NormalizeSiteRuntimeHealthState(site.RuntimeHealthState); err != nil {
+			return nil, fmt.Errorf("scan site runtime health state: %w", err)
+		}
 		site.PrimaryDomain = nullStringValue(primaryDomain)
 		site.WordPressAdminEmail = nullStringValue(wordpressAdminEmail)
 		site.DeploymentStatus = nullStringValue(deploymentStatus)
 		site.LastDeployJobID = nullStringValue(lastDeployJobID)
 		site.LastDeployedAt = nullStringValue(lastDeployedAt)
+		site.RuntimeHealthStatus = nullStringValue(runtimeHealthStatus)
+		site.LastHealthCheckAt = nullStringValue(lastHealthCheckAt)
 		site.WordPressPath = nullStringValue(wordpressPath)
 		site.PHPVersion = nullStringValue(phpVersion)
 		site.WordPressVersion = nullStringValue(wordpressVersion)

@@ -181,6 +181,8 @@ func main() {
 
 	monitor := ws.NewMonitor(hub, serverStore, logger)
 	go monitor.Start(ctx)
+	siteHealthMonitor := server.NewSiteHealthMonitor(siteStore, domainStore, activityStore, hub, logger)
+	go siteHealthMonitor.Start(ctx)
 
 	operatorAuthenticator := operatorAuthenticatorForMode(executionMode, authService)
 	httpServer := &http.Server{

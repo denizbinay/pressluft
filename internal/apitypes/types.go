@@ -301,11 +301,23 @@ type StoredSite struct {
 	DeploymentStatus    string `json:"deployment_status_message,omitempty"`
 	LastDeployJobID     string `json:"last_deploy_job_id,omitempty"`
 	LastDeployedAt      string `json:"last_deployed_at,omitempty"`
+	RuntimeHealthState  string `json:"runtime_health_state"`
+	RuntimeHealthStatus string `json:"runtime_health_status_message,omitempty"`
+	LastHealthCheckAt   string `json:"last_health_check_at,omitempty"`
 	WordPressPath       string `json:"wordpress_path,omitempty"`
 	PHPVersion          string `json:"php_version,omitempty"`
 	WordPressVersion    string `json:"wordpress_version,omitempty"`
 	CreatedAt           string `json:"created_at"`
 	UpdatedAt           string `json:"updated_at"`
+}
+
+type SiteHealthResponse struct {
+	SiteID         string                           `json:"site_id"`
+	AgentConnected bool                             `json:"agent_connected"`
+	Snapshot       *agentcommand.SiteHealthSnapshot `json:"snapshot,omitempty"`
+	RuntimeState   string                           `json:"runtime_health_state"`
+	RuntimeMessage string                           `json:"runtime_health_status_message,omitempty"`
+	LastCheckedAt  string                           `json:"last_health_check_at,omitempty"`
 }
 
 type StoredDomain struct {
@@ -557,6 +569,9 @@ var PublishedTypes = map[string]any{
 	"ServerCatalogResponse":   ServerCatalogResponse{},
 	"CreateServerResponse":    CreateServerResponse{},
 	"StoredSite":              StoredSite{},
+	"SiteHealthCheck":         agentcommand.SiteHealthCheck{},
+	"SiteHealthSnapshot":      agentcommand.SiteHealthSnapshot{},
+	"SiteHealthResponse":      SiteHealthResponse{},
 	"StoredDomain":            StoredDomain{},
 	"DeleteSiteResponse":      DeleteSiteResponse{},
 	"DeleteDomainResponse":    DeleteDomainResponse{},

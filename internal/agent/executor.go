@@ -14,12 +14,14 @@ type commandFunc func(context.Context, ws.Command) ws.CommandResult
 type Executor struct {
 	restartService commandFunc
 	listServices   commandFunc
+	siteHealth     commandFunc
 }
 
 func NewExecutor() *Executor {
 	return &Executor{
 		restartService: commands.RestartService,
 		listServices:   commands.ListServices,
+		siteHealth:     commands.SiteHealthSnapshot,
 	}
 }
 
@@ -45,6 +47,8 @@ func (e *Executor) Execute(ctx context.Context, cmd ws.Command) ws.CommandResult
 		return e.restartService(ctx, cmd)
 	case agentcommand.TypeListServices:
 		return e.listServices(ctx, cmd)
+	case agentcommand.TypeSiteHealth:
+		return e.siteHealth(ctx, cmd)
 	default:
 		return ws.FailureResult(cmd.ID, agentcommand.ErrorCodeUnknownCommand, "unknown command", nil, "")
 	}

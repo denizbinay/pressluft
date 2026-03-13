@@ -81,6 +81,10 @@ func (a *SiteStoreAdapter) UpdateDeployment(ctx context.Context, siteID, deploym
 	return a.store.UpdateDeployment(ctx, siteID, deploymentState, deploymentStatus, lastDeployJobID, lastDeployedAt)
 }
 
+func (a *SiteStoreAdapter) UpdateRuntimeHealth(ctx context.Context, siteID, runtimeHealthState, runtimeHealthStatus, lastHealthCheckAt string) error {
+	return a.store.UpdateRuntimeHealth(ctx, siteID, runtimeHealthState, runtimeHealthStatus, lastHealthCheckAt)
+}
+
 type DomainStoreAdapter struct {
 	store *server.DomainStore
 }

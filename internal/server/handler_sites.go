@@ -1,16 +1,23 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"pressluft/internal/activity"
+	"pressluft/internal/agentcommand"
 	"pressluft/internal/apitypes"
 	"pressluft/internal/auth"
 	"pressluft/internal/orchestrator"
 	"pressluft/internal/platform"
+	"pressluft/internal/ws"
+
+	"github.com/google/uuid"
 )
 
 type sitesHandler struct {
@@ -20,6 +27,7 @@ type sitesHandler struct {
 	domainStore     *DomainStore
 	activityStore   *activity.Store
 	activityHandler *activityHandler
+	hub             *ws.Hub
 }
 
 type deploySiteJobPayload struct {
@@ -77,6 +85,14 @@ func (sh *sitesHandler) routeWithID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "health" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		sh.handleHealth(w, r, siteID)
 		return
 	}
 	if len(parts) != 1 {
@@ -298,6 +314,77 @@ func (sh *sitesHandler) handleUpdate(w http.ResponseWriter, r *http.Request, sit
 	respondJSON(w, http.StatusOK, apiStoredSite(*site))
 }
 
+func (sh *sitesHandler) handleHealth(w http.ResponseWriter, r *http.Request, siteID string) {
+	site, err := sh.store.GetByID(r.Context(), siteID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	response := apitypes.SiteHealthResponse{
+		SiteID:         apitypes.FormatAppID(site.ID),
+		RuntimeState:   site.RuntimeHealthState,
+		RuntimeMessage: site.RuntimeHealthStatus,
+		LastCheckedAt:  site.LastHealthCheckAt,
+	}
+	if sh.hub == nil {
+		respondJSON(w, http.StatusOK, response)
+		return
+	}
+	info := sh.hub.GetAgentInfo(site.ServerID)
+	if !info.Connected {
+		respondJSON(w, http.StatusOK, response)
+		return
+	}
+	hostname := strings.TrimSpace(site.PrimaryDomain)
+	if hostname == "" && sh.domainStore != nil {
+		if primaryDomain, domainErr := sh.primaryDomainForSite(r.Context(), site.ID); domainErr == nil {
+			hostname = strings.TrimSpace(primaryDomain.Hostname)
+		}
+	}
+	if hostname == "" {
+		respondJSON(w, http.StatusOK, response)
+		return
+	}
+	timeout := agentcommand.Timeout(agentcommand.TypeSiteHealth)
+	if timeout <= 0 {
+		timeout = 20 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+	payload, err := json.Marshal(agentcommand.SiteHealthSnapshotParams{
+		SiteID:   site.ID,
+		Hostname: hostname,
+		SitePath: siteWordPressRootPath(*site),
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to build site health request")
+		return
+	}
+	result, err := sh.hub.SendCommandAndWait(ctx, site.ServerID, ws.Command{
+		ID:      uuid.NewString(),
+		Type:    agentcommand.TypeSiteHealth,
+		Payload: payload,
+	})
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "failed to fetch site health: "+err.Error())
+		return
+	}
+	if !result.Success {
+		respondError(w, http.StatusBadGateway, "failed to fetch site health: "+result.Error)
+		return
+	}
+	if len(result.Payload) > 0 {
+		var snapshot agentcommand.SiteHealthSnapshot
+		if err := json.Unmarshal(result.Payload, &snapshot); err != nil {
+			respondError(w, http.StatusBadGateway, "invalid site health response")
+			return
+		}
+		response.AgentConnected = true
+		response.Snapshot = &snapshot
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
 func (sh *sitesHandler) handleDelete(w http.ResponseWriter, r *http.Request, siteID string) {
 	site, err := sh.store.GetByID(r.Context(), siteID)
 	if err != nil {
@@ -348,10 +435,40 @@ func apiStoredSite(in StoredSite) apitypes.StoredSite {
 		DeploymentStatus:    in.DeploymentStatus,
 		LastDeployJobID:     apitypes.FormatAppID(in.LastDeployJobID),
 		LastDeployedAt:      in.LastDeployedAt,
+		RuntimeHealthState:  in.RuntimeHealthState,
+		RuntimeHealthStatus: in.RuntimeHealthStatus,
+		LastHealthCheckAt:   in.LastHealthCheckAt,
 		WordPressPath:       in.WordPressPath,
 		PHPVersion:          in.PHPVersion,
 		WordPressVersion:    in.WordPressVersion,
 		CreatedAt:           in.CreatedAt,
 		UpdatedAt:           in.UpdatedAt,
 	}
+}
+
+func (sh *sitesHandler) primaryDomainForSite(ctx context.Context, siteID string) (*StoredDomain, error) {
+	if sh.domainStore == nil {
+		return nil, fmt.Errorf("site has no assigned hostname")
+	}
+	domains, err := sh.domainStore.ListBySite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range domains {
+		if domains[i].IsPrimary {
+			return &domains[i], nil
+		}
+	}
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("site has no assigned hostname")
+	}
+	return &domains[0], nil
+}
+
+func siteWordPressRootPath(site StoredSite) string {
+	path := strings.TrimSpace(site.WordPressPath)
+	if path == "" || path == "/srv/www/" {
+		return filepath.ToSlash(filepath.Join("/srv/www/pressluft/sites", site.ID, "current"))
+	}
+	return path
 }

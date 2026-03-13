@@ -40,6 +40,9 @@ func TestExecutorAppliesCommandTimeout(t *testing.T) {
 		listServices: func(ctx context.Context, cmd ws.Command) ws.CommandResult {
 			return ws.SuccessResult(cmd.ID, nil, "")
 		},
+		siteHealth: func(ctx context.Context, cmd ws.Command) ws.CommandResult {
+			return ws.SuccessResult(cmd.ID, nil, "")
+		},
 	}
 	payload, err := json.Marshal(agentcommand.RestartServiceParams{ServiceName: "nginx"})
 	if err != nil {
@@ -60,5 +63,33 @@ func TestExecutorAppliesCommandTimeout(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected restart service function to observe deadline")
+	}
+}
+
+func TestExecutorDispatchesSiteHealthCommand(t *testing.T) {
+	called := false
+	executor := &Executor{
+		restartService: func(ctx context.Context, cmd ws.Command) ws.CommandResult {
+			return ws.SuccessResult(cmd.ID, nil, "")
+		},
+		listServices: func(ctx context.Context, cmd ws.Command) ws.CommandResult {
+			return ws.SuccessResult(cmd.ID, nil, "")
+		},
+		siteHealth: func(ctx context.Context, cmd ws.Command) ws.CommandResult {
+			called = true
+			return ws.SuccessResult(cmd.ID, agentcommand.SiteHealthSnapshot{SiteID: "site-1", Healthy: true}, "")
+		},
+	}
+	payload, err := json.Marshal(agentcommand.SiteHealthSnapshotParams{SiteID: "site-1", Hostname: "example.testable.io", SitePath: "/srv/www/site"})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	result := executor.Execute(context.Background(), ws.Command{ID: "cmd-site-health", Type: agentcommand.TypeSiteHealth, Payload: payload})
+	if !called {
+		t.Fatal("expected site health handler to be called")
+	}
+	if !result.Success {
+		t.Fatalf("expected success, got %+v", result)
 	}
 }

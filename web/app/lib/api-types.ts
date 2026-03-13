@@ -14,6 +14,9 @@ import type {
   ServerCatalogResponse as GeneratedServerCatalogResponse,
   ServerProfile as GeneratedServerProfile,
   Service,
+  SiteHealthCheck,
+  SiteHealthResponse as GeneratedSiteHealthResponse,
+  SiteHealthSnapshot,
   ServerTypePrice,
   ServicesResponse as GeneratedServicesResponse,
   StoredDomain as GeneratedStoredDomain,
@@ -31,6 +34,8 @@ export type {
   CreateServerRequest,
   JobEvent,
   Service,
+  SiteHealthCheck,
+  SiteHealthSnapshot,
   ServerTypePrice,
   UnreadCountResponse,
   UpdateDomainRequest,
@@ -63,6 +68,9 @@ export type DeleteDomainResponse = Omit<GeneratedDeleteDomainResponse, "domain_i
 };
 export type ServicesResponse = Omit<GeneratedServicesResponse, "server_id"> & {
   server_id: string;
+};
+export type SiteHealthResponse = Omit<GeneratedSiteHealthResponse, "site_id"> & {
+  site_id: string;
 };
 export type AgentStatusMapResponse = Record<string, AgentInfo>;
 export type ServerProfile = Omit<GeneratedServerProfile, "image">;

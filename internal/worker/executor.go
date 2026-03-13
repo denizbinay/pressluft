@@ -5,9 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -47,6 +45,7 @@ type ProviderStore interface {
 type SiteStore interface {
 	GetByID(ctx context.Context, id string) (*serverpkg.StoredSite, error)
 	UpdateDeployment(ctx context.Context, siteID, deploymentState, deploymentStatus, lastDeployJobID, lastDeployedAt string) error
+	UpdateRuntimeHealth(ctx context.Context, siteID, runtimeHealthState, runtimeHealthStatus, lastHealthCheckAt string) error
 }
 
 type DomainStore interface {
@@ -992,6 +991,7 @@ func (e *Executor) executeDeploySite(ctx context.Context, job *orchestrator.Job)
 	}
 
 	_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateDeploying, fmt.Sprintf("Deploying WordPress to %s.", primaryDomain.Hostname), job.ID, "")
+	_ = e.siteStore.UpdateRuntimeHealth(ctx, site.ID, serverpkg.SiteRuntimeHealthStatePending, "Deploy is running. Runtime health will be verified before the site is marked live.", "")
 	_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStatePending, "Applying server routing for this hostname.", time.Now().UTC())
 
 	e.emitStepStart(ctx, job.ID, "validate", "Validating site deployment inputs")
@@ -1022,19 +1022,22 @@ func (e *Executor) executeDeploySite(ctx context.Context, job *orchestrator.Job)
 	if err := e.runSiteDeployPlaybook(ctx, job.ID, server, site, primaryDomain, string(decryptedKey), payload.TLSContactEmail); err != nil {
 		_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateIssue, err.Error(), time.Now().UTC())
 		_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateFailed, err.Error(), job.ID, "")
+		_ = e.siteStore.UpdateRuntimeHealth(ctx, site.ID, serverpkg.SiteRuntimeHealthStateIssue, err.Error(), time.Now().UTC().Format(time.RFC3339))
 		return e.failJob(ctx, job, fmt.Sprintf("site deploy failed: %v", err))
 	}
 	e.emitStepComplete(ctx, job.ID, "deploy", "Site files and WordPress installation applied")
 
 	e.updateStep(ctx, job.ID, "verify")
-	e.emitStepStart(ctx, job.ID, "verify", "Verifying deployed hostname serves the site")
-	if err := e.verifySiteRouting(ctx, *site, *primaryDomain); err != nil {
+	e.emitStepStart(ctx, job.ID, "verify", "Verifying deployed hostname and WordPress runtime")
+	if err := e.verifySiteDeployment(ctx, *site, *primaryDomain); err != nil {
 		_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateIssue, err.Error(), time.Now().UTC())
 		_ = e.siteStore.UpdateDeployment(ctx, site.ID, serverpkg.SiteDeploymentStateFailed, err.Error(), job.ID, "")
+		_ = e.siteStore.UpdateRuntimeHealth(ctx, site.ID, serverpkg.SiteRuntimeHealthStateIssue, err.Error(), time.Now().UTC().Format(time.RFC3339))
 		return e.failJob(ctx, job, fmt.Sprintf("site verification failed: %v", err))
 	}
 	_ = e.domainStore.UpdateRoutingStatus(ctx, primaryDomain.ID, serverpkg.DomainRoutingStateReady, "Hostname routing verified over HTTPS.", time.Now().UTC())
-	e.emitStepComplete(ctx, job.ID, "verify", "Hostname routing verified")
+	_ = e.siteStore.UpdateRuntimeHealth(ctx, site.ID, serverpkg.SiteRuntimeHealthStateHealthy, fmt.Sprintf("WordPress rendered successfully at https://%s/.", primaryDomain.Hostname), time.Now().UTC().Format(time.RFC3339))
+	e.emitStepComplete(ctx, job.ID, "verify", "Hostname routing and WordPress runtime verified")
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	e.updateStep(ctx, job.ID, "finalize")
@@ -1175,24 +1178,13 @@ func isUsableACMEContactEmail(email string) bool {
 	return true
 }
 
-func (e *Executor) verifySiteRouting(ctx context.Context, site serverpkg.StoredSite, primaryDomain serverpkg.StoredDomain) error {
-	client := &http.Client{Timeout: 20 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+primaryDomain.Hostname+"/", nil)
-	if err != nil {
+func (e *Executor) verifySiteDeployment(ctx context.Context, site serverpkg.StoredSite, primaryDomain serverpkg.StoredDomain) error {
+	if err := serverpkg.VerifyPublicSiteRouting(ctx, site.ID, primaryDomain.Hostname); err != nil {
 		return err
 	}
-	resp, err := client.Do(req)
-	if err != nil {
+	if err := serverpkg.VerifyPublicWordPressRuntime(ctx, primaryDomain.Hostname); err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return fmt.Errorf("unexpected HTTPS status %d", resp.StatusCode)
-	}
-	if got := strings.TrimSpace(resp.Header.Get("X-Pressluft-Site-ID")); got != site.ID {
-		return fmt.Errorf("hostname did not route to the expected site")
-	}
-	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
 }
 

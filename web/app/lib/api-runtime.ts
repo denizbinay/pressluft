@@ -12,6 +12,7 @@ import type {
   Job,
   JobEvent,
   ServerCatalogResponse,
+  SiteHealthResponse,
   ServicesResponse,
   StoredDomain,
   StoredServer,
@@ -148,8 +149,16 @@ const storedSiteSchema = z.object({
   server_id: z.string(),
   server_name: z.string(),
   name: z.string(),
+  wordpress_admin_email: z.string().optional(),
   primary_domain: z.string().optional(),
   status: siteStatusSchema,
+  deployment_state: z.string(),
+  deployment_status_message: z.string().optional(),
+  last_deploy_job_id: z.string().optional(),
+  last_deployed_at: z.string().optional(),
+  runtime_health_state: z.string(),
+  runtime_health_status_message: z.string().optional(),
+  last_health_check_at: z.string().optional(),
   wordpress_path: z.string().optional(),
   php_version: z.string().optional(),
   wordpress_version: z.string().optional(),
@@ -259,6 +268,37 @@ const servicesResponseSchema = z.object({
   ),
 });
 
+const siteHealthResponseSchema = z.object({
+  site_id: z.string(),
+  agent_connected: z.boolean(),
+  runtime_health_state: z.string(),
+  runtime_health_status_message: z.string().optional(),
+  last_health_check_at: z.string().optional(),
+  snapshot: z.object({
+    site_id: z.string(),
+    hostname: z.string(),
+    generated_at: z.string(),
+    healthy: z.boolean(),
+    summary: z.string(),
+    services: z.array(
+      z.object({
+        name: z.string(),
+        description: z.string(),
+        active_state: z.string(),
+        load_state: z.string(),
+      }),
+    ).optional(),
+    checks: z.array(
+      z.object({
+        name: z.string(),
+        ok: z.boolean(),
+        detail: z.string().optional(),
+      }),
+    ).optional(),
+    recent_errors: z.array(z.string()).optional(),
+  }).optional(),
+});
+
 const agentStatusMapResponseSchema = z.record(z.string(), agentInfoSchema);
 
 const healthResponseSchema = z.object({
@@ -310,6 +350,8 @@ export const parseDeleteDomainResponse = (payload: unknown): DeleteDomainRespons
   decode(deleteDomainResponseSchema, payload, "delete domain");
 export const parseAgentInfo = (payload: unknown): AgentInfo =>
   decode(agentInfoSchema, payload, "agent info");
+export const parseSiteHealthResponse = (payload: unknown): SiteHealthResponse =>
+  decode(siteHealthResponseSchema, payload, "site health");
 export const parseAgentStatusMapResponse = (
   payload: unknown,
 ): AgentStatusMapResponse =>

@@ -150,6 +150,35 @@
         HOME: "{{ site_root_path }}"
         WP_CLI_CACHE_DIR: "{{ wp_cli_cache_dir }}"
 
+    - name: Verify WordPress installation is present
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: wp --path={{ site_public_path }} --allow-root core is-installed
+      changed_when: false
+      environment:
+        HOME: "{{ site_root_path }}"
+        WP_CLI_CACHE_DIR: "{{ wp_cli_cache_dir }}"
+
+    - name: Read managed WordPress URL options
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: wp --path={{ site_public_path }} --allow-root option get {{ item }}
+      loop:
+        - home
+        - siteurl
+      register: pressluft_wp_urls
+      changed_when: false
+      environment:
+        HOME: "{{ site_root_path }}"
+        WP_CLI_CACHE_DIR: "{{ wp_cli_cache_dir }}"
+
+    - name: Assert managed WordPress URLs match hostname
+      ansible.builtin.assert:
+        that:
+          - item.stdout | trim == ('https://' ~ hostname)
+        fail_msg: "WordPress option {{ item.item }} did not match the managed hostname"
+      loop: "{{ pressluft_wp_urls.results }}"
+
     - name: Install and activate Redis Cache plugin
       become_user: www-data
       ansible.builtin.command:
@@ -235,6 +264,40 @@
 
     - name: Flush handlers after site deployment
       ansible.builtin.meta: flush_handlers
+
+    - name: Probe managed homepage locally over HTTPS
+      ansible.builtin.command:
+        cmd: >-
+          curl --silent --show-error --fail --insecure --noproxy '*'
+          --resolve {{ hostname }}:443:127.0.0.1
+          https://{{ hostname }}/
+      register: pressluft_home_probe
+      changed_when: false
+
+    - name: Probe WordPress login locally over HTTPS
+      ansible.builtin.command:
+        cmd: >-
+          curl --silent --show-error --fail --insecure --noproxy '*'
+          --resolve {{ hostname }}:443:127.0.0.1
+          https://{{ hostname }}/wp-login.php
+      register: pressluft_login_probe
+      changed_when: false
+
+    - name: Assert managed homepage renders HTML
+      ansible.builtin.assert:
+        that:
+          - pressluft_home_probe.stdout | trim | length > 0
+          - pressluft_home_probe.stdout is regex('(?is)(<!doctype html|<html|wp-content)')
+          - pressluft_home_probe.stdout is not regex('(?is)(fatal error|parse error|uncaught|wordpress database error)')
+        fail_msg: "Managed homepage did not render a healthy WordPress response"
+
+    - name: Assert WordPress login renders HTML
+      ansible.builtin.assert:
+        that:
+          - pressluft_login_probe.stdout | trim | length > 0
+          - pressluft_login_probe.stdout is regex('(?is)(<!doctype html|<html|wp-login)')
+          - pressluft_login_probe.stdout is not regex('(?is)(fatal error|parse error|uncaught|wordpress database error)')
+        fail_msg: "WordPress login did not render a healthy response"
 
   handlers:
     - name: reload nginx
