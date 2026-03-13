@@ -2,6 +2,20 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+
+# Source project-local .env if present.
+# Existing environment variables take precedence over .env values.
+if [ -f "$ROOT_DIR/.env" ]; then
+  while IFS='=' read -r key value; do
+    # Skip blank lines and comments.
+    case "$key" in ''|\#*) continue ;; esac
+    # Only set if not already in the environment.
+    if [ -z "${!key+x}" ]; then
+      export "$key=$value"
+    fi
+  done < "$ROOT_DIR/.env"
+fi
+
 DEV_API_PORT=${DEV_API_PORT:-8081}
 DEV_UI_PORT=${DEV_UI_PORT:-8080}
 DEV_UI_HOST=${DEV_UI_HOST:-0.0.0.0}
