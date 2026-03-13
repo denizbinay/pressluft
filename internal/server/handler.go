@@ -167,7 +167,7 @@ func newDashboardHandler(authenticator auth.Authenticator) http.Handler {
 			if path == "" {
 				path = "index.html"
 			}
-			if _, statErr := fs.Stat(distFS, path); statErr == nil {
+			if isEmbeddedFile(distFS, path) {
 				fileServer.ServeHTTP(w, r)
 				return
 			}
@@ -185,7 +185,7 @@ func newDashboardHandler(authenticator auth.Authenticator) http.Handler {
 			path = "index.html"
 		}
 
-		if _, statErr := fs.Stat(distFS, path); statErr == nil {
+		if isEmbeddedFile(distFS, path) {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
@@ -194,6 +194,18 @@ func newDashboardHandler(authenticator auth.Authenticator) http.Handler {
 		indexRequest.URL.Path = "/index.html"
 		fileServer.ServeHTTP(w, indexRequest)
 	})
+}
+
+// isEmbeddedFile returns true when path refers to a regular file inside the
+// embedded filesystem.  Directories are intentionally excluded so that
+// http.FileServer does not emit a 301 redirect for paths like "/servers" →
+// "servers/" which would break client-side SPA routing.
+func isEmbeddedFile(fsys fs.FS, path string) bool {
+	fi, err := fs.Stat(fsys, path)
+	if err != nil {
+		return false
+	}
+	return !fi.IsDir()
 }
 
 func shouldAllowPublicDashboardPath(path string) bool {

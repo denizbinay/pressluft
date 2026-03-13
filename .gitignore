@@ -3,6 +3,7 @@ bin/
 .venv
 /.pressluft/
 .codex/
+.env
 
 web/node_modules/
 web/.nuxt/
