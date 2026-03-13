@@ -137,6 +137,17 @@
         HOME: "{{ site_root_path }}"
         WP_CLI_CACHE_DIR: "{{ wp_cli_cache_dir }}"
 
+    - name: Install and activate default theme for fresh sites
+      when: pressluft_wp_installed.rc != 0
+      become_user: www-data
+      ansible.builtin.command:
+        cmd: >-
+          wp --path={{ site_public_path }} --allow-root theme install twentytwentyfive
+          --activate --force
+      environment:
+        HOME: "{{ site_root_path }}"
+        WP_CLI_CACHE_DIR: "{{ wp_cli_cache_dir }}"
+
     - name: Keep WordPress URLs aligned with hostname
       become_user: www-data
       ansible.builtin.command:
