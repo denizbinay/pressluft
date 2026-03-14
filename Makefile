@@ -1,13 +1,13 @@
 SHELL := /bin/sh
-.DEFAULT_GOAL := cli
-
-cli:
-	go build -o bin/pressluft ./cmd/pressluft
+.DEFAULT_GOAL := dev
 
 dev:
 	go run ./cmd/pressluft dev
 
-clean:
-	rm -rf bin/
+build:
+	go run ./cmd/pressluft build
 
-.PHONY: cli dev clean
+test:
+	go run ./cmd/pressluft test
+
+.PHONY: dev build test
