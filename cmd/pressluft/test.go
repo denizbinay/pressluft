@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 var unitTestPackages = []string{
@@ -34,25 +35,23 @@ var integrationTestPackages = []string{
 	"./internal/server/profiles",
 }
 
-func runTest(args []string) error {
+var testCmd = &cobra.Command{
+	Use:   "test [unit|integration]",
+	Short: "Run test suites (default: all)",
+	Long: `Run test suites.
+
+  pressluft test              Run all tests (unit + integration)
+  pressluft test unit         Run unit tests only
+  pressluft test integration  Run integration tests only`,
+	Args:      cobra.MaximumNArgs(1),
+	ValidArgs: []string{"unit", "integration"},
+	RunE:      runTest,
+}
+
+func runTest(cmd *cobra.Command, args []string) error {
 	suite := ""
-	for _, arg := range args {
-		switch arg {
-		case "-h", "--help", "help":
-			fmt.Println("pressluft test [unit|integration] — run test suites")
-			fmt.Println()
-			fmt.Println("  pressluft test              Run all tests (unit + integration)")
-			fmt.Println("  pressluft test unit         Run unit tests only")
-			fmt.Println("  pressluft test integration  Run integration tests only")
-			return nil
-		case "unit", "integration":
-			suite = arg
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return fmt.Errorf("unknown flag %q", arg)
-			}
-			return fmt.Errorf("unknown test suite %q (use unit or integration)", arg)
-		}
+	if len(args) > 0 {
+		suite = args[0]
 	}
 
 	rootDir, err := findRepoRoot()
@@ -84,5 +83,8 @@ func goTest(rootDir string, packages []string, noCache bool) error {
 	cmd.Dir = rootDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tests failed: %w", err)
+	}
+	return nil
 }

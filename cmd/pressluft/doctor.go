@@ -5,27 +5,28 @@ import (
 	"os"
 	"strings"
 
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/spf13/cobra"
+
+	"pressluft/internal/cliui"
 	"pressluft/internal/devdiag"
 	"pressluft/internal/envconfig"
 )
 
-func runDoctor(args []string) error {
-	jsonOutput := false
-	for _, arg := range args {
-		switch arg {
-		case "-h", "--help", "help":
-			fmt.Println("pressluft doctor — check system health")
-			fmt.Println()
-			fmt.Println("Flags:")
-			fmt.Println("  --json  Output results as JSON")
-			return nil
-		case "--json":
-			jsonOutput = true
-		default:
-			return fmt.Errorf("unknown flag %q", arg)
-		}
-	}
+var doctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Check system health",
+	Long:  "Run diagnostic checks against the local Pressluft dev state and report results.",
+	RunE:  runDoctor,
+}
 
+var doctorJSON bool
+
+func init() {
+	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "Output results as JSON")
+}
+
+func runDoctor(cmd *cobra.Command, args []string) error {
 	runtime, err := resolveRuntime()
 	if err != nil {
 		return fmt.Errorf("resolve runtime: %w", err)
@@ -33,7 +34,7 @@ func runDoctor(args []string) error {
 
 	report := devdiag.Inspect(runtime)
 
-	if jsonOutput {
+	if doctorJSON {
 		data, err := report.JSON()
 		if err != nil {
 			return fmt.Errorf("marshal report: %w", err)
@@ -45,13 +46,11 @@ func runDoctor(args []string) error {
 	}
 
 	if !report.Healthy() {
-		if !jsonOutput {
-			fmt.Println()
-			for _, issue := range report.Issues() {
-				fmt.Printf("  - %s\n", issue)
-			}
-			fmt.Println()
-			fmt.Println("To reset local state: rm -rf .pressluft")
+		if !doctorJSON {
+			lipgloss.Println()
+			cliui.Issues(report.Issues())
+			lipgloss.Println()
+			cliui.Hint("To reset local state: rm -rf .pressluft")
 		}
 		os.Exit(1)
 	}
@@ -64,35 +63,36 @@ func resolveRuntime() (envconfig.ControlPlaneRuntime, error) {
 }
 
 func printDoctorReport(report devdiag.Report) {
-	fmt.Println("Pressluft doctor")
-	fmt.Printf("  execution_mode: %s\n", report.Runtime.ExecutionMode)
-	fmt.Printf("  data_dir: %s\n", report.Runtime.DataDir)
-	fmt.Printf("  db_path: %s\n", report.Runtime.DBPath)
-	fmt.Printf("  age_key_path: %s\n", report.Runtime.AgeKeyPath)
-	fmt.Printf("  ca_key_path: %s\n", report.Runtime.CAKeyPath)
-	fmt.Printf("  session_key_path: %s\n", report.Runtime.SessionSecretPath)
-	if strings.TrimSpace(report.Runtime.ControlPlaneURL) == "" {
-		fmt.Println("  callback_url: <unset>")
-	} else {
-		fmt.Printf("  callback_url: %s\n", report.Runtime.ControlPlaneURL)
+	cliui.Header("doctor")
+
+	callbackURL := strings.TrimSpace(report.Runtime.ControlPlaneURL)
+	if callbackURL == "" {
+		callbackURL = cliui.Dim.Render("<unset>")
 	}
-	fmt.Printf("  callback_url_mode: %s\n", report.CallbackURLMode)
+	durable := "no"
 	if report.DurableReconnectExpected {
-		fmt.Println("  durable_reconnect: yes")
-	} else {
-		fmt.Println("  durable_reconnect: no")
+		durable = "yes"
 	}
-	fmt.Println()
+
+	cliui.KeyValue("execution_mode", string(report.Runtime.ExecutionMode))
+	cliui.KeyValue("data_dir", report.Runtime.DataDir)
+	cliui.KeyValue("db_path", report.Runtime.DBPath)
+	cliui.KeyValue("age_key_path", report.Runtime.AgeKeyPath)
+	cliui.KeyValue("ca_key_path", report.Runtime.CAKeyPath)
+	cliui.KeyValue("session_key_path", report.Runtime.SessionSecretPath)
+	cliui.KeyValue("callback_url", callbackURL)
+	cliui.KeyValue("callback_url_mode", string(report.CallbackURLMode))
+	cliui.KeyValue("durable_reconnect", durable)
+
+	lipgloss.Println()
 	for _, check := range report.Checks {
-		indicator := "?"
 		switch check.Status {
 		case devdiag.CheckStatusOK:
-			indicator = "ok"
+			lipgloss.Println(cliui.CheckOK(check.Name, check.Detail))
 		case devdiag.CheckStatusWarning:
-			indicator = "warn"
+			lipgloss.Println(cliui.CheckWarn(check.Name, check.Detail))
 		case devdiag.CheckStatusError:
-			indicator = "FAIL"
+			lipgloss.Println(cliui.CheckFail(check.Name, check.Detail))
 		}
-		fmt.Printf("  [%s] %s: %s\n", indicator, check.Name, check.Detail)
 	}
 }

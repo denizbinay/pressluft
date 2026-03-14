@@ -13,6 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/spf13/cobra"
+
+	"pressluft/internal/cliui"
 	"pressluft/internal/devdiag"
 	"pressluft/internal/envconfig"
 )
@@ -66,22 +70,22 @@ func resolveDevConfig(rootDir string) DevConfig {
 	}
 }
 
-func runDev(args []string) error {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println("pressluft dev — start the local dev environment")
-			fmt.Println()
-			fmt.Println("Environment variables:")
-			fmt.Println("  PRESSLUFT_CONTROL_PLANE_URL  Stable public URL; unset = ephemeral Cloudflare tunnel")
-			fmt.Println("  DEV_API_PORT                 Backend port (default: 8081)")
-			fmt.Println("  DEV_UI_PORT                  Nuxt port (default: 8080)")
-			fmt.Println("  DEV_UI_HOST                  Nuxt host (default: 0.0.0.0)")
-			fmt.Println()
-			fmt.Println("All variables can be set in a .env file at the repository root.")
-			return nil
-		}
-	}
+var devCmd = &cobra.Command{
+	Use:   "dev",
+	Short: "Start the local dev environment",
+	Long: `Start the local dev environment with backend, frontend, and tunnel.
 
+Environment variables:
+  PRESSLUFT_CONTROL_PLANE_URL  Stable public URL; unset = ephemeral Cloudflare tunnel
+  DEV_API_PORT                 Backend port (default: 8081)
+  DEV_UI_PORT                  Nuxt port (default: 8080)
+  DEV_UI_HOST                  Nuxt host (default: 0.0.0.0)
+
+All variables can be set in a .env file at the repository root.`,
+	RunE: runDev,
+}
+
+func runDev(cmd *cobra.Command, args []string) error {
 	rootDir, err := findRepoRoot()
 	if err != nil {
 		return fmt.Errorf("find repo root: %w", err)
@@ -122,28 +126,27 @@ func runDev(args []string) error {
 	}
 
 	// Generate contracts before starting.
-	fmt.Println("Generating contracts...")
+	cliui.Step("Generating contracts")
 	if err := runGenerate(nil); err != nil {
 		return fmt.Errorf("generate contracts: %w", err)
 	}
+	cliui.StepDone("Generating contracts")
 
 	// Run doctor checks.
 	report := devdiag.Inspect(runtime)
 	printDoctorReport(report)
 	if !report.Healthy() {
-		fmt.Println()
-		for _, issue := range report.Issues() {
-			fmt.Printf("  - %s\n", issue)
-		}
-		fmt.Println()
-		fmt.Println("To reset local state: rm -rf .pressluft")
+		lipgloss.Println()
+		cliui.Issues(report.Issues())
+		lipgloss.Println()
+		cliui.Hint("To reset local state: rm -rf .pressluft")
 		return fmt.Errorf("doctor checks failed")
 	}
 
-	fmt.Printf("Dev state: %s/.pressluft/\n", rootDir)
+	lipgloss.Println(cliui.Dim.Render(fmt.Sprintf("  dev state: %s/.pressluft/", rootDir)))
 
 	// Build agent-dev.
-	fmt.Println("Building dev agent...")
+	cliui.Step("Building dev agent")
 	agentBuild := exec.Command(cfg.GoCmd, "build", "-tags", "dev", "-o", filepath.Join(rootDir, "bin", "pressluft-agent"), "./cmd/pressluft-agent")
 	agentBuild.Dir = rootDir
 	agentBuild.Env = appendBuildEnv(os.Environ())
@@ -153,9 +156,11 @@ func runDev(args []string) error {
 		return fmt.Errorf("build dev agent: %w", err)
 	}
 
+	cliui.StepDone("Building dev agent")
+
 	// Install frontend deps if needed.
 	if _, err := os.Stat(filepath.Join(cfg.WebDir, "node_modules")); os.IsNotExist(err) {
-		fmt.Println("Installing frontend dependencies...")
+		cliui.Step("Installing frontend dependencies")
 		npmInstall := exec.Command(cfg.NpmCmd, "--prefix", cfg.WebDir, "install")
 		npmInstall.Dir = rootDir
 		npmInstall.Stdout = os.Stdout
@@ -163,6 +168,7 @@ func runDev(args []string) error {
 		if err := npmInstall.Run(); err != nil {
 			return fmt.Errorf("install frontend deps: %w", err)
 		}
+		cliui.StepDone("Installing frontend dependencies")
 	}
 
 	// Signal handling — clean up child processes.
@@ -256,7 +262,7 @@ func runDev(args []string) error {
 
 	select {
 	case <-sigCh:
-		fmt.Println("\nShutting down...")
+		lipgloss.Println("\n" + cliui.Dim.Render("Shutting down..."))
 		cleanup()
 	case <-done:
 		cleanup()
@@ -293,7 +299,7 @@ func startQuickTunnel(apiPort int) (url string, cmd *exec.Cmd, logFile string, e
 	for i := 0; i < 30; i++ {
 		content, _ := os.ReadFile(logFile)
 		if match := tunnelRe.FindString(string(content)); match != "" {
-			fmt.Printf("Cloudflare tunnel: %s\n", match)
+			lipgloss.Println(cliui.Accent.Render("  tunnel: ") + match)
 			return match, cmd, logFile, nil
 		}
 		time.Sleep(time.Second)
@@ -304,15 +310,16 @@ func startQuickTunnel(apiPort int) (url string, cmd *exec.Cmd, logFile string, e
 }
 
 func printTunnelWarning() {
-	fmt.Println()
-	fmt.Println("=========================================================================")
-	fmt.Println("  WARNING: Running with a Cloudflare quick tunnel (ephemeral URL).")
-	fmt.Println("  Remote agents provisioned in this session cannot reconnect after a")
-	fmt.Println("  restart. For durable testing, set PRESSLUFT_CONTROL_PLANE_URL to a")
-	fmt.Println("  stable URL before running pressluft dev (e.g. a pressluft.dev subdomain")
-	fmt.Println("  or ngrok).")
-	fmt.Println("=========================================================================")
-	fmt.Println()
+	lipgloss.Println()
+	cliui.WarnBox([]string{
+		"Running with a Cloudflare quick tunnel (ephemeral URL).",
+		"Remote agents provisioned in this session cannot reconnect",
+		"after a restart.",
+		"",
+		"For durable testing, set PRESSLUFT_CONTROL_PLANE_URL to a",
+		"stable URL before running pressluft dev.",
+	})
+	lipgloss.Println()
 }
 
 func tailFile(path string) {

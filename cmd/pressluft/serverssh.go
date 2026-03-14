@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"pressluft/internal/security"
 
 	_ "modernc.org/sqlite"
@@ -20,11 +22,31 @@ type sshAccessTarget struct {
 	Key  string
 }
 
-func runServerSSH(args []string) error {
-	target, execSSH, printKey, err := parseServerSSHArgs(args)
-	if err != nil {
-		return err
-	}
+var serverSSHCmd = &cobra.Command{
+	Use:   "server-ssh TARGET",
+	Short: "SSH access for a managed server",
+	Long: `Print or execute SSH access for a managed server.
+
+By default, prints connection details and a ready-to-copy SSH command.
+Use --exec to open an interactive SSH session directly.
+Use --print-key to output the decrypted private key to stdout.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runServerSSH,
+}
+
+var (
+	sshExec     bool
+	sshPrintKey bool
+)
+
+func init() {
+	serverSSHCmd.Flags().BoolVar(&sshExec, "exec", false, "Open an interactive SSH session")
+	serverSSHCmd.Flags().BoolVar(&sshPrintKey, "print-key", false, "Print the decrypted SSH private key to stdout")
+	serverSSHCmd.MarkFlagsMutuallyExclusive("exec", "print-key")
+}
+
+func runServerSSH(cmd *cobra.Command, args []string) error {
+	target := args[0]
 
 	runtime, err := resolveRuntime()
 	if err != nil {
@@ -46,7 +68,7 @@ func runServerSSH(args []string) error {
 		return fmt.Errorf("decrypt server ssh key: %w", err)
 	}
 
-	if printKey {
+	if sshPrintKey {
 		_, err := os.Stdout.Write(decryptedKey)
 		return err
 	}
@@ -72,12 +94,12 @@ func runServerSSH(args []string) error {
 	}
 
 	sshArgs := []string{"-i", keyFile.Name(), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "root@" + host}
-	if execSSH {
-		cmd := exec.Command("ssh", sshArgs...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+	if sshExec {
+		sshCmd := exec.Command("ssh", sshArgs...)
+		sshCmd.Stdin = os.Stdin
+		sshCmd.Stdout = os.Stdout
+		sshCmd.Stderr = os.Stderr
+		if err := sshCmd.Run(); err != nil {
 			return fmt.Errorf("run ssh: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "\nSSH key left at %s\n", keyFile.Name())
@@ -89,42 +111,6 @@ func runServerSSH(args []string) error {
 	fmt.Printf("key_file: %s\n", keyFile.Name())
 	fmt.Printf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@%s\n", keyFile.Name(), host)
 	return nil
-}
-
-func parseServerSSHArgs(args []string) (target string, execSSH bool, printKey bool, err error) {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" {
-			fmt.Println("pressluft server-ssh TARGET — print or execute SSH access for a managed server")
-			fmt.Println()
-			fmt.Println("Flags:")
-			fmt.Println("  --exec       Open an interactive SSH session")
-			fmt.Println("  --print-key  Print the decrypted SSH private key to stdout")
-			os.Exit(0)
-		}
-	}
-	for _, arg := range args {
-		switch arg {
-		case "--exec":
-			execSSH = true
-		case "--print-key":
-			printKey = true
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return "", false, false, fmt.Errorf("unknown server-ssh argument %q", arg)
-			}
-			if target != "" {
-				return "", false, false, fmt.Errorf("server-ssh accepts exactly one TARGET")
-			}
-			target = strings.TrimSpace(arg)
-		}
-	}
-	if target == "" {
-		return "", false, false, fmt.Errorf("server-ssh requires TARGET")
-	}
-	if execSSH && printKey {
-		return "", false, false, fmt.Errorf("--exec and --print-key cannot be combined")
-	}
-	return target, execSSH, printKey, nil
 }
 
 func lookupSSHAccessTarget(db *sql.DB, target string) (*sshAccessTarget, error) {

@@ -8,17 +8,9 @@ import (
 	"pressluft/internal/contract"
 )
 
+// runGenerate regenerates TypeScript contracts from Go types.
+// Called internally by dev and build — not a user-facing command.
 func runGenerate(args []string) error {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println("pressluft generate — regenerate TypeScript contracts from Go types")
-			fmt.Println()
-			fmt.Println("Writes:")
-			fmt.Println("  web/app/lib/platform-contract.generated.ts")
-			fmt.Println("  web/app/lib/api-contract.ts")
-			return nil
-		}
-	}
 
 	rootDir, err := findRepoRoot()
 	if err != nil {
@@ -45,6 +37,5 @@ func runGenerate(args []string) error {
 		return fmt.Errorf("write api contract: %w", err)
 	}
 
-	fmt.Println("Contracts generated.")
 	return nil
 }

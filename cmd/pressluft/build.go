@@ -5,43 +5,45 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/spf13/cobra"
+
+	"pressluft/internal/cliui"
 )
 
-func runBuild(args []string) error {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println("pressluft build — build project binaries")
-			fmt.Println()
-			fmt.Println("Usage:")
-			fmt.Println("  pressluft build              Full pipeline: generate contracts, build frontend, embed, compile server + agent")
-			fmt.Println("  pressluft build server       Build only the control-plane server binary")
-			fmt.Println("  pressluft build agent        Build the production agent binary")
-			fmt.Println("  pressluft build agent --dev  Build the dev agent binary")
-			return nil
-		}
-	}
+var buildCmd = &cobra.Command{
+	Use:   "build [server|agent]",
+	Short: "Build binaries (default: full pipeline)",
+	Long: `Build project binaries.
 
+Without arguments, runs the full pipeline: generate contracts, build frontend,
+embed assets, and compile both server and agent binaries.
+
+  pressluft build              Full pipeline
+  pressluft build server       Build only the control-plane server binary
+  pressluft build agent        Build the production agent binary
+  pressluft build agent --dev  Build the dev agent binary`,
+	Args:      cobra.MaximumNArgs(1),
+	ValidArgs: []string{"server", "agent"},
+	RunE:      runBuild,
+}
+
+var buildDev bool
+
+func init() {
+	buildCmd.Flags().BoolVar(&buildDev, "dev", false, "Build with dev tags (agent only)")
+}
+
+func runBuild(cmd *cobra.Command, args []string) error {
 	rootDir, err := findRepoRoot()
 	if err != nil {
 		return err
 	}
 
 	target := ""
-	devMode := false
-	for _, arg := range args {
-		switch arg {
-		case "--dev":
-			devMode = true
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return fmt.Errorf("unknown flag %q", arg)
-			}
-			if target != "" {
-				return fmt.Errorf("build accepts at most one target (server or agent)")
-			}
-			target = arg
-		}
+	if len(args) > 0 {
+		target = args[0]
 	}
 
 	switch target {
@@ -50,39 +52,45 @@ func runBuild(args []string) error {
 	case "server":
 		return buildServer(rootDir)
 	case "agent":
-		return buildAgent(rootDir, devMode)
+		return buildAgent(rootDir, buildDev)
 	default:
 		return fmt.Errorf("unknown build target %q (use server or agent)", target)
 	}
 }
 
 func buildFull(rootDir string) error {
-	fmt.Println("Generating contracts...")
+	cliui.Step("Generating contracts")
 	if err := runGenerate(nil); err != nil {
 		return fmt.Errorf("generate: %w", err)
 	}
+	cliui.StepDone("Generating contracts")
 
-	fmt.Println("Building frontend...")
+	cliui.Step("Building frontend")
 	if err := buildFrontend(rootDir); err != nil {
 		return fmt.Errorf("frontend: %w", err)
 	}
+	cliui.StepDone("Building frontend")
 
-	fmt.Println("Embedding frontend assets...")
+	cliui.Step("Embedding frontend assets")
 	if err := embedFrontend(rootDir); err != nil {
 		return fmt.Errorf("embed: %w", err)
 	}
+	cliui.StepDone("Embedding frontend assets")
 
-	fmt.Println("Building server...")
+	cliui.Step("Building server")
 	if err := buildServer(rootDir); err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
+	cliui.StepDone("Building server")
 
-	fmt.Println("Building agent...")
+	cliui.Step("Building agent")
 	if err := buildAgent(rootDir, false); err != nil {
 		return fmt.Errorf("agent: %w", err)
 	}
+	cliui.StepDone("Building agent")
 
-	fmt.Println("Build complete.")
+	lipgloss.Println()
+	lipgloss.Println(cliui.Success.Render("Build complete."))
 	return nil
 }
 
