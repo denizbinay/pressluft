@@ -77,7 +77,12 @@ func ResolveControlPlaneRuntime(isDevBuild bool, cwd string) (ControlPlaneRuntim
 		return ControlPlaneRuntime{}, err
 	}
 
-	dataDir := DefaultDataDir()
+	var dataDir string
+	if isDevBuild && cwd != "" {
+		dataDir = filepath.Join(cwd, ".pressluft")
+	} else {
+		dataDir = DefaultDataDir()
+	}
 	ansibleDir := strings.TrimSpace(os.Getenv("PRESSLUFT_ANSIBLE_DIR"))
 	if ansibleDir == "" {
 		if cwd != "" {
@@ -193,10 +198,7 @@ func resolveAgeKeyPath(dataDir string) string {
 	if p := strings.TrimSpace(os.Getenv("PRESSLUFT_AGE_KEY_PATH")); p != "" {
 		return filepath.Clean(p)
 	}
-	if Mode == "dev" {
-		return filepath.Join(dataDir, "age.key")
-	}
-	return DefaultAgeKeyPath()
+	return filepath.Join(dataDir, "age.key")
 }
 
 func resolveCAKeyPath(dataDir string) string {

@@ -24,8 +24,8 @@ func TestResolveUsesXDGDataHomeByDefault(t *testing.T) {
 	if paths.CAKeyPath != filepath.Join(string(filepath.Separator), "tmp", "xdg", "pressluft", "ca.key") {
 		t.Fatalf("CAKeyPath = %q", paths.CAKeyPath)
 	}
-	if paths.AgeKeyPath == filepath.Join(string(filepath.Separator), "tmp", "xdg", "pressluft", "age.key") {
-		t.Fatalf("AgeKeyPath should stay outside XDG data dir in non-dev mode")
+	if paths.AgeKeyPath != filepath.Join(string(filepath.Separator), "tmp", "xdg", "pressluft", "age.key") {
+		t.Fatalf("AgeKeyPath = %q", paths.AgeKeyPath)
 	}
 }
 

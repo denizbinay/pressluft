@@ -55,7 +55,7 @@ func TestResolveControlPlaneRuntimeUsesRepoLocalStateInDevMode(t *testing.T) {
 	t.Setenv("PRESSLUFT_ANSIBLE_DIR", "")
 	t.Setenv("PRESSLUFT_ANSIBLE_BIN", "")
 
-	runtime, err := ResolveControlPlaneRuntime(true, "/repo/root")
+	runtime, err := ResolveControlPlaneRuntime(true, repoRoot())
 	if err != nil {
 		t.Fatalf("ResolveControlPlaneRuntime() error = %v", err)
 	}
