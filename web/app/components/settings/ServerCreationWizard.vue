@@ -14,6 +14,8 @@ import { useProviders } from "~/composables/useProviders";
 import { useServers, type ServerTypePrice } from "~/composables/useServers";
 import type { Job } from "~/composables/useJobs";
 import type { SupportLevel } from "~/lib/platform-contract.generated";
+import WizardStepConfigure from "./WizardStepConfigure.vue";
+import WizardStepReview from "./WizardStepReview.vue";
 
 const props = defineProps<{
   isOpen: boolean;
