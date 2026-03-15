@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useProviders, type ValidationResult } from '~/composables/useProviders'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -84,8 +84,8 @@ const handleValidate = async () => {
     if (result.valid && result.read_write) {
       formStep.value = 'validated'
     }
-  } catch (e: any) {
-    formError.value = e.message
+  } catch (e: unknown) {
+    formError.value = errorMessage(e)
   } finally {
     formValidating.value = false
   }
@@ -104,8 +104,8 @@ const handleSave = async () => {
     await createProvider(formType.value, formName.value.trim(), formToken.value)
     modal.close()
     await fetchProviders()
-  } catch (e: any) {
-    formError.value = e.message
+  } catch (e: unknown) {
+    formError.value = errorMessage(e)
   } finally {
     formSaving.value = false
   }
@@ -116,8 +116,8 @@ const handleDelete = async (id: string) => {
   try {
     await deleteProvider(id)
     await fetchProviders()
-  } catch (e: any) {
-    formError.value = e.message
+  } catch (e: unknown) {
+    formError.value = errorMessage(e)
   } finally {
     deletingId.value = null
   }

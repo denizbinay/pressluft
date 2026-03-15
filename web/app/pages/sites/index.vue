@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useServers } from "~/composables/useServers";
 import { useSites, type StoredSite } from "~/composables/useSites";
+import { errorMessage } from "~/lib/utils";
 
 const route = useRoute();
 const router = useRouter();
@@ -83,8 +84,8 @@ const loadPage = async () => {
   pageError.value = "";
   try {
     await Promise.all([fetchServers(), fetchSites()]);
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to load sites";
+  } catch (e: unknown) {
+    pageError.value = errorMessage(e) || "Failed to load sites";
   }
 };
 

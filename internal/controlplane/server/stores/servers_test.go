@@ -1,4 +1,4 @@
-package server
+package stores
 
 import (
 	"context"
@@ -467,4 +467,8 @@ func nextTestPublicID(t *testing.T, db *sql.DB, table string) string {
 		t.Fatalf("count %s rows: %v", table, err)
 	}
 	return fmt.Sprintf("00000000-0000-7000-8000-%012d", count+1)
+}
+
+func testPublicID(seq int) string {
+	return fmt.Sprintf("00000000-0000-7000-8000-%012d", seq)
 }

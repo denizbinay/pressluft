@@ -12,6 +12,7 @@ import {
   parseStoredSite,
   parseStoredSites,
 } from "~/lib/api-runtime";
+import { errorMessage } from "~/lib/utils";
 
 export type { CreateSiteRequest, DeleteSiteResponse, SiteHealthResponse, StoredSite, UpdateSiteRequest } from "~/lib/api-types";
 
@@ -28,8 +29,8 @@ export function useSites() {
     try {
       sites.value = parseStoredSites(await apiFetch("/sites"));
       return sites.value;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     } finally {
       loading.value = false;

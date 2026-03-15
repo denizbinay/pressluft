@@ -29,6 +29,7 @@ import {
   parseStoredServer,
   parseStoredServers,
 } from "~/lib/api-runtime";
+import { errorMessage } from "~/lib/utils";
 
 export type AgentStatusType = AgentInfo["status"];
 
@@ -46,8 +47,8 @@ export function useServers() {
     error.value = "";
     try {
       servers.value = parseStoredServers(await apiFetch("/servers"));
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
     } finally {
       loading.value = false;
     }

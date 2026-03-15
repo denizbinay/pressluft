@@ -38,16 +38,56 @@ export interface VolumeOption {
   server_id?: number;
 }
 
-const fetchJson = async (url: string, fallbackMessage: string) => {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || fallbackMessage);
-  }
-  return res.json();
-};
+// Raw response shapes returned by the API
+interface RawImage {
+  id?: number;
+  name?: string;
+  type?: string;
+  architecture?: string;
+  deprecated?: boolean;
+  status?: string;
+}
+
+interface RawServerType {
+  name?: string;
+  cores?: number;
+  memory_gb?: number;
+  disk_gb?: number;
+  architecture?: string;
+}
+
+interface RawFirewall {
+  id?: number;
+  name?: string;
+}
+
+interface RawVolume {
+  id?: number;
+  name?: string;
+  size_gb?: number;
+  location?: string;
+  status?: string;
+  server_id?: number;
+}
+
+interface RebuildOptionsResponse {
+  images?: RawImage[];
+}
+
+interface ResizeOptionsResponse {
+  server_types?: RawServerType[];
+}
+
+interface FirewallsResponse {
+  firewalls?: RawFirewall[];
+}
+
+interface VolumesResponse {
+  volumes?: RawVolume[];
+}
 
 export function useServerOptions() {
+  const { apiFetch } = useApiClient();
   const images = ref<ImageOption[]>([]);
   const serverTypes = ref<ResizeServerTypeOption[]>([]);
   const firewalls = ref<FirewallOption[]>([]);
@@ -56,13 +96,12 @@ export function useServerOptions() {
   const error = ref("");
 
   const fetchServerImages = async (serverId: string) => {
-    const body = await fetchJson(
-      `/api/servers/${serverId}/rebuild-options`,
-      "Failed to fetch server images",
+    const body = await apiFetch<RebuildOptionsResponse>(
+      `/servers/${serverId}/rebuild-options`,
     );
     const list = Array.isArray(body?.images) ? body.images : [];
     images.value = list
-      .map((image: any) => {
+      .map((image: RawImage) => {
         const name = String(image?.name || "").trim();
         const id = Number(image?.id);
         const value = name || (Number.isFinite(id) ? String(id) : "");
@@ -82,17 +121,16 @@ export function useServerOptions() {
           status: image?.status ? String(image.status) : undefined,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as ImageOption[];
   };
 
   const fetchServerTypes = async (serverId: string) => {
-    const body = await fetchJson(
-      `/api/servers/${serverId}/resize-options`,
-      "Failed to fetch server types",
+    const body = await apiFetch<ResizeOptionsResponse>(
+      `/servers/${serverId}/resize-options`,
     );
     const list = Array.isArray(body?.server_types) ? body.server_types : [];
     serverTypes.value = list
-      .map((type_: any) => {
+      .map((type_: RawServerType) => {
         const name = String(type_?.name || "").trim();
         if (!name) return null;
         const cores = Number(type_?.cores);
@@ -116,17 +154,16 @@ export function useServerOptions() {
             : undefined,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as ResizeServerTypeOption[];
   };
 
   const fetchServerFirewalls = async (serverId: string) => {
-    const body = await fetchJson(
-      `/api/servers/${serverId}/firewalls`,
-      "Failed to fetch firewalls",
+    const body = await apiFetch<FirewallsResponse>(
+      `/servers/${serverId}/firewalls`,
     );
     const list = Array.isArray(body?.firewalls) ? body.firewalls : [];
     firewalls.value = list
-      .map((fw: any) => {
+      .map((fw: RawFirewall) => {
         const id = Number(fw?.id);
         const name = String(fw?.name || "").trim();
         if (!name && !Number.isFinite(id)) return null;
@@ -139,17 +176,16 @@ export function useServerOptions() {
           name: name || undefined,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as FirewallOption[];
   };
 
   const fetchServerVolumes = async (serverId: string) => {
-    const body = await fetchJson(
-      `/api/servers/${serverId}/volumes`,
-      "Failed to fetch volumes",
+    const body = await apiFetch<VolumesResponse>(
+      `/servers/${serverId}/volumes`,
     );
     const list = Array.isArray(body?.volumes) ? body.volumes : [];
     volumes.value = list
-      .map((vol: any) => {
+      .map((vol: RawVolume) => {
         const name = String(vol?.name || "").trim();
         const id = Number(vol?.id);
         if (!name) return null;
@@ -173,7 +209,7 @@ export function useServerOptions() {
             : undefined,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as VolumeOption[];
   };
 
   const fetchAll = async (serverId: string) => {

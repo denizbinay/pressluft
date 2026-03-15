@@ -5,6 +5,7 @@ import {
   parseActivityListResponse,
   parseUnreadCountResponse,
 } from "~/lib/api-runtime";
+import { errorMessage } from "~/lib/utils";
 export type { Activity, ActivityListResponse } from "~/lib/api-types";
 
 export interface ActivityFilter {
@@ -103,8 +104,8 @@ export function useActivity() {
       }
       nextCursor.value = next;
       return payload;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     } finally {
       loading.value = false;
@@ -134,8 +135,8 @@ export function useActivity() {
       }
       nextCursor.value = next;
       return payload;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     } finally {
       loading.value = false;
@@ -163,8 +164,8 @@ export function useActivity() {
       }
       nextCursor.value = next;
       return payload;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     } finally {
       loading.value = false;
@@ -255,8 +256,8 @@ export function useActivity() {
       );
       unreadCount.value = payload.count;
       return payload.count;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     }
   };

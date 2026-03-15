@@ -5,6 +5,11 @@ bin/
 .codex/
 .env
 
+# Compiled binaries
+/pressluft
+/pressluft-agent
+/pressluft-server
+
 web/node_modules/
 web/.nuxt/
 web/.output/

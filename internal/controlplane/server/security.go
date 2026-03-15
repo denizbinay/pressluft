@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"pressluft/internal/controlplane/activity"
 	"pressluft/internal/controlplane/auth"
 )
 
@@ -22,7 +23,7 @@ type HandlerOptions struct {
 }
 
 type ActivityEmitter interface {
-	Emit(ctx context.Context, in any) (any, error)
+	Emit(ctx context.Context, in activity.EmitInput) (activity.Activity, error)
 }
 
 type loggerLike interface {

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "test": "node --test tests/**/*.test.mjs",
+    "test": "vitest run",
+    "test:api": "node --test tests/**/*.test.mjs",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
@@ -35,7 +36,10 @@
   "devDependencies": {
     "@nuxtjs/color-mode": "^4.0.0",
     "@nuxtjs/google-fonts": "^3.2.0",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.8.4",
     "shadcn-nuxt": "^2.4.3",
-    "tw-animate-css": "^1.4.0"
+    "tw-animate-css": "^1.4.0",
+    "vitest": "^4.1.0"
   }
 }

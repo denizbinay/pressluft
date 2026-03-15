@@ -43,7 +43,7 @@ func TestServersCatalogEndpoint(t *testing.T) {
 
 	var payload struct {
 		Catalog  provider.ServerCatalog `json:"catalog"`
-		Profiles []any                  `json:"profiles"`
+		Profiles []profiles.Profile     `json:"profiles"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)

@@ -2,6 +2,7 @@ import { ref, readonly, onUnmounted, onMounted, type Ref } from "vue";
 import type { AgentInfo } from "~/lib/api-types";
 import { parseAgentInfo, parseAgentStatusMapResponse } from "~/lib/api-runtime";
 import { reachableNodeStatuses } from "~/lib/platform-contract.generated";
+import { errorMessage } from "~/lib/utils";
 
 interface UseAgentStatusOptions {
   /** Polling interval in milliseconds. Default: 15000 (15s) */
@@ -35,8 +36,8 @@ export function useAgentStatus(
       agentInfo.value = parseAgentInfo(
         await apiFetch(`/servers/${serverId.value}/agent-status`),
       );
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
     } finally {
       loading.value = false;
     }
@@ -98,8 +99,8 @@ export function useAllAgentStatus(options: UseAgentStatusOptions = {}) {
       agentInfoMap.value = parseAgentStatusMapResponse(
         await apiFetch("/servers/agents"),
       );
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
     } finally {
       loading.value = false;
     }

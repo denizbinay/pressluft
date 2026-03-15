@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
-import { cn } from "@/lib/utils"
+import { cn, errorMessage } from "@/lib/utils"
 import { useJobs, type Job, type JobEvent, type ConnectionMode } from "~/composables/useJobs"
 import {
   jobKindLabels,
@@ -235,8 +235,8 @@ async function retryLoad() {
       if (closeStream) closeStream()
       closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
     }
-  } catch (e: any) {
-    connectionError.value = e.message || "Failed to load job"
+  } catch (e: unknown) {
+    connectionError.value = errorMessage(e) || "Failed to load job"
     loading.value = false
   }
 }
@@ -259,8 +259,8 @@ onMounted(async () => {
     if (props.autoConnect) {
       closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
     }
-  } catch (e: any) {
-    connectionError.value = e.message || "Failed to load job"
+  } catch (e: unknown) {
+    connectionError.value = errorMessage(e) || "Failed to load job"
     loading.value = false
   }
 })

@@ -1,5 +1,6 @@
 import { ref, readonly } from 'vue'
 import type { ProviderType, StoredProvider, ValidationResult } from '~/lib/api-contract'
+import { errorMessage } from '~/lib/utils'
 export type { ProviderType, StoredProvider, ValidationResult } from '~/lib/api-contract'
 
 export function useProviders() {
@@ -14,8 +15,8 @@ export function useProviders() {
     error.value = ''
     try {
       providers.value = await apiFetch<StoredProvider[]>('/providers')
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = errorMessage(e)
     } finally {
       loading.value = false
     }
@@ -24,8 +25,8 @@ export function useProviders() {
   const fetchProviderTypes = async () => {
     try {
       providerTypes.value = await apiFetch<ProviderType[]>('/providers/types')
-    } catch (e: any) {
-      error.value = e.message
+    } catch (e: unknown) {
+      error.value = errorMessage(e)
     }
   }
 

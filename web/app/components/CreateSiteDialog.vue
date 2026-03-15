@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import type { StoredServer } from "~/composables/useServers";
 import { useSites, type StoredSite } from "~/composables/useSites";
 import { useAuth } from "~/composables/useAuth";
+import { errorMessage } from "~/lib/utils";
 
 const props = defineProps<{
   open: boolean;
@@ -122,8 +123,8 @@ const handleSubmit = async () => {
     });
     emit("created", created);
     close();
-  } catch (e: any) {
-    formError.value = e.message || "Failed to create site";
+  } catch (e: unknown) {
+    formError.value = errorMessage(e) || "Failed to create site";
   }
 };
 
