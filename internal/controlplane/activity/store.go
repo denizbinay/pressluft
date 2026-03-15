@@ -20,6 +20,155 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// activityColumns is the SELECT column list shared by all activity queries.
+const activityColumns = `id, event_type, category, level,
+		resource_type, resource_id,
+		parent_resource_type, parent_resource_id,
+		actor_type, actor_id,
+		title, message, payload,
+		requires_attention, read_at, created_at`
+
+// scanActivityRow scans a single row into an Activity struct, handling all
+// nullable column conversions internally.
+func scanActivityRow(scanner interface{ Scan(dest ...any) error }) (Activity, error) {
+	var (
+		a                  Activity
+		resourceType       sql.NullString
+		resourceID         sql.NullString
+		parentResourceType sql.NullString
+		parentResourceID   sql.NullString
+		actorID            sql.NullString
+		message            sql.NullString
+		payload            sql.NullString
+		readAt             sql.NullString
+		requiresAttention  int
+	)
+
+	err := scanner.Scan(
+		&a.ID,
+		&a.EventType,
+		&a.Category,
+		&a.Level,
+		&resourceType,
+		&resourceID,
+		&parentResourceType,
+		&parentResourceID,
+		&a.ActorType,
+		&actorID,
+		&a.Title,
+		&message,
+		&payload,
+		&requiresAttention,
+		&readAt,
+		&a.CreatedAt,
+	)
+	if err != nil {
+		return Activity{}, err
+	}
+
+	if resourceType.Valid {
+		a.ResourceType = ResourceType(resourceType.String)
+	}
+	a.ResourceID = nullString(resourceID)
+	if parentResourceType.Valid {
+		a.ParentResourceType = ResourceType(parentResourceType.String)
+	}
+	a.ParentResourceID = nullString(parentResourceID)
+	if actorID.Valid {
+		a.ActorID = actorID.String
+	}
+	if message.Valid {
+		a.Message = message.String
+	}
+	if payload.Valid {
+		a.Payload = payload.String
+	}
+	if readAt.Valid {
+		a.ReadAt = readAt.String
+	}
+	a.RequiresAttention = requiresAttention == 1
+
+	return a, nil
+}
+
+// scanActivityRows iterates sql.Rows and scans each into an Activity using
+// scanActivityRow. The caller is still responsible for closing rows.
+func scanActivityRows(rows *sql.Rows) ([]Activity, error) {
+	var out []Activity
+	for rows.Next() {
+		a, err := scanActivityRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan activity: %w", err)
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate activity: %w", err)
+	}
+	return out, nil
+}
+
+// buildActivityFilterClause turns a ListFilter into SQL AND-clauses and args.
+// The returned clause string begins with " AND ..." (or is empty).
+func buildActivityFilterClause(filter ListFilter) (string, []any) {
+	var b strings.Builder
+	var args []any
+
+	if cursor := parseCursor(filter.Cursor); cursor != "" {
+		b.WriteString(" AND id < ?")
+		args = append(args, cursor)
+	}
+
+	if filter.Category != "" {
+		b.WriteString(" AND category = ?")
+		args = append(args, filter.Category)
+	}
+
+	if filter.ResourceType != "" {
+		b.WriteString(" AND resource_type = ?")
+		args = append(args, filter.ResourceType)
+	}
+	if strings.TrimSpace(filter.ResourceID) != "" {
+		b.WriteString(" AND resource_id = ?")
+		args = append(args, filter.ResourceID)
+	}
+
+	if filter.ParentResourceType != "" {
+		b.WriteString(" AND parent_resource_type = ?")
+		args = append(args, filter.ParentResourceType)
+	}
+	if strings.TrimSpace(filter.ParentResourceID) != "" {
+		b.WriteString(" AND parent_resource_id = ?")
+		args = append(args, filter.ParentResourceID)
+	}
+
+	if filter.RequiresAttention != nil {
+		if *filter.RequiresAttention {
+			b.WriteString(" AND requires_attention = 1")
+		} else {
+			b.WriteString(" AND requires_attention = 0")
+		}
+	}
+
+	if filter.UnreadOnly {
+		b.WriteString(" AND read_at IS NULL")
+	}
+
+	return b.String(), args
+}
+
+// clampLimit normalises a page-size value into the [1, 200] range with a
+// default of 50.
+func clampLimit(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
+}
+
 // Emit creates a new activity entry.
 func (s *Store) Emit(ctx context.Context, in EmitInput) (Activity, error) {
 	// Validate event type
@@ -90,47 +239,12 @@ func (s *Store) GetByID(ctx context.Context, id string) (Activity, error) {
 		return Activity{}, err
 	}
 
-	var (
-		a                  Activity
-		resourceType       sql.NullString
-		resourceID         sql.NullString
-		parentResourceType sql.NullString
-		parentResourceID   sql.NullString
-		actorID            sql.NullString
-		message            sql.NullString
-		payload            sql.NullString
-		readAt             sql.NullString
-		requiresAttention  int
-	)
-
-	err = s.db.QueryRowContext(ctx,
-		`SELECT id, event_type, category, level,
-			resource_type, resource_id,
-			parent_resource_type, parent_resource_id,
-			actor_type, actor_id,
-			title, message, payload,
-			requires_attention, read_at, created_at
+	a, err := scanActivityRow(s.db.QueryRowContext(ctx,
+		`SELECT `+activityColumns+`
 		FROM activity
 		WHERE id = ?`,
 		publicID,
-	).Scan(
-		&a.ID,
-		&a.EventType,
-		&a.Category,
-		&a.Level,
-		&resourceType,
-		&resourceID,
-		&parentResourceType,
-		&parentResourceID,
-		&a.ActorType,
-		&actorID,
-		&a.Title,
-		&message,
-		&payload,
-		&requiresAttention,
-		&readAt,
-		&a.CreatedAt,
-	)
+	))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Activity{}, fmt.Errorf("activity %s not found", publicID)
@@ -138,178 +252,35 @@ func (s *Store) GetByID(ctx context.Context, id string) (Activity, error) {
 		return Activity{}, fmt.Errorf("query activity: %w", err)
 	}
 
-	if resourceType.Valid {
-		a.ResourceType = ResourceType(resourceType.String)
-	}
-	a.ResourceID = nullString(resourceID)
-	if parentResourceType.Valid {
-		a.ParentResourceType = ResourceType(parentResourceType.String)
-	}
-	a.ParentResourceID = nullString(parentResourceID)
-	if actorID.Valid {
-		a.ActorID = actorID.String
-	}
-	if message.Valid {
-		a.Message = message.String
-	}
-	if payload.Valid {
-		a.Payload = payload.String
-	}
-	if readAt.Valid {
-		a.ReadAt = readAt.String
-	}
-	a.RequiresAttention = requiresAttention == 1
-
 	return a, nil
 }
 
 // List retrieves activity entries with cursor-based pagination and filtering.
 // Returns entries, next cursor (empty string if no more), and error.
 func (s *Store) List(ctx context.Context, filter ListFilter) ([]Activity, string, error) {
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(filter.Limit)
 
-	// Build dynamic query
-	query := strings.Builder{}
-	query.WriteString(`SELECT id, event_type, category, level,
-		resource_type, resource_id,
-		parent_resource_type, parent_resource_id,
-		actor_type, actor_id,
-		title, message, payload,
-		requires_attention, read_at, created_at
+	whereClause, args := buildActivityFilterClause(filter)
+
+	query := `SELECT ` + activityColumns + `
 	FROM activity
-	WHERE 1=1`)
+	WHERE 1=1` + whereClause + ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit+1)
 
-	args := make([]any, 0)
-
-	// Cursor pagination (descending by id)
-	if cursor := parseCursor(filter.Cursor); cursor != "" {
-		query.WriteString(" AND id < ?")
-		args = append(args, cursor)
-	}
-
-	// Category filter
-	if filter.Category != "" {
-		query.WriteString(" AND category = ?")
-		args = append(args, filter.Category)
-	}
-
-	// Resource filter
-	if filter.ResourceType != "" {
-		query.WriteString(" AND resource_type = ?")
-		args = append(args, filter.ResourceType)
-	}
-	if strings.TrimSpace(filter.ResourceID) != "" {
-		query.WriteString(" AND resource_id = ?")
-		args = append(args, filter.ResourceID)
-	}
-
-	// Parent resource filter
-	if filter.ParentResourceType != "" {
-		query.WriteString(" AND parent_resource_type = ?")
-		args = append(args, filter.ParentResourceType)
-	}
-	if strings.TrimSpace(filter.ParentResourceID) != "" {
-		query.WriteString(" AND parent_resource_id = ?")
-		args = append(args, filter.ParentResourceID)
-	}
-
-	// Requires attention filter
-	if filter.RequiresAttention != nil {
-		if *filter.RequiresAttention {
-			query.WriteString(" AND requires_attention = 1")
-		} else {
-			query.WriteString(" AND requires_attention = 0")
-		}
-	}
-
-	// Unread only filter
-	if filter.UnreadOnly {
-		query.WriteString(" AND read_at IS NULL")
-	}
-
-	query.WriteString(" ORDER BY id DESC LIMIT ?")
-	args = append(args, limit+1) // Fetch one extra to determine if there's a next page
-
-	rows, err := s.db.QueryContext(ctx, query.String(), args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("list activity: %w", err)
 	}
 	defer rows.Close()
 
-	out := make([]Activity, 0, limit)
-	for rows.Next() {
-		var (
-			a                  Activity
-			resourceType       sql.NullString
-			resourceID         sql.NullString
-			parentResourceType sql.NullString
-			parentResourceID   sql.NullString
-			actorID            sql.NullString
-			message            sql.NullString
-			payload            sql.NullString
-			readAt             sql.NullString
-			requiresAttention  int
-		)
-
-		if err := rows.Scan(
-			&a.ID,
-			&a.EventType,
-			&a.Category,
-			&a.Level,
-			&resourceType,
-			&resourceID,
-			&parentResourceType,
-			&parentResourceID,
-			&a.ActorType,
-			&actorID,
-			&a.Title,
-			&message,
-			&payload,
-			&requiresAttention,
-			&readAt,
-			&a.CreatedAt,
-		); err != nil {
-			return nil, "", fmt.Errorf("scan activity: %w", err)
-		}
-
-		if resourceType.Valid {
-			a.ResourceType = ResourceType(resourceType.String)
-		}
-		a.ResourceID = nullString(resourceID)
-		if parentResourceType.Valid {
-			a.ParentResourceType = ResourceType(parentResourceType.String)
-		}
-		a.ParentResourceID = nullString(parentResourceID)
-		if actorID.Valid {
-			a.ActorID = actorID.String
-		}
-		if message.Valid {
-			a.Message = message.String
-		}
-		if payload.Valid {
-			a.Payload = payload.String
-		}
-		if readAt.Valid {
-			a.ReadAt = readAt.String
-		}
-		a.RequiresAttention = requiresAttention == 1
-
-		out = append(out, a)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate activity: %w", err)
+	out, err := scanActivityRows(rows)
+	if err != nil {
+		return nil, "", err
 	}
 
 	// Determine next cursor
 	nextCursor := ""
 	if len(out) > limit {
-		// We have more results, return cursor for next page
 		out = out[:limit]
 		nextCursor = out[len(out)-1].ID
 	}
@@ -324,119 +295,36 @@ func (s *Store) ListForServer(ctx context.Context, serverID string, filter ListF
 		return nil, "", fmt.Errorf("server id is required")
 	}
 
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(filter.Limit)
 
-	query := strings.Builder{}
-	query.WriteString(`SELECT id, event_type, category, level,
-		resource_type, resource_id,
-		parent_resource_type, parent_resource_id,
-		actor_type, actor_id,
-		title, message, payload,
-		requires_attention, read_at, created_at
+	// ListForServer scopes to a specific resource/parent pair, so we clear
+	// the resource fields from the filter to avoid double-filtering and let
+	// buildActivityFilterClause handle only the generic predicates.
+	scoped := filter
+	scoped.ResourceType = ""
+	scoped.ResourceID = ""
+	scoped.ParentResourceType = ""
+	scoped.ParentResourceID = ""
+	whereClause, filterArgs := buildActivityFilterClause(scoped)
+
+	baseArgs := []any{ResourceServer, serverID, ResourceServer, serverID}
+	args := append(baseArgs, filterArgs...)
+
+	query := `SELECT ` + activityColumns + `
 	FROM activity
-	WHERE ((resource_type = ? AND resource_id = ?) OR (parent_resource_type = ? AND parent_resource_id = ?))`)
-
-	args := []any{ResourceServer, serverID, ResourceServer, serverID}
-
-	if cursor := parseCursor(filter.Cursor); cursor != "" {
-		query.WriteString(" AND id < ?")
-		args = append(args, cursor)
-	}
-
-	if filter.Category != "" {
-		query.WriteString(" AND category = ?")
-		args = append(args, filter.Category)
-	}
-
-	if filter.RequiresAttention != nil {
-		if *filter.RequiresAttention {
-			query.WriteString(" AND requires_attention = 1")
-		} else {
-			query.WriteString(" AND requires_attention = 0")
-		}
-	}
-
-	if filter.UnreadOnly {
-		query.WriteString(" AND read_at IS NULL")
-	}
-
-	query.WriteString(" ORDER BY id DESC LIMIT ?")
+	WHERE ((resource_type = ? AND resource_id = ?) OR (parent_resource_type = ? AND parent_resource_id = ?))` +
+		whereClause + ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit+1)
 
-	rows, err := s.db.QueryContext(ctx, query.String(), args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("list activity for server: %w", err)
 	}
 	defer rows.Close()
 
-	out := make([]Activity, 0, limit)
-	for rows.Next() {
-		var (
-			a                  Activity
-			resourceType       sql.NullString
-			resourceID         sql.NullString
-			parentResourceType sql.NullString
-			parentResourceID   sql.NullString
-			actorID            sql.NullString
-			message            sql.NullString
-			payload            sql.NullString
-			readAt             sql.NullString
-			requiresAttention  int
-		)
-
-		if err := rows.Scan(
-			&a.ID,
-			&a.EventType,
-			&a.Category,
-			&a.Level,
-			&resourceType,
-			&resourceID,
-			&parentResourceType,
-			&parentResourceID,
-			&a.ActorType,
-			&actorID,
-			&a.Title,
-			&message,
-			&payload,
-			&requiresAttention,
-			&readAt,
-			&a.CreatedAt,
-		); err != nil {
-			return nil, "", fmt.Errorf("scan activity: %w", err)
-		}
-
-		if resourceType.Valid {
-			a.ResourceType = ResourceType(resourceType.String)
-		}
-		a.ResourceID = nullString(resourceID)
-		if parentResourceType.Valid {
-			a.ParentResourceType = ResourceType(parentResourceType.String)
-		}
-		a.ParentResourceID = nullString(parentResourceID)
-		if actorID.Valid {
-			a.ActorID = actorID.String
-		}
-		if message.Valid {
-			a.Message = message.String
-		}
-		if payload.Valid {
-			a.Payload = payload.String
-		}
-		if readAt.Valid {
-			a.ReadAt = readAt.String
-		}
-		a.RequiresAttention = requiresAttention == 1
-
-		out = append(out, a)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate activity: %w", err)
+	out, err := scanActivityRows(rows)
+	if err != nil {
+		return nil, "", err
 	}
 
 	nextCursor := ""
@@ -455,101 +343,41 @@ func (s *Store) ListForSite(ctx context.Context, siteID string, filter ListFilte
 		return nil, "", fmt.Errorf("site id is required")
 	}
 
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(filter.Limit)
 
-	query := strings.Builder{}
-	query.WriteString(`SELECT id, event_type, category, level,
-		resource_type, resource_id,
-		parent_resource_type, parent_resource_id,
-		actor_type, actor_id,
-		title, message, payload,
-		requires_attention, read_at, created_at
+	scoped := filter
+	scoped.ResourceType = ""
+	scoped.ResourceID = ""
+	scoped.ParentResourceType = ""
+	scoped.ParentResourceID = ""
+	whereClause, filterArgs := buildActivityFilterClause(scoped)
+
+	baseArgs := []any{ResourceSite, siteID, ResourceSite, siteID}
+	args := append(baseArgs, filterArgs...)
+
+	query := `SELECT ` + activityColumns + `
 	FROM activity
-	WHERE ((resource_type = ? AND resource_id = ?) OR (parent_resource_type = ? AND parent_resource_id = ?))`)
-
-	args := []any{ResourceSite, siteID, ResourceSite, siteID}
-
-	if cursor := parseCursor(filter.Cursor); cursor != "" {
-		query.WriteString(" AND id < ?")
-		args = append(args, cursor)
-	}
-	if filter.Category != "" {
-		query.WriteString(" AND category = ?")
-		args = append(args, filter.Category)
-	}
-	if filter.RequiresAttention != nil {
-		if *filter.RequiresAttention {
-			query.WriteString(" AND requires_attention = 1")
-		} else {
-			query.WriteString(" AND requires_attention = 0")
-		}
-	}
-	if filter.UnreadOnly {
-		query.WriteString(" AND read_at IS NULL")
-	}
-	query.WriteString(" ORDER BY id DESC LIMIT ?")
+	WHERE ((resource_type = ? AND resource_id = ?) OR (parent_resource_type = ? AND parent_resource_id = ?))` +
+		whereClause + ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit+1)
 
-	rows, err := s.db.QueryContext(ctx, query.String(), args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("list activity for site: %w", err)
 	}
 	defer rows.Close()
 
-	out := make([]Activity, 0, limit)
-	for rows.Next() {
-		var (
-			a                  Activity
-			resourceType       sql.NullString
-			resourceID         sql.NullString
-			parentResourceType sql.NullString
-			parentResourceID   sql.NullString
-			actorID            sql.NullString
-			message            sql.NullString
-			payload            sql.NullString
-			readAt             sql.NullString
-			requiresAttention  int
-		)
-		if err := rows.Scan(&a.ID, &a.EventType, &a.Category, &a.Level, &resourceType, &resourceID, &parentResourceType, &parentResourceID, &a.ActorType, &actorID, &a.Title, &message, &payload, &requiresAttention, &readAt, &a.CreatedAt); err != nil {
-			return nil, "", fmt.Errorf("scan activity: %w", err)
-		}
-		if resourceType.Valid {
-			a.ResourceType = ResourceType(resourceType.String)
-		}
-		a.ResourceID = nullString(resourceID)
-		if parentResourceType.Valid {
-			a.ParentResourceType = ResourceType(parentResourceType.String)
-		}
-		a.ParentResourceID = nullString(parentResourceID)
-		if actorID.Valid {
-			a.ActorID = actorID.String
-		}
-		if message.Valid {
-			a.Message = message.String
-		}
-		if payload.Valid {
-			a.Payload = payload.String
-		}
-		if readAt.Valid {
-			a.ReadAt = readAt.String
-		}
-		a.RequiresAttention = requiresAttention == 1
-		out = append(out, a)
+	out, err := scanActivityRows(rows)
+	if err != nil {
+		return nil, "", err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("iterate activity: %w", err)
-	}
+
 	nextCursor := ""
 	if len(out) > limit {
 		out = out[:limit]
 		nextCursor = out[len(out)-1].ID
 	}
+
 	return out, nextCursor, nil
 }
 
@@ -586,44 +414,29 @@ func (s *Store) MarkRead(ctx context.Context, id string) error {
 
 // MarkAllRead marks all matching activity entries as read.
 func (s *Store) MarkAllRead(ctx context.Context, filter ListFilter) error {
-	query := strings.Builder{}
-	query.WriteString(`UPDATE activity SET read_at = ? WHERE read_at IS NULL`)
-
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	// MarkAllRead only respects a subset of the filter: category, resource,
+	// parent resource, and requires_attention (true-only). We zero out fields
+	// that must not participate, then use the shared builder.
+	scoped := filter
+	scoped.Cursor = ""
+	scoped.UnreadOnly = false // base query already constrains read_at IS NULL
+
+	// Preserve the original behaviour: only filter requires_attention when
+	// explicitly set to true. When set to false (or nil), skip the predicate.
+	if scoped.RequiresAttention != nil && !*scoped.RequiresAttention {
+		scoped.RequiresAttention = nil
+	}
+
+	whereClause, filterArgs := buildActivityFilterClause(scoped)
+
 	args := []any{now}
+	args = append(args, filterArgs...)
 
-	// Category filter
-	if filter.Category != "" {
-		query.WriteString(" AND category = ?")
-		args = append(args, filter.Category)
-	}
+	query := `UPDATE activity SET read_at = ? WHERE read_at IS NULL` + whereClause
 
-	// Resource filter
-	if filter.ResourceType != "" {
-		query.WriteString(" AND resource_type = ?")
-		args = append(args, filter.ResourceType)
-	}
-	if strings.TrimSpace(filter.ResourceID) != "" {
-		query.WriteString(" AND resource_id = ?")
-		args = append(args, filter.ResourceID)
-	}
-
-	// Parent resource filter
-	if filter.ParentResourceType != "" {
-		query.WriteString(" AND parent_resource_type = ?")
-		args = append(args, filter.ParentResourceType)
-	}
-	if strings.TrimSpace(filter.ParentResourceID) != "" {
-		query.WriteString(" AND parent_resource_id = ?")
-		args = append(args, filter.ParentResourceID)
-	}
-
-	// Requires attention filter
-	if filter.RequiresAttention != nil && *filter.RequiresAttention {
-		query.WriteString(" AND requires_attention = 1")
-	}
-
-	_, err := s.db.ExecContext(ctx, query.String(), args...)
+	_, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("mark all read: %w", err)
 	}
@@ -633,44 +446,21 @@ func (s *Store) MarkAllRead(ctx context.Context, filter ListFilter) error {
 
 // CountUnread counts unread activity entries matching the filter.
 func (s *Store) CountUnread(ctx context.Context, filter ListFilter) (int64, error) {
-	query := strings.Builder{}
-	query.WriteString(`SELECT COUNT(*) FROM activity WHERE read_at IS NULL`)
+	// CountUnread only respects a subset of the filter, same as MarkAllRead.
+	scoped := filter
+	scoped.Cursor = ""
+	scoped.UnreadOnly = false // base query already constrains read_at IS NULL
 
-	args := make([]any, 0)
-
-	// Category filter
-	if filter.Category != "" {
-		query.WriteString(" AND category = ?")
-		args = append(args, filter.Category)
+	if scoped.RequiresAttention != nil && !*scoped.RequiresAttention {
+		scoped.RequiresAttention = nil
 	}
 
-	// Resource filter
-	if filter.ResourceType != "" {
-		query.WriteString(" AND resource_type = ?")
-		args = append(args, filter.ResourceType)
-	}
-	if strings.TrimSpace(filter.ResourceID) != "" {
-		query.WriteString(" AND resource_id = ?")
-		args = append(args, filter.ResourceID)
-	}
+	whereClause, filterArgs := buildActivityFilterClause(scoped)
 
-	// Parent resource filter
-	if filter.ParentResourceType != "" {
-		query.WriteString(" AND parent_resource_type = ?")
-		args = append(args, filter.ParentResourceType)
-	}
-	if strings.TrimSpace(filter.ParentResourceID) != "" {
-		query.WriteString(" AND parent_resource_id = ?")
-		args = append(args, filter.ParentResourceID)
-	}
-
-	// Requires attention filter (for unread count, usually we want attention items)
-	if filter.RequiresAttention != nil && *filter.RequiresAttention {
-		query.WriteString(" AND requires_attention = 1")
-	}
+	query := `SELECT COUNT(*) FROM activity WHERE read_at IS NULL` + whereClause
 
 	var count int64
-	err := s.db.QueryRowContext(ctx, query.String(), args...).Scan(&count)
+	err := s.db.QueryRowContext(ctx, query, filterArgs...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count unread: %w", err)
 	}
@@ -709,12 +499,7 @@ func (s *Store) ListSince(ctx context.Context, sinceID string, limit int) ([]Act
 		sinceID = "00000000-0000-7000-8000-000000000000"
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, event_type, category, level,
-			resource_type, resource_id,
-			parent_resource_type, parent_resource_id,
-			actor_type, actor_id,
-			title, message, payload,
-			requires_attention, read_at, created_at
+		`SELECT `+activityColumns+`
 		FROM activity
 		WHERE id > ?
 		ORDER BY id ASC
@@ -727,68 +512,9 @@ func (s *Store) ListSince(ctx context.Context, sinceID string, limit int) ([]Act
 	}
 	defer rows.Close()
 
-	out := make([]Activity, 0, limit)
-	for rows.Next() {
-		var (
-			a                  Activity
-			resourceType       sql.NullString
-			resourceID         sql.NullString
-			parentResourceType sql.NullString
-			parentResourceID   sql.NullString
-			actorID            sql.NullString
-			message            sql.NullString
-			payload            sql.NullString
-			readAt             sql.NullString
-			requiresAttention  int
-		)
-
-		if err := rows.Scan(
-			&a.ID,
-			&a.EventType,
-			&a.Category,
-			&a.Level,
-			&resourceType,
-			&resourceID,
-			&parentResourceType,
-			&parentResourceID,
-			&a.ActorType,
-			&actorID,
-			&a.Title,
-			&message,
-			&payload,
-			&requiresAttention,
-			&readAt,
-			&a.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan activity: %w", err)
-		}
-
-		if resourceType.Valid {
-			a.ResourceType = ResourceType(resourceType.String)
-		}
-		a.ResourceID = nullString(resourceID)
-		if parentResourceType.Valid {
-			a.ParentResourceType = ResourceType(parentResourceType.String)
-		}
-		a.ParentResourceID = nullString(parentResourceID)
-		if actorID.Valid {
-			a.ActorID = actorID.String
-		}
-		if message.Valid {
-			a.Message = message.String
-		}
-		if payload.Valid {
-			a.Payload = payload.String
-		}
-		if readAt.Valid {
-			a.ReadAt = readAt.String
-		}
-		a.RequiresAttention = requiresAttention == 1
-
-		out = append(out, a)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate activity: %w", err)
+	out, err := scanActivityRows(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	return out, nil

@@ -3,15 +3,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
-import { cn, errorMessage } from "@/lib/utils"
-import { useJobs, type Job, type JobEvent, type ConnectionMode } from "~/composables/useJobs"
+import { cn } from "@/lib/utils"
+import type { Job } from "~/composables/useJobs"
+import { useTimelineSteps } from "~/composables/useTimelineSteps"
+import { useJobStream } from "~/composables/useJobStream"
 import {
-  jobKindLabels,
-  jobKindSteps,
   jobTerminalStatuses,
-  type JobKind,
-  type JobTerminalStatus,
   type JobStatus,
+  type JobTerminalStatus,
 } from "~/lib/platform-contract.generated"
 
 interface Props {
@@ -33,112 +32,22 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
-const { activeJob, events, connectionMode, fetchJob, fetchJobEvents, streamJobEvents, clearEvents } = useJobs()
-
-/** Whether we're showing a historical (already completed) job vs live */
-const isHistoricalView = ref(false)
-
-const loading = ref(true)
-const connectionError = ref("")
-const retryCount = ref(0)
-
-// Derive steps from events
-interface TimelineStep {
-  key: string
-  label: string
-  status: "pending" | "running" | "completed" | "failed"
-  message?: string
-  timestamp?: string
-}
-
-const steps = computed<TimelineStep[]>(() => {
-  const kind = activeJob.value?.kind as JobKind | undefined
-  const eventStepOrder: string[] = []
-  for (const event of events.value) {
-    if (event.step_key && !eventStepOrder.includes(event.step_key)) {
-      eventStepOrder.push(event.step_key)
-    }
-  }
-  const workflowSteps = kind ? jobKindSteps[kind] || [] : []
-  const stepOrder = workflowSteps.length > 0
-    ? workflowSteps.map((step) => step.key)
-    : eventStepOrder
-  const eventsByStep = new Map<string, JobEvent[]>()
-
-  // Group events by step_key
-  for (const event of events.value) {
-    if (event.step_key) {
-      const existing = eventsByStep.get(event.step_key) || []
-      existing.push(event)
-      eventsByStep.set(event.step_key, existing)
-    }
-  }
-
-  // Build timeline steps
-  return stepOrder.map((key) => {
-    const stepEvents = eventsByStep.get(key) || []
-    const latestEvent = stepEvents[stepEvents.length - 1]
-
-    let status: TimelineStep["status"] = "pending"
-    if (latestEvent) {
-      if (latestEvent.status === "completed" || latestEvent.event_type === "step_completed") {
-        status = "completed"
-      } else if (latestEvent.status === "failed" || latestEvent.event_type === "step_failed") {
-        status = "failed"
-      } else if (latestEvent.status === "running" || latestEvent.event_type === "step_started") {
-        status = "running"
-      }
-    }
-
-    // Check if this is the current step from the job
-    if (activeJob.value?.current_step === key && status === "pending") {
-      status = "running"
-    }
-
-    return {
-      key,
-      label: workflowSteps.find((step) => step.key === key)?.label || key,
-      status,
-      message: latestEvent?.message,
-      timestamp: latestEvent?.occurred_at,
-    }
-  })
+const {
+  activeJob,
+  events,
+  connectionMode,
+  isHistoricalView,
+  loading,
+  connectionError,
+  retryLoad,
+} = useJobStream({
+  jobId: props.jobId,
+  autoConnect: props.autoConnect,
+  onCompleted: (job) => emit("completed", job),
+  onFailed: (job, error) => emit("failed", job, error),
 })
 
-const jobKindLabel = computed(() => {
-  const kind = activeJob.value?.kind
-  return kind ? jobKindLabels[kind as JobKind] || kind : ""
-})
-
-function formatPayloadValue(value: unknown): string {
-  if (value === null) return "null"
-  if (typeof value === "string") return value
-  if (typeof value === "number" || typeof value === "boolean") return String(value)
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-const payloadSummary = computed(() => {
-  const payload = activeJob.value?.payload
-  if (!payload) return ""
-  if (typeof payload === "string") {
-    try {
-      const parsed = JSON.parse(payload) as Record<string, unknown>
-      const entries = Object.entries(parsed)
-      if (entries.length === 0) return ""
-      const summary = entries
-        .map(([key, value]) => `${key}=${formatPayloadValue(value)}`)
-        .join(", ")
-      return summary.length > 160 ? `${summary.slice(0, 157)}...` : summary
-    } catch {
-      return payload
-    }
-  }
-  return ""
-})
+const { steps, jobKindLabel, payloadSummary } = useTimelineSteps(activeJob, events)
 
 // Job metadata
 const jobStatus = computed(() => activeJob.value?.status || "unknown")
@@ -178,99 +87,6 @@ function statusBadgeClass(status: JobStatus | "unknown") {
       return "border-border/60 bg-muted/60 text-foreground"
   }
 }
-
-// SSE cleanup function
-let closeStream: (() => void) | null = null
-
-// Watch for terminal states and emit events
-watch(
-  () => activeJob.value?.status,
-  (status) => {
-    if (!activeJob.value) return
-
-    if (status === "succeeded") {
-      emit("completed", activeJob.value)
-    } else if (status === "failed") {
-      emit("failed", activeJob.value, activeJob.value.last_error || "Unknown error")
-    }
-  },
-)
-
-// Handle event updates to refresh job status
-function handleEvent(event: JobEvent) {
-  // Refresh job when we get terminal events
-  if (event.event_type === "job_succeeded" || event.event_type === "job_failed" || event.event_type === "job_timed_out" || event.event_type === "job_recovered") {
-    fetchJob(props.jobId).catch(() => {})
-  }
-}
-
-// Handle connection mode changes
-function handleModeChange(mode: ConnectionMode) {
-  if (mode === "polling") {
-    // Clear any previous connection error when we successfully fall back to polling
-    connectionError.value = ""
-  }
-}
-
-// Retry loading the job
-async function retryLoad() {
-  retryCount.value++
-  connectionError.value = ""
-  loading.value = true
-  clearEvents()
-
-  try {
-    const job = await fetchJob(props.jobId)
-
-    // Check if job is already in terminal state (historical view)
-    if (jobTerminalStatuses.includes(job.status as JobTerminalStatus)) {
-      isHistoricalView.value = true
-      await fetchJobEvents(props.jobId)
-      loading.value = false
-      return
-    }
-
-    loading.value = false
-    if (props.autoConnect) {
-      if (closeStream) closeStream()
-      closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
-    }
-  } catch (e: unknown) {
-    connectionError.value = errorMessage(e) || "Failed to load job"
-    loading.value = false
-  }
-}
-
-onMounted(async () => {
-  try {
-    const job = await fetchJob(props.jobId)
-
-    // Check if job is already in terminal state (historical view)
-    if (jobTerminalStatuses.includes(job.status as JobTerminalStatus)) {
-      // Historical view: fetch all events at once, no streaming
-      isHistoricalView.value = true
-      await fetchJobEvents(props.jobId)
-      loading.value = false
-      return
-    }
-
-    // Live view: stream events
-    loading.value = false
-    if (props.autoConnect) {
-      closeStream = streamJobEvents(props.jobId, handleEvent, handleModeChange)
-    }
-  } catch (e: unknown) {
-    connectionError.value = errorMessage(e) || "Failed to load job"
-    loading.value = false
-  }
-})
-
-onUnmounted(() => {
-  if (closeStream) {
-    closeStream()
-    closeStream = null
-  }
-})
 </script>
 
 <template>

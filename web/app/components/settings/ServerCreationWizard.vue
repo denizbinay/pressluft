@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,16 +8,6 @@ import {
   DialogScrollContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectItemText,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { cn, errorMessage } from "@/lib/utils";
 import { useProviders } from "~/composables/useProviders";
@@ -113,38 +102,6 @@ const selectedTypeLabel = computed(
     )?.label || formServerType.value,
 );
 
-const selectedProfileStatusClass = computed(() =>
-  selectedProfile.value
-    ? profileSupportClass(selectedProfile.value.support_level)
-    : "border-border/60 bg-muted/40 text-muted-foreground",
-);
-
-const selectedProfileSupportText = computed(() => {
-  if (!selectedProfile.value) {
-    return "";
-  }
-  return (
-    selectedProfile.value.support_reason ||
-    supportLevelLabel(selectedProfile.value.support_level)
-  );
-});
-
-const controlClass =
-  "w-full rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-const selectTriggerClass = cn(
-  controlClass,
-  "hover:border-border data-[placeholder]:text-muted-foreground",
-);
-
-const inputClass = cn(controlClass, "hover:border-border");
-
-const selectContentClass =
-  "border-border/60 bg-popover text-popover-foreground";
-
-const selectItemClass =
-  "text-foreground data-[disabled]:text-muted-foreground data-[highlighted]:bg-muted/60 data-[highlighted]:text-foreground";
-
 const buttonBaseClass =
   "rounded-lg focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -201,7 +158,6 @@ watch(formProviderId, async () => {
 
 // When location changes, reset server type to first available option
 watch(formLocation, () => {
-  // Set to first available server type for this location
   formServerType.value = serverTypeOptions.value[0]?.value || "";
 });
 
@@ -281,20 +237,6 @@ const isFormValid = () => {
   );
 };
 
-const supportLevelLabel = (supportLevel: SupportLevel): string => {
-  if (supportLevel === "supported") return "Supported";
-  if (supportLevel === "experimental") return "Experimental";
-  return "Not Ready";
-};
-
-const profileSupportClass = (supportLevel: SupportLevel): string => {
-  if (supportLevel === "supported")
-    return "border-primary/30 bg-primary/10 text-primary";
-  if (supportLevel === "experimental")
-    return "border-accent/30 bg-accent/10 text-accent";
-  return "border-border/60 bg-muted/60 text-muted-foreground";
-};
-
 const formatMonthlyPrice = (
   serverType: { prices: ReadonlyArray<ServerTypePrice> },
   location: string,
@@ -344,218 +286,35 @@ const formatMonthlyPrice = (
         </Alert>
 
         <template v-if="formStep === 'configure'">
-          <div class="space-y-1.5">
-            <Label class="text-sm font-medium text-muted-foreground">
-              Provider Connection
-            </Label>
-            <Select v-model="formProviderId">
-              <SelectTrigger :class="selectTriggerClass">
-                <SelectValue placeholder="Select provider" />
-              </SelectTrigger>
-              <SelectContent :class="selectContentClass">
-                <SelectItem
-                  v-for="option in providerOptions"
-                  :key="option.value"
-                  :value="option.value"
-                  :class="selectItemClass"
-                >
-                  <SelectItemText>{{ option.label }}</SelectItemText>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-1.5">
-            <Label class="text-sm font-medium text-muted-foreground">
-              Server Name
-            </Label>
-            <Input
-              v-model="formName"
-              placeholder="e.g. agency-prod-eu-1"
-              :class="inputClass"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label class="text-sm font-medium text-muted-foreground">
-              Server Profile
-            </Label>
-            <Select v-model="formProfileKey" :disabled="formLoadingCatalog">
-              <SelectTrigger :class="selectTriggerClass">
-                <SelectValue placeholder="Select server profile">
-                  <div
-                    v-if="selectedProfile"
-                    class="flex min-w-0 items-center justify-between gap-2"
-                  >
-                    <span class="truncate text-sm text-foreground">{{
-                      selectedProfile.name
-                    }}</span>
-                    <Badge
-                      :class="
-                        profileSupportClass(selectedProfile.support_level)
-                      "
-                    >
-                      {{ supportLevelLabel(selectedProfile.support_level) }}
-                    </Badge>
-                  </div>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent :class="selectContentClass">
-                <SelectItem
-                  v-for="profile in profiles"
-                  :key="profile.key"
-                  :value="profile.key"
-                  :disabled="profile.support_level === 'unavailable'"
-                  :class="selectItemClass"
-                >
-                  <div
-                    class="flex w-full min-w-0 items-center justify-between gap-2"
-                  >
-                    <span class="truncate">{{ profile.name }}</span>
-                    <Badge
-                      :class="profileSupportClass(profile.support_level)"
-                    >
-                      {{ supportLevelLabel(profile.support_level) }}
-                    </Badge>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <div
-              v-if="selectedProfile"
-              class="rounded-lg border px-3 py-3"
-              :class="selectedProfileStatusClass"
-            >
-              <ul class="space-y-2 text-sm text-muted-foreground">
-                <li class="flex items-start gap-2">
-                  <span
-                    class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-                  />
-                  <span
-                    ><strong class="text-foreground">Description:</strong>
-                    {{ selectedProfile.description }}</span
-                  >
-                </li>
-                <li class="flex items-start gap-2">
-                  <span
-                    class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-                  />
-                  <span
-                    ><strong class="text-foreground"
-                      >Configure guarantee:</strong
-                    >
-                    {{ selectedProfile.configure_guarantee }}</span
-                  >
-                </li>
-                <li class="flex items-start gap-2">
-                  <span
-                    class="mt-[0.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-                  />
-                  <span
-                    ><strong class="text-foreground">Support:</strong>
-                    {{ selectedProfileSupportText }}</span
-                  >
-                </li>
-              </ul>
-            </div>
-            <p v-else class="text-xs text-muted-foreground">
-              No selectable server profile is available for this provider yet.
-            </p>
-          </div>
-
-          <div class="space-y-1.5">
-            <Label class="text-sm font-medium text-muted-foreground">
-              Region
-            </Label>
-            <Select v-model="formLocation" :disabled="formLoadingCatalog">
-              <SelectTrigger :class="selectTriggerClass">
-                <SelectValue placeholder="Select region" />
-              </SelectTrigger>
-              <SelectContent :class="selectContentClass">
-                <SelectItem
-                  v-for="option in locationOptions"
-                  :key="option.value"
-                  :value="option.value"
-                  :class="selectItemClass"
-                >
-                  <SelectItemText>{{ option.label }}</SelectItemText>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-1.5">
-            <Label class="text-sm font-medium text-muted-foreground">
-              Size
-            </Label>
-            <Select
-              v-model="formServerType"
-              :disabled="formLoadingCatalog || !formLocation"
-            >
-              <SelectTrigger :class="selectTriggerClass">
-                <SelectValue placeholder="Select size" />
-              </SelectTrigger>
-              <SelectContent :class="selectContentClass">
-                <SelectItem
-                  v-for="option in serverTypeOptions"
-                  :key="option.value"
-                  :value="option.value"
-                  :class="selectItemClass"
-                >
-                  <SelectItemText>{{ option.label }}</SelectItemText>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <p v-if="formLoadingCatalog" class="text-xs text-muted-foreground">
-            Loading provider catalog...
-          </p>
+          <WizardStepConfigure
+            :form-provider-id="formProviderId"
+            :form-name="formName"
+            :form-profile-key="formProfileKey"
+            :form-location="formLocation"
+            :form-server-type="formServerType"
+            :form-loading-catalog="formLoadingCatalog"
+            :provider-options="providerOptions"
+            :profiles="profiles"
+            :selectable-profiles="selectableProfiles"
+            :selected-profile="selectedProfile"
+            :location-options="locationOptions"
+            :server-type-options="serverTypeOptions"
+            @update:form-provider-id="formProviderId = $event"
+            @update:form-name="formName = $event"
+            @update:form-profile-key="formProfileKey = $event"
+            @update:form-location="formLocation = $event"
+            @update:form-server-type="formServerType = $event"
+          />
         </template>
 
         <template v-else-if="formStep === 'review'">
-          <div
-            class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-          >
-            <p>
-              <strong class="text-foreground">Name:</strong> {{ formName }}
-            </p>
-            <p>
-              <strong class="text-foreground">Region:</strong>
-              {{ formLocation }}
-            </p>
-            <p>
-              <strong class="text-foreground">Size:</strong>
-              {{ selectedTypeLabel }}
-            </p>
-            <div class="mt-1">
-              <p>
-                <strong class="text-foreground">Profile:</strong>
-                {{ selectedProfile?.name || formProfileKey }}
-              </p>
-              <div
-                v-if="selectedProfile"
-                class="mt-2 flex flex-wrap items-center gap-2"
-              >
-                <Badge
-                  :class="profileSupportClass(selectedProfile.support_level)"
-                >
-                  {{ supportLevelLabel(selectedProfile.support_level) }}
-                </Badge>
-              </div>
-              <p
-                v-if="selectedProfile"
-                class="mt-2 text-xs text-muted-foreground"
-              >
-                {{ selectedProfileSupportText }}
-              </p>
-            </div>
-          </div>
-          <p class="text-xs text-muted-foreground">
-            The base image is determined by the selected profile. Advanced
-            networking, firewalls, and storage options are intentionally
-            hidden for this managed flow.
-          </p>
+          <WizardStepReview
+            :form-name="formName"
+            :form-location="formLocation"
+            :form-profile-key="formProfileKey"
+            :selected-type-label="selectedTypeLabel"
+            :selected-profile="selectedProfile"
+          />
         </template>
 
         <!-- Provisioning step: show job timeline -->
