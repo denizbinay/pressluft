@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"pressluft/internal/cli/cliui"
 	"pressluft/internal/cli/cliutil"
-	"pressluft/internal/cliui"
 )
 
 func Run() error {
@@ -91,7 +91,7 @@ func runGoTest(rootDir string) error {
 
 func runProfileSchemaTest(rootDir string) error {
 	cliui.Step("Running profile schema validation")
-	cmd := exec.Command(cliutil.GoCmd(), "test", "./internal/server/profiles", "-run", "TestProfileArtifactsSatisfySchema", "-count=1")
+	cmd := exec.Command(cliutil.GoCmd(), "test", "./internal/controlplane/server/profiles", "-run", "TestProfileArtifactsSatisfySchema", "-count=1")
 	cmd.Dir = rootDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -104,7 +104,7 @@ func runProfileSchemaTest(rootDir string) error {
 
 func runProfileRegistryTest(rootDir string) error {
 	cliui.Step("Running profile registry consistency test")
-	cmd := exec.Command(cliutil.GoCmd(), "test", "./internal/server/profiles", "-run", "TestRegistryMatchesProfileArtifacts", "-count=1")
+	cmd := exec.Command(cliutil.GoCmd(), "test", "./internal/controlplane/server/profiles", "-run", "TestRegistryMatchesProfileArtifacts", "-count=1")
 	cmd.Dir = rootDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

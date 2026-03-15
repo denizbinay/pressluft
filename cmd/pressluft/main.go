@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"pressluft/internal/cliui"
+	"pressluft/internal/cli/cliui"
 )
 
 var rootCmd = &cobra.Command{

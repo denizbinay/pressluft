@@ -16,10 +16,10 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
+	"pressluft/internal/cli/cliui"
 	"pressluft/internal/cli/cliutil"
-	"pressluft/internal/cliui"
-	"pressluft/internal/devdiag"
-	"pressluft/internal/envconfig"
+	"pressluft/internal/cli/devdiag"
+	"pressluft/internal/shared/envconfig"
 )
 
 // DevConfig defines the environment variables that control the dev workflow.

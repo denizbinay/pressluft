@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"pressluft/internal/agentcommand"
-	"pressluft/internal/ws"
+	"pressluft/internal/agent/agentcommand"
+	"pressluft/internal/shared/ws"
 )
 
 func TestExecutorRejectsDisallowedRestartService(t *testing.T) {

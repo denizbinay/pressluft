@@ -17,24 +17,24 @@ import (
 	"syscall"
 	"time"
 
-	"pressluft/internal/activity"
-	"pressluft/internal/agentauth"
-	"pressluft/internal/auth"
-	"pressluft/internal/database"
-	"pressluft/internal/dispatch"
-	"pressluft/internal/envconfig"
-	"pressluft/internal/orchestrator"
-	"pressluft/internal/pki"
+	"pressluft/internal/agent/agentauth"
+	"pressluft/internal/controlplane/activity"
+	"pressluft/internal/controlplane/auth"
+	"pressluft/internal/controlplane/dispatch"
+	"pressluft/internal/controlplane/server"
+	"pressluft/internal/infra/pki"
+	"pressluft/internal/infra/provider"
+	"pressluft/internal/infra/registration"
+	"pressluft/internal/infra/runner/ansible"
+	"pressluft/internal/orchestration/orchestrator"
+	"pressluft/internal/orchestration/worker"
 	"pressluft/internal/platform"
-	"pressluft/internal/provider"
-	"pressluft/internal/registration"
-	"pressluft/internal/runner/ansible"
-	"pressluft/internal/security"
-	"pressluft/internal/server"
-	"pressluft/internal/worker"
-	"pressluft/internal/ws"
+	"pressluft/internal/platform/database"
+	"pressluft/internal/shared/envconfig"
+	"pressluft/internal/shared/security"
+	"pressluft/internal/shared/ws"
 
-	_ "pressluft/internal/provider/hetzner"
+	_ "pressluft/internal/infra/provider/hetzner"
 )
 
 const defaultAddr = ":8080"
@@ -242,7 +242,7 @@ func operatorAuthenticatorForMode(mode platform.ExecutionMode, authService *auth
 func logExecutionMode(logger *slog.Logger, mode platform.ExecutionMode) {
 	logger.Info("platform contract loaded",
 		"execution_mode", mode,
-		"contract_package", "pressluft/internal/contract",
+		"contract_package", "pressluft/internal/platform/contract",
 	)
 
 	switch mode {

@@ -9,8 +9,8 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
+	"pressluft/internal/cli/cliui"
 	"pressluft/internal/cli/cliutil"
-	"pressluft/internal/cliui"
 )
 
 var buildCmd = &cobra.Command{

@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"pressluft/internal/security"
+	"pressluft/internal/shared/security"
 
 	_ "modernc.org/sqlite"
 )

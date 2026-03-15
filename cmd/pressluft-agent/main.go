@@ -9,8 +9,8 @@ import (
 	"syscall"
 
 	"pressluft/internal/agent"
-	"pressluft/internal/envconfig"
 	"pressluft/internal/platform"
+	"pressluft/internal/shared/envconfig"
 )
 
 var (
@@ -70,7 +70,7 @@ func main() {
 func logExecutionMode(logger *slog.Logger, mode platform.ExecutionMode) {
 	logger.Info("platform contract loaded",
 		"execution_mode", mode,
-		"contract_package", "pressluft/internal/contract",
+		"contract_package", "pressluft/internal/platform/contract",
 	)
 
 	switch mode {

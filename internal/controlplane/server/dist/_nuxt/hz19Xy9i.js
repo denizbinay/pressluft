@@ -1,0 +1,1 @@
+import{c as t}from"./BVtUtCDO.js";import{g as o,o as r,c as l,E as n,D as c,p}from"./PYHFtaGX.js";const d=o({__name:"DialogHeader",props:{class:{type:[Boolean,null,String,Object,Array]}},setup(e){const a=e;return(s,m)=>(r(),l("div",{"data-slot":"dialog-header",class:c(p(t)("flex flex-col gap-2 text-center sm:text-left",a.class))},[n(s.$slots,"default")],2))}});export{d as _};

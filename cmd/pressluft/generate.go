@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"pressluft/internal/cli/cliutil"
-	"pressluft/internal/contract"
+	"pressluft/internal/platform/contract"
 )
 
 // runGenerate regenerates TypeScript contracts from Go types.

@@ -1,0 +1,1 @@
+import{_ as t,c as s,a as o,o as n}from"./PYHFtaGX.js";const r={},a={class:"space-y-4"};function c(d,e){return n(),s("div",a,[...e[0]||(e[0]=[o("h1",{class:"text-3xl font-semibold text-foreground"},"Dashboard",-1),o("p",{class:"text-base text-muted-foreground"},"Overview and monitoring coming soon.",-1)])])}const f=t(r,[["render",c]]);export{f as default};
