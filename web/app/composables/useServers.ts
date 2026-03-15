@@ -33,14 +33,15 @@ import { errorMessage } from "~/lib/utils";
 
 export type AgentStatusType = AgentInfo["status"];
 
+const servers = ref<StoredServer[]>([]);
+const profiles = ref<ServerCatalogResponse["profiles"]>([]);
+const catalog = ref<ServerCatalogResponse["catalog"] | null>(null);
+const loading = ref(false);
+const saving = ref(false);
+const error = ref("");
+
 export function useServers() {
   const { apiFetch } = useApiClient();
-  const servers = ref<StoredServer[]>([]);
-  const profiles = ref<ServerCatalogResponse["profiles"]>([]);
-  const catalog = ref<ServerCatalogResponse["catalog"] | null>(null);
-  const loading = ref(false);
-  const saving = ref(false);
-  const error = ref("");
 
   const fetchServers = async () => {
     loading.value = true;

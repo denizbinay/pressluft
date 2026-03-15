@@ -3,12 +3,13 @@ import type { ProviderType, StoredProvider, ValidationResult } from '~/lib/api-c
 import { errorMessage } from '~/lib/utils'
 export type { ProviderType, StoredProvider, ValidationResult } from '~/lib/api-contract'
 
+const providers = ref<StoredProvider[]>([])
+const providerTypes = ref<ProviderType[]>([])
+const loading = ref(false)
+const error = ref('')
+
 export function useProviders() {
   const { apiFetch } = useApiClient()
-  const providers = ref<StoredProvider[]>([])
-  const providerTypes = ref<ProviderType[]>([])
-  const loading = ref(false)
-  const error = ref('')
 
   const fetchProviders = async () => {
     loading.value = true
