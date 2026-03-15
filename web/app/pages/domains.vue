@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDomains } from "~/composables/useDomains";
+import { errorMessage } from "~/lib/utils";
 
 const {
   domains,
@@ -72,8 +73,8 @@ const loadPage = async () => {
   pageError.value = "";
   try {
     await fetchDomains();
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to load domains";
+  } catch (e: unknown) {
+    pageError.value = errorMessage(e) || "Failed to load domains";
   }
 };
 
@@ -96,8 +97,8 @@ const handleCreateDomain = async () => {
     successMessage.value = `Added ${created.hostname}.`;
     resetForm();
     await fetchDomains();
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to add domain";
+  } catch (e: unknown) {
+    pageError.value = errorMessage(e) || "Failed to add domain";
   }
 };
 
@@ -108,8 +109,8 @@ const handleDNSStateChange = async (domainId: string, dnsState: string) => {
     await updateDomain(domainId, { dns_state: dnsState });
     successMessage.value = "DNS state updated.";
     await fetchDomains();
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to update DNS state";
+  } catch (e: unknown) {
+    pageError.value = errorMessage(e) || "Failed to update DNS state";
   }
 };
 
@@ -123,8 +124,8 @@ const handleDelete = async (domainId: string, hostname: string) => {
     await deleteDomain(domainId);
     successMessage.value = `Deleted ${hostname}.`;
     await fetchDomains();
-  } catch (e: any) {
-    pageError.value = e.message || "Failed to delete domain";
+  } catch (e: unknown) {
+    pageError.value = errorMessage(e) || "Failed to delete domain";
   }
 };
 

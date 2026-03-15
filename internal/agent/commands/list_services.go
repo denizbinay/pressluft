@@ -6,8 +6,8 @@ import (
 	"context"
 	"strings"
 
-	"pressluft/internal/agentcommand"
-	"pressluft/internal/ws"
+	"pressluft/internal/agent/agentcommand"
+	"pressluft/internal/shared/ws"
 )
 
 // ListServices returns a list of running systemd services.

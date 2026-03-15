@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"pressluft/internal/ws"
+	"pressluft/internal/shared/ws"
 
 	"nhooyr.io/websocket"
 )

@@ -8,8 +8,8 @@ import (
 	"math/rand"
 	"time"
 
-	"pressluft/internal/observability"
-	"pressluft/internal/ws"
+	"pressluft/internal/shared/observability"
+	"pressluft/internal/shared/ws"
 
 	"nhooyr.io/websocket"
 )

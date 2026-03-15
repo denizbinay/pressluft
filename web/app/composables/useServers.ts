@@ -29,25 +29,27 @@ import {
   parseStoredServer,
   parseStoredServers,
 } from "~/lib/api-runtime";
+import { errorMessage } from "~/lib/utils";
 
 export type AgentStatusType = AgentInfo["status"];
 
+const servers = ref<StoredServer[]>([]);
+const profiles = ref<ServerCatalogResponse["profiles"]>([]);
+const catalog = ref<ServerCatalogResponse["catalog"] | null>(null);
+const loading = ref(false);
+const saving = ref(false);
+const error = ref("");
+
 export function useServers() {
   const { apiFetch } = useApiClient();
-  const servers = ref<StoredServer[]>([]);
-  const profiles = ref<ServerCatalogResponse["profiles"]>([]);
-  const catalog = ref<ServerCatalogResponse["catalog"] | null>(null);
-  const loading = ref(false);
-  const saving = ref(false);
-  const error = ref("");
 
   const fetchServers = async () => {
     loading.value = true;
     error.value = "";
     try {
       servers.value = parseStoredServers(await apiFetch("/servers"));
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
     } finally {
       loading.value = false;
     }

@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Job } from "~/composables/useJobs";
 import { useJobs } from "~/composables/useJobs";
 import { jobKindLabels } from "~/lib/platform-contract.generated";
+import { errorMessage } from "~/lib/utils";
 
 const route = useRoute();
 const router = useRouter();
@@ -38,8 +39,8 @@ onMounted(async () => {
   jobError.value = "";
   try {
     job.value = await fetchJob(jobId.value);
-  } catch (e: any) {
-    jobError.value = e.message || "Failed to load job";
+  } catch (e: unknown) {
+    jobError.value = errorMessage(e) || "Failed to load job";
   }
 });
 </script>

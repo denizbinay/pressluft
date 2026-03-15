@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"pressluft/internal/agent/agentcommand"
 	"pressluft/internal/agent/commands"
-	"pressluft/internal/agentcommand"
-	"pressluft/internal/ws"
+	"pressluft/internal/shared/ws"
 )
 
 type commandFunc func(context.Context, ws.Command) ws.CommandResult

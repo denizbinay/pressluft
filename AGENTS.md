@@ -1,12 +1,9 @@
-Read `README.md` and `Makefile` first.
+Start exploration at `README.md` and `Makefile`.
 
-Do not hand-edit generated files:
-- `web/app/lib/api-contract.ts`
-- `web/app/lib/platform-contract.generated.ts`
+Use the `gh` CLI for GitHub operations.
 
-Ignore generated/local directories during search unless the task explicitly needs them:
-- `web/.output`
-- `web/.nuxt`
-- `.venv`
+Never run `make dev`. Assume the development environment is already running.
 
-Prefer existing `make` targets over ad-hoc commands.
+This repository is a work in progress. Backwards compatibility is not required.
+
+

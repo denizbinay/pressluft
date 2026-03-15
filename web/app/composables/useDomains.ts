@@ -10,6 +10,7 @@ import {
   parseStoredDomain,
   parseStoredDomains,
 } from "~/lib/api-runtime";
+import { errorMessage } from "~/lib/utils";
 
 export type {
   CreateDomainRequest,
@@ -31,8 +32,8 @@ export function useDomains() {
     try {
       domains.value = parseStoredDomains(await apiFetch("/domains"));
       return domains.value;
-    } catch (e: any) {
-      error.value = e.message;
+    } catch (e: unknown) {
+      error.value = errorMessage(e);
       throw e;
     } finally {
       loading.value = false;

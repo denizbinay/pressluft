@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"pressluft/internal/agentcommand"
-	"pressluft/internal/ws"
+	"pressluft/internal/agent/agentcommand"
+	"pressluft/internal/shared/ws"
 )
 
 func SiteHealthSnapshot(ctx context.Context, cmd ws.Command) ws.CommandResult {

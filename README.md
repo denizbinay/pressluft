@@ -68,16 +68,27 @@ ansible-galaxy collection install -r ops/ansible/requirements.yml
 
 ## Development
 
+Start the local development environment:
+
 ```bash
 make dev
 ```
+This starts the Go backend on http://localhost:8081, the Nuxt dev server on http://localhost:8080, and a Cloudflare quick tunnel so provisioned servers can reach your local control plane.
 
-This starts the Go backend on `http://localhost:8081`, the Nuxt dev server on `http://localhost:8080`, and a Cloudflare quick tunnel so provisioned servers can reach your local control plane.
+Quick tunnels use random domains, so provisioned servers cannot reconnect after `make dev`. Configure a stable control plane URL via `.env`:
+
+```bash
+PRESSLUFT_CONTROL_PLANE_URL=https://example.yourdomain.com
+```
 
 ## Building
 
 ```bash
-make build   # control plane — builds bin/pressluft with embedded dashboard
-make agent   # agent binary — statically linked, for deployment to managed servers
-make all     # both
+make build
 ```
+
+## CLI
+
+All development and build workflows are implemented in the pressluft CLI (cmd/pressluft/).
+
+go run ./cmd/pressluft help

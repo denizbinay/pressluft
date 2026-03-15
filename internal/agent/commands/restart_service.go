@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os/exec"
 
-	"pressluft/internal/agentcommand"
-	"pressluft/internal/ws"
+	"pressluft/internal/agent/agentcommand"
+	"pressluft/internal/shared/ws"
 )
 
 var commandContext = exec.CommandContext

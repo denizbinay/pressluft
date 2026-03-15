@@ -16,13 +16,14 @@ import {
   Server,
   Settings,
 } from 'lucide-vue-next'
+import type { Component } from 'vue'
 import { computed } from 'vue'
 
 const route = useRoute()
 
 interface NavItem {
   label: string
-  icon: any
+  icon: Component
   to: string
   badge?: string
 }
