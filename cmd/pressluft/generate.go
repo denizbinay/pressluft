@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"pressluft/internal/cli/cliutil"
 	"pressluft/internal/contract"
 )
 
@@ -12,7 +13,7 @@ import (
 // Called internally by dev and build — not a user-facing command.
 func runGenerate(args []string) error {
 
-	rootDir, err := findRepoRoot()
+	rootDir, err := cliutil.FindRepoRoot()
 	if err != nil {
 		return err
 	}

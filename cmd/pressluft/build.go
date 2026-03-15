@@ -9,6 +9,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
+	"pressluft/internal/cli/cliutil"
 	"pressluft/internal/cliui"
 )
 
@@ -36,7 +37,7 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
-	rootDir, err := findRepoRoot()
+	rootDir, err := cliutil.FindRepoRoot()
 	if err != nil {
 		return err
 	}
@@ -99,7 +100,7 @@ func buildServer(rootDir string) error {
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
 		return err
 	}
-	cmd := exec.Command(goCmd(), "build", "-o", binPath, "./cmd/pressluft-server")
+	cmd := exec.Command(cliutil.GoCmd(), "build", "-o", binPath, "./cmd/pressluft-server")
 	cmd.Dir = rootDir
 	cmd.Env = appendBuildEnv(os.Environ())
 	cmd.Stdout = os.Stdout
@@ -117,7 +118,7 @@ func buildAgent(rootDir string, dev bool) error {
 		buildArgs = append(buildArgs, "-tags", "dev")
 	}
 	buildArgs = append(buildArgs, "./cmd/pressluft-agent")
-	cmd := exec.Command(goCmd(), buildArgs...)
+	cmd := exec.Command(cliutil.GoCmd(), buildArgs...)
 	cmd.Dir = rootDir
 	cmd.Env = appendBuildEnv(os.Environ())
 	cmd.Stdout = os.Stdout
@@ -130,7 +131,7 @@ func buildFrontend(rootDir string) error {
 
 	// Install deps if needed.
 	if _, err := os.Stat(filepath.Join(webDir, "node_modules")); os.IsNotExist(err) {
-		install := exec.Command(npmCmd(), "--prefix", webDir, "install")
+		install := exec.Command(cliutil.NpmCmd(), "--prefix", webDir, "install")
 		install.Dir = rootDir
 		install.Stdout = os.Stdout
 		install.Stderr = os.Stderr
@@ -139,7 +140,7 @@ func buildFrontend(rootDir string) error {
 		}
 	}
 
-	gen := exec.Command(npmCmd(), "--prefix", webDir, "run", "generate")
+	gen := exec.Command(cliutil.NpmCmd(), "--prefix", webDir, "run", "generate")
 	gen.Dir = rootDir
 	gen.Env = append(os.Environ(), "NODE_OPTIONS=--max-old-space-size=8192")
 	gen.Stdout = os.Stdout
@@ -177,18 +178,4 @@ func embedFrontend(rootDir string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
-}
-
-func goCmd() string {
-	if v := os.Getenv("GO"); v != "" {
-		return v
-	}
-	return "go"
-}
-
-func npmCmd() string {
-	if v := os.Getenv("NPM"); v != "" {
-		return v
-	}
-	return "pnpm"
 }

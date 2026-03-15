@@ -10,4 +10,7 @@ build:
 test:
 	go run ./cmd/pressluft test
 
-.PHONY: dev build test
+validate:
+	go run ./cmd/pressluft validate
+
+.PHONY: dev build test validate

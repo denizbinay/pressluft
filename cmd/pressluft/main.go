@@ -23,6 +23,7 @@ func init() {
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(serverSSHCmd)
 }

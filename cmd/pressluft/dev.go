@@ -16,6 +16,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
+	"pressluft/internal/cli/cliutil"
 	"pressluft/internal/cliui"
 	"pressluft/internal/devdiag"
 	"pressluft/internal/envconfig"
@@ -86,7 +87,7 @@ All variables can be set in a .env file at the repository root.`,
 }
 
 func runDev(cmd *cobra.Command, args []string) error {
-	rootDir, err := findRepoRoot()
+	rootDir, err := cliutil.FindRepoRoot()
 	if err != nil {
 		return fmt.Errorf("find repo root: %w", err)
 	}
@@ -342,24 +343,6 @@ func tailFile(path string) {
 		time.Sleep(500 * time.Millisecond)
 		// Reset scanner error state for continued reading.
 		scanner = bufio.NewScanner(f)
-	}
-}
-
-func findRepoRoot() (string, error) {
-	// Look for go.mod to find repo root.
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("could not find go.mod in any parent directory")
-		}
-		dir = parent
 	}
 }
 
