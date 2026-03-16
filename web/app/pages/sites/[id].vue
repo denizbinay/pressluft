@@ -239,11 +239,13 @@ const refreshSite = async () => {
 
 const loadPage = async () => {
   if (!siteId.value) {
+    breadcrumbTitle.value = "Site";
     pageError.value = "Invalid site ID";
     loading.value = false;
     return;
   }
   loading.value = true;
+  breadcrumbTitle.value = "Site";
   pageError.value = "";
   try {
     const [loadedSite] = await Promise.all([fetchSite(siteId.value), fetchServers()]);
@@ -251,6 +253,7 @@ const loadPage = async () => {
     breadcrumbTitle.value = loadedSite.name || "Site";
     await Promise.all([loadActivity(), refreshDomains(), refreshHealth()]);
   } catch (e: unknown) {
+    breadcrumbTitle.value = "Site";
     pageError.value = errorMessage(e) || "Failed to load site";
   } finally {
     loading.value = false;
