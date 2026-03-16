@@ -83,6 +83,7 @@ const sections: SiteSection[] = [
 
 const route = useRoute();
 const router = useRouter();
+const breadcrumbTitle = useState<string>("breadcrumb-title", () => "");
 
 const siteId = computed(() => {
   const raw = route.params.id;
@@ -247,6 +248,7 @@ const loadPage = async () => {
   try {
     const [loadedSite] = await Promise.all([fetchSite(siteId.value), fetchServers()]);
     site.value = loadedSite;
+    breadcrumbTitle.value = loadedSite.name || "Site";
     await Promise.all([loadActivity(), refreshDomains(), refreshHealth()]);
   } catch (e: unknown) {
     pageError.value = errorMessage(e) || "Failed to load site";
@@ -333,8 +335,17 @@ watch(siteId, async (value, previous) => {
   await loadPage();
 });
 
+watch(
+  () => site.value?.name,
+  (value) => {
+    breadcrumbTitle.value = value || "Site";
+  },
+  { immediate: true },
+);
+
 onUnmounted(() => {
   if (copyResetTimer) clearTimeout(copyResetTimer);
+  breadcrumbTitle.value = "";
 });
 </script>
 
@@ -344,10 +355,16 @@ onUnmounted(() => {
 
     <template v-else-if="site">
       <div class="flex flex-col gap-5 rounded-[28px] border border-border/60 bg-[linear-gradient(135deg,rgba(18,34,42,0.96),rgba(18,58,56,0.9)_52%,rgba(28,38,61,0.92))] px-7 py-7 text-white shadow-[0_32px_120px_-52px_rgba(9,18,32,0.85)]">
-        <NuxtLink to="/sites" class="text-xs font-semibold uppercase tracking-[0.22em] text-white/65 transition hover:text-white">Back to sites</NuxtLink>
-
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-2 text-[11px] text-white/65">
+              <button type="button" class="rounded-full border border-white/12 bg-white/6 px-2.5 py-1 text-[10px] font-mono transition hover:bg-white/12" :title="site.id" @click="copyIdentifier('site', site.id)">
+                {{ copiedId === 'site' ? 'Site ID copied' : `Site ${siteIdPreview}` }}
+              </button>
+              <button type="button" class="rounded-full border border-white/12 bg-white/6 px-2.5 py-1 text-[10px] font-mono transition hover:bg-white/12" :title="site.server_id" @click="copyIdentifier('server', site.server_id)">
+                {{ copiedId === 'server' ? 'Server ID copied' : `Server ${serverIdPreview}` }}
+              </button>
+            </div>
             <div class="flex flex-wrap items-center gap-3">
               <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ site.name }}</h1>
               <Badge variant="outline" :class="siteDeploymentMeta(site.deployment_state).className">{{ siteDeploymentMeta(site.deployment_state).label }}</Badge>
@@ -359,24 +376,14 @@ onUnmounted(() => {
               <span v-if="serverLocation" class="before:mr-2 before:content-['·']">{{ serverLocation }}</span>
               <span v-if="serverProfile" class="before:mr-2 before:content-['·']">{{ serverProfile }}</span>
             </p>
-            <div class="flex flex-wrap items-center gap-2 text-xs text-white/65">
-              <button type="button" class="rounded-full border border-white/12 bg-white/6 px-2.5 py-1 font-mono transition hover:bg-white/12" :title="site.id" @click="copyIdentifier('site', site.id)">
-                {{ copiedId === 'site' ? 'Site ID copied' : `Site ${siteIdPreview}` }}
-              </button>
-              <button type="button" class="rounded-full border border-white/12 bg-white/6 px-2.5 py-1 font-mono transition hover:bg-white/12" :title="site.server_id" @click="copyIdentifier('server', site.server_id)">
-                {{ copiedId === 'server' ? 'Server ID copied' : `Server ${serverIdPreview}` }}
-              </button>
-            </div>
           </div>
 
-          <div class="w-full max-w-xs rounded-2xl border border-white/10 bg-white/6 p-4 lg:w-72">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">Environment</p>
-            <select v-model="selectedEnvironment" class="mt-3 flex h-10 w-full rounded-xl border border-white/12 bg-white/10 px-3 text-sm text-white outline-none transition focus:border-white/30">
+          <div class="w-full max-w-xs lg:w-72 lg:text-right">
+            <select v-model="selectedEnvironment" class="flex h-10 w-full rounded-xl border border-white/12 bg-white/10 px-3 text-sm text-white outline-none transition focus:border-white/30 lg:ml-auto">
               <option v-for="option in environmentOptions" :key="option.value" :value="option.value" class="text-foreground">
                 {{ option.label }}
               </option>
             </select>
-            <p class="mt-2 text-xs text-white/55">{{ environmentOptions.find((option) => option.value === selectedEnvironment)?.detail }}</p>
           </div>
         </div>
 

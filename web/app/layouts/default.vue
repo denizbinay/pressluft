@@ -21,6 +21,7 @@ import { computed } from 'vue'
 import { formatShortId } from '~/lib/utils'
 
 const route = useRoute()
+const breadcrumbTitle = useState<string>('breadcrumb-title', () => '')
 
 interface NavItem {
   label: string
@@ -74,7 +75,7 @@ const breadcrumbItems = computed(() => {
   return segments.map((segment, index) => {
     const previous = segments[index - 1]
     if (segment === route.params.id) {
-      if (previous === 'sites') return 'Site'
+      if (previous === 'sites') return breadcrumbTitle.value || 'Site'
       if (previous === 'servers') return `Server ${formatShortId(segment)}`
       return formatShortId(segment)
     }
