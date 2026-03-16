@@ -1,4 +1,4 @@
-Start exploration at `README.md` and `Makefile`.
+Start exploration at `README.md` and `Makefile`. Ignore `ROADMAP.md`.
 
 Use the `gh` CLI for GitHub operations.
 
