@@ -18,8 +18,10 @@ import {
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { computed } from 'vue'
+import { formatShortId } from '~/lib/utils'
 
 const route = useRoute()
+const breadcrumbTitle = useState<string>('breadcrumb-title', () => '')
 
 interface NavItem {
   label: string
@@ -59,9 +61,26 @@ const navSections: NavSection[] = [
 
 const flatNavItems = navSections.flatMap((section) => section.items)
 
-const breadcrumbLabel = computed(() => {
-  if (route.path === '/') return 'Dashboard'
-  return route.path.replace('/', '').replace('-', ' ')
+const titleCase = (value: string) =>
+  value
+    .split('-')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ')
+
+const breadcrumbItems = computed(() => {
+  if (route.path === '/') return ['Dashboard']
+
+  const segments = route.path.split('/').filter(Boolean)
+  return segments.map((segment, index) => {
+    const previous = segments[index - 1]
+    if (segment === route.params.id) {
+      if (previous === 'sites') return breadcrumbTitle.value || 'Site'
+      if (previous === 'servers') return `Server ${formatShortId(segment)}`
+      return formatShortId(segment)
+    }
+    return titleCase(segment)
+  })
 })
 
 const isActive = (to: string) =>
@@ -172,12 +191,14 @@ const isActive = (to: string) =>
             class="hidden lg:flex rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
 
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span>Pressluft</span>
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-            <span class="text-foreground capitalize">{{ breadcrumbLabel }}</span>
+            <template v-for="(item, index) in breadcrumbItems" :key="`${item}-${index}`">
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+              </svg>
+              <span :class="index === breadcrumbItems.length - 1 ? 'text-foreground' : ''">{{ item }}</span>
+            </template>
           </div>
         </div>
 

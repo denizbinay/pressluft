@@ -6,6 +6,7 @@ import {
   type ServerStatus,
 } from "~/lib/platform-contract.generated";
 import { useServerDetail } from "~/composables/useServerDetail";
+import { copyToClipboard, formatShortId } from "~/lib/utils";
 
 interface ServerSection {
   key: string;
@@ -103,6 +104,8 @@ const navigateTo = (key: string) => {
 };
 
 const isMobileSidebarOpen = ref(false);
+const copiedId = ref("");
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 const toggleMobileSidebar = () => {
   isMobileSidebarOpen.value = !isMobileSidebarOpen.value;
@@ -111,6 +114,18 @@ const toggleMobileSidebar = () => {
 const selectSection = (key: string) => {
   navigateTo(key);
   isMobileSidebarOpen.value = false;
+};
+
+const copyIdentifier = async (kind: string, value?: string) => {
+  if (!value) return;
+  const copied = await copyToClipboard(value);
+  if (!copied) return;
+  copiedId.value = kind;
+  if (copyResetTimer) clearTimeout(copyResetTimer);
+  copyResetTimer = setTimeout(() => {
+    copiedId.value = "";
+    copyResetTimer = null;
+  }, 1500);
 };
 
 const statusVariant = (
@@ -137,6 +152,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAgentPolling();
+  if (copyResetTimer) clearTimeout(copyResetTimer);
 });
 </script>
 
@@ -274,6 +290,14 @@ onUnmounted(() => {
           {{ server.location }} · {{ server.server_type }} ·
           {{ server.profile_key }}
         </p>
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <button type="button" class="rounded-full border border-border/60 bg-background/70 px-2.5 py-1 font-mono transition hover:bg-muted/50 hover:text-foreground" :title="server.id" @click="copyIdentifier('server', server.id)">
+            {{ copiedId === 'server' ? 'Server ID copied' : `Server ${formatShortId(server.id)}` }}
+          </button>
+          <button v-if="server.provider_server_id" type="button" class="rounded-full border border-border/60 bg-background/70 px-2.5 py-1 font-mono transition hover:bg-muted/50 hover:text-foreground" :title="server.provider_server_id" @click="copyIdentifier('provider', server.provider_server_id)">
+            {{ copiedId === 'provider' ? 'Provider ID copied' : `Provider ${formatShortId(server.provider_server_id)}` }}
+          </button>
+        </div>
       </div>
 
       <!-- Mobile section selector -->
